@@ -74,22 +74,34 @@ DOC 干净产出 ──── 只留 verified
   - 防"标签汤"：成员关系由 **Lens 按目标相关性建议、用户审**（Lens 在此第一次干活），非纯手动。
 - **Lens** = 库内穿透层对象，不属任何单个 Project。投毒防护：**只吃 grilled trajectory（幸存者 + 阵亡者），永不吃 PARK**。
 
-### 2.6 会话 vs 文档：谁是中心（2026-06-14 夜定方向，待拍细节）
+### 2.6 会话 vs 文档：谁是中心（2026-06-15 已定）
 **修正**：原模型把 Artifact（文档）当脊柱、`events[]` 挂在文档下 → 会话沦为文档附属。但真实工作流是反的：**一个 project 下一堆对话 + 一堆想法在游动，交集组合 → 冒出新想法 → 顺带精炼出文件**。中心是**思考（对话+想法）**，文档是**副产品**。
 
-**修正方向**：
+**架构决定：单向数据流，三层分离**
+```
+Conversation   原始对话（噪声满满：幻觉、争论、重复、修正）
+     ↓  提炼（闸门：默认手动确认）
+Events[]       结构化事件流 = 唯一真相源（只追加、不可变）
+     ↓  投影
+Document       干净产出（从 events 投影，无独立状态）
+```
+
+**五个已定决策（2026-06-15 grill 收敛）：**
+
+1. **否决对等模型，采用单向投影。** 文档不是独立一等状态，是 event stream 的投影。Conversation 也不是真相源——event stream 才是。对话是产生 event 的原始媒介，文档是消费 event 的渲染终端。没有循环引用，没有双状态冲突。
+2. **Event 确认闸门：默认手动确认，bypass 可选但非默认。** 防止 LLM 幻觉直接沉淀进 trajectory。Bypass 产生的 event 统一标 `debt=true`，不进 DOC 投影，直到用户回来确认还债。与 grill bypass 的 debt 逻辑统一。
+3. **Conversation 属 library 层，`project_ids: str[]`（m:n）。** 对话不被任何 project 拥有，和 trajectory 的 m:n 哲学一致。**第一刀简化**：实现时当单选用，schema 已留多标签位，将来不改 schema。
+4. **文档编辑统一产生 `edit` event，带 `scope: "surface" | "substance"`。** 系统自动判断 scope（LLM），用户确认时可纠正。Lens 只吃 `substance`，不被文气噪声污染。trajectory 完整保留一切，消费端按 scope 过滤。
+5. **编辑确认用批量模式。** 编辑时实时暂存，用户点"完成编辑"时一次性 review 所有 pending edit event 的 scope 标记。类似 git staging——改的时候随便改，提交时过一遍。避免逐条确认的高频摩擦，保住人类闸门纪律。
+
 ```
 Library
   └ Project(目标标签)
-       ├ Conversation[]  对话=思考线 ← 事件住这儿(append-only 真相)
-       ├ Claim[]         想法=漂浮节点(claim 为本)，可跨对话组合
-       ├ Material[]      收集的信息
-       └ Document[]      文件 = 独立的著作面(有自己的状态:措辞/结构/文气)
+Conversation[]   属 library 层，project_ids: str[] (m:n，第一刀当单选)
+  ├ Claim[]      想法=漂浮节点(claim 为本)，可跨对话组合
+  ├ Material[]   收集的信息
+  └ Document[]   event stream 的投影（无独立状态）
 ```
-- **文件 vs 会话 = 独立对等实体，互相影响**：文档不是 claim 的渲染副产品。真正的散文是**著作**，不可由 claim 渲染出；用户要能直接改文件而不绕回对话；改了又要能反哺思考。两边都是一等状态。
-- **调和（保住"不链接"）**：influence 的媒介是**事件**，不是共享状态副本。文档编辑发事件、对话决定发事件，两边各自 fold 自己的状态，**通过事件流交换影响**，不互持对方副本。
-- **最硬的点（留实现 test-driven）**：用户直接重写一段时，系统如何判断"只是润色文气" vs "动了底层 claim"。
-- **待拍子问**：① 文件/会话独立对等、事件为媒介，认吗？② Conversation 属 project 还是浮在 library 层？倾向库层 + 标签 m:n。
 
 ---
 
@@ -121,7 +133,7 @@ Library
 
 ### 3.3 数据结构 + 事件 草案
 
-五层：`Library → Project(标签) → Artifact(写作产物，脊柱) → events[](轨迹) → projections(投影)`，外加 `Material(材料)`。
+七层：`Library → Project(标签) → Artifact(写作产物，脊柱) → events[](轨迹) → projections(投影)`，外加 `Conversation(对话)`、`Claim(独立漂浮节点)`、`Material(材料)`。
 
 ```
 Library                          # 顶层隔离/权限边界，Lens 作用域
@@ -130,6 +142,18 @@ Library                          # 顶层隔离/权限边界，Lens 作用域
 Project                          # 轻标签 + 目标锚定视图，非容器
   id · library_id
   goal          : str
+
+Conversation                     # 属 library 层，不被 project 拥有
+  id · library_id
+  project_ids   : str[]          # m:n 标签（第一刀当单选用）
+  created_at · updated_at
+
+Claim                            # 独立漂浮节点，可跨 Artifact/Conversation 引用
+  id · library_id
+  body          : str            # claim 内容
+  artifact_ids  : str[]          # 被哪些 artifact 引用
+  created_at · updated_at
+  # status (open/survived/killed/parked) 是投影，从 events 算，不存
 
 Material                         # 收集来的材料；引用/数据皆可溯源
   id · library_id
@@ -148,19 +172,20 @@ Artifact                         # 脊柱对象
   title · created_at · updated_at
   events        : Event[]        # 事件流 = 唯一真相
 
-Event                            # 不可变、只追加
+Event                            # 不可变、只追加；默认需用户手动确认
   id · ts
   type          : <见动词表>
   actor         : "user" | "system"
   strictness    : int | null
-  debt          : bool
+  debt          : bool           # bypass 产生的 event 统一标 debt=true
+  confirmed     : bool           # 用户是否已确认（未确认 = pending）
   target_ref    : str | null
   payload       : {...}
 
 # 派生视图（投影，全从 events 算出，不单独存）
 versions[]  = snapshot_projection(events)
-doc         = project(events: survive AND NOT debt)
-lens_feed   = project(events: grilled)
+doc         = project(events: survive AND NOT debt AND confirmed)
+lens_feed   = project(events: grilled AND scope != "surface")
 ```
 
 **事件动词表**：
@@ -176,14 +201,16 @@ lens_feed   = project(events: grilled)
 | 约束 | `constrain`→`revise` | 注册约束→改写满足 |
 | 取证 | `ground` | 引用/数据 provenance 校验 |
 | 落定 | `promote` | survivor → doc |
-| 编辑 | `edit` | 用户手改 |
+| 编辑 | `edit` | 用户手改；带 `scope: "surface" \| "substance"`（系统猜+用户纠正）；批量确认（暂存→"完成编辑"时一次性 review scope） |
+| 确认 | `confirm` | 用户确认 pending event（闸门动作） |
+| 撤回 | `retract` | 用户否决已写入的 event（追加否定，不删历史） |
 
 ---
 
-## 4. 待定
+## 4. 已定（原待定，2026-06-15 grill 收敛）
 
-- **Q-D｜verification debt 怎么记账**：`debt=true` 进不了 `doc` 投影已是机制底线；"如何提醒还债"的 UX 留实现时定。
-- **Q-E｜claim 粒度 / 文本渲染**：实现时 test-driven，不预设。
+- **Q-D｜verification debt 记账（已定）**：硬拦截。`promote` / `export` / 引用带 `debt=true` 的 claim 时全部硬拦——不还债就不让做，没有"带着 debt 继续"的软选项。日常工作不打扰，出货时拦住。
+- **Q-E｜claim 粒度（已定）**：Claim 是独立实体，属 library 层，可被多个 Artifact / Conversation 引用（漂浮节点）。最小 schema：`id · library_id · body · artifact_ids · created_at · updated_at`。`status` 是投影，从 events 算，不存。后续按需加减字段。
 
 ---
 
@@ -195,6 +222,7 @@ lens_feed   = project(events: grilled)
 - [ ] 幸存者能 promote 进 DOC，DOC 里**不含**任何 ungrilled / killed 内容。
 - [ ] 这条完整 trajectory 能被写入 Lens 投喂点（哪怕下游只是落库、不学习）。
 - [ ] 想法流程和综述流程**都**走同一条 trajectory schema（动词统一的证明）。
+- [ ] 尝试 promote 一个带 `debt=true` 的 claim，系统硬拦不让过；还清 debt 后才能 promote。
 
 ---
 
