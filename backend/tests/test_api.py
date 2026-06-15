@@ -29,6 +29,7 @@ def client(monkeypatch):
     """
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
     app = create_app()
     with TestClient(app) as c:
         yield c
@@ -111,6 +112,47 @@ class TestPark:
         resp = client.get("/api/v1/park", params={"library_id": "lib-1"})
         assert resp.status_code == 200
         assert artifact_id in resp.json()["artifact_ids"]
+
+
+# ---------------------------------------------------------------------------
+# GET endpoint tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetEndpoints:
+    def test_get_artifact(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        resp = client.get(f"/api/v1/artifact/{artifact_id}")
+        assert resp.status_code == 200
+        assert resp.json()["artifact"]["id"] == artifact_id
+
+    def test_get_artifact_not_found(self, client: TestClient):
+        resp = client.get("/api/v1/artifact/nonexistent")
+        assert resp.status_code == 404
+
+    def test_get_claim(self, client: TestClient):
+        data = _park(client)
+        claim_id = data["claim"]["id"]
+        resp = client.get(f"/api/v1/claim/{claim_id}")
+        assert resp.status_code == 200
+        assert resp.json()["claim"]["id"] == claim_id
+
+    def test_get_claim_not_found(self, client: TestClient):
+        resp = client.get("/api/v1/claim/nonexistent")
+        assert resp.status_code == 404
+
+    def test_list_artifacts(self, client: TestClient):
+        _park(client, library_id="lib-list")
+        _park(client, library_id="lib-list", body="second idea")
+        resp = client.get("/api/v1/artifacts", params={"library_id": "lib-list"})
+        assert resp.status_code == 200
+        assert len(resp.json()["artifacts"]) == 2
+
+    def test_list_artifacts_empty(self, client: TestClient):
+        resp = client.get("/api/v1/artifacts", params={"library_id": "empty"})
+        assert resp.status_code == 200
+        assert resp.json()["artifacts"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +632,7 @@ def client_with_challenge_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns a challenge response."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -604,6 +647,7 @@ def client_with_verdict_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns a verdict response."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -618,6 +662,7 @@ def client_with_bad_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns garbage (unparseable JSON)."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient(["this is not json at all"])

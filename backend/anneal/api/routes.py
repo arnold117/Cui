@@ -16,6 +16,7 @@ from anneal.api.deps import (
     get_lens_feed_service,
     get_park_service,
     get_promote_service,
+    get_repository,
 )
 from anneal.domain.invariants import (
     DebtBlockError,
@@ -30,6 +31,7 @@ from anneal.services.lens_feed_service import LensFeedService
 from anneal.services.park_service import ParkService
 from anneal.services.promote_service import PromoteService
 from anneal.store.event_store import EventStore
+from anneal.store.repository import Repository
 
 router = APIRouter()
 
@@ -141,6 +143,42 @@ def list_parked(
     """List parked artifact IDs for a library."""
     parked_ids = park_svc.list_parked(library_id)
     return {"artifact_ids": parked_ids}
+
+
+# ---------------------------------------------------------------------------
+# Read-only entity endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/artifact/{artifact_id}")
+def get_artifact(
+    artifact_id: str,
+    repo: Repository = Depends(get_repository),
+):
+    artifact = repo.get_artifact(artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail=f"Artifact {artifact_id} not found")
+    return {"artifact": artifact.model_dump(mode="json")}
+
+
+@router.get("/claim/{claim_id}")
+def get_claim(
+    claim_id: str,
+    repo: Repository = Depends(get_repository),
+):
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    return {"claim": claim.model_dump(mode="json")}
+
+
+@router.get("/artifacts")
+def list_artifacts(
+    library_id: str,
+    repo: Repository = Depends(get_repository),
+):
+    artifacts = repo.list_artifacts(library_id)
+    return {"artifacts": [a.model_dump(mode="json") for a in artifacts]}
 
 
 # ---------------------------------------------------------------------------
