@@ -1,0 +1,570 @@
+"""API tests using FastAPI TestClient (synchronous).
+
+Tests each endpoint for correct status codes, response shapes,
+and domain-error-to-HTTP mappings.
+"""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from anneal.api.app import create_app
+
+
+@pytest.fixture()
+def client():
+    """Fresh TestClient per test — each test gets a clean in-memory state.
+
+    Using the context manager form ensures the lifespan (startup/shutdown)
+    runs, which initialises in-memory stores and services.
+    """
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _park(client: TestClient, library_id: str = "lib-1", body: str = "test idea", kind: str = "idea") -> dict:
+    """Park an idea and return the response JSON."""
+    resp = client.post("/api/v1/park", json={"library_id": library_id, "body": body, "kind": kind})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _start_grill(client: TestClient, artifact_id: str, kind: str = "idea") -> dict:
+    resp = client.post(f"/api/v1/grill/{artifact_id}/start", json={"kind": kind})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _challenge(client: TestClient, artifact_id: str, claim_id: str, question: str = "Why?") -> dict:
+    resp = client.post(
+        f"/api/v1/grill/{artifact_id}/challenge",
+        json={"claim_id": claim_id, "question": question},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _answer(client: TestClient, artifact_id: str, claim_id: str, response: str = "Because.") -> dict:
+    resp = client.post(
+        f"/api/v1/grill/{artifact_id}/answer",
+        json={"claim_id": claim_id, "response": response},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _verdict(client: TestClient, artifact_id: str, claim_id: str, outcome: str = "survive", rationale: str = "solid") -> dict:
+    resp = client.post(
+        f"/api/v1/grill/{artifact_id}/verdict",
+        json={"claim_id": claim_id, "outcome": outcome, "rationale": rationale},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _confirm(client: TestClient, artifact_id: str, event_id: str) -> dict:
+    resp = client.post(
+        f"/api/v1/events/{artifact_id}/confirm",
+        json={"event_id": event_id},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Park tests
+# ---------------------------------------------------------------------------
+
+
+class TestPark:
+    def test_park_returns_artifact_and_claim(self, client: TestClient):
+        data = _park(client)
+        assert "artifact" in data
+        assert "claim" in data
+        assert data["artifact"]["kind"] == "idea"
+        assert data["claim"]["body"] == "test idea"
+
+    def test_park_unsupported_kind_returns_400(self, client: TestClient):
+        resp = client.post("/api/v1/park", json={"library_id": "lib-1", "body": "x", "kind": "paper"})
+        assert resp.status_code == 400
+
+    def test_list_parked(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        resp = client.get("/api/v1/park", params={"library_id": "lib-1"})
+        assert resp.status_code == 200
+        assert artifact_id in resp.json()["artifact_ids"]
+
+
+# ---------------------------------------------------------------------------
+# Grill tests
+# ---------------------------------------------------------------------------
+
+
+class TestGrill:
+    def test_start_grill(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        resp = client.post(f"/api/v1/grill/{artifact_id}/start", json={"kind": "idea"})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "grill_started"
+
+    def test_challenge_returns_event(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        result = _challenge(client, artifact_id, claim_id)
+        assert "event" in result
+        assert result["event"]["type"] == "challenge"
+
+    def test_answer_returns_event(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        result = _answer(client, artifact_id, claim_id)
+        assert "event" in result
+        assert result["event"]["type"] == "answer"
+
+    def test_verdict_returns_event(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        _answer(client, artifact_id, claim_id)
+        result = _verdict(client, artifact_id, claim_id)
+        assert "event" in result
+        assert result["event"]["type"] == "verdict"
+        assert result["event"]["payload"]["outcome"] == "survive"
+
+    def test_bypass_returns_event(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/bypass",
+            json={"claim_id": claim_id},
+        )
+        assert resp.status_code == 200
+        event = resp.json()["event"]
+        assert event["debt"] is True
+
+
+# ---------------------------------------------------------------------------
+# Promote tests
+# ---------------------------------------------------------------------------
+
+
+class TestPromote:
+    def test_promote_with_debt_returns_409(self, client: TestClient):
+        """Bypass creates debt; promote should be blocked."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        # Bypass creates a survive verdict with debt=True
+        client.post(
+            f"/api/v1/grill/{artifact_id}/bypass",
+            json={"claim_id": claim_id},
+        )
+        resp = client.post(f"/api/v1/promote/{artifact_id}/{claim_id}")
+        assert resp.status_code == 409
+
+    def test_promote_after_clearing_debt(self, client: TestClient):
+        """Clear debt via confirm, then promote succeeds."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+
+        # Bypass creates debt
+        bypass_resp = client.post(
+            f"/api/v1/grill/{artifact_id}/bypass",
+            json={"claim_id": claim_id},
+        )
+        bypass_event_id = bypass_resp.json()["event"]["id"]
+
+        # Confirm the bypass event to clear debt
+        _confirm(client, artifact_id, bypass_event_id)
+
+        # Now promote should succeed
+        resp = client.post(f"/api/v1/promote/{artifact_id}/{claim_id}")
+        assert resp.status_code == 200
+        assert resp.json()["event"]["type"] == "promote"
+
+    def test_promote_ungrilled_returns_409(self, client: TestClient):
+        """Cannot promote a claim that hasn't survived grill."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        resp = client.post(f"/api/v1/promote/{artifact_id}/{claim_id}")
+        assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Event (confirmation gate) tests
+# ---------------------------------------------------------------------------
+
+
+class TestEvents:
+    def test_confirm_event(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        challenge_result = _challenge(client, artifact_id, claim_id)
+        event_id = challenge_result["event"]["id"]
+
+        result = _confirm(client, artifact_id, event_id)
+        assert result["event"]["type"] == "confirm"
+        assert result["event"]["target_ref"] == event_id
+
+    def test_retract_event(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        challenge_result = _challenge(client, artifact_id, claim_id)
+        event_id = challenge_result["event"]["id"]
+
+        resp = client.post(
+            f"/api/v1/events/{artifact_id}/retract",
+            json={"event_id": event_id},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["event"]["type"] == "retract"
+
+    def test_batch_confirm(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+
+        c1 = _challenge(client, artifact_id, claim_id)
+        c2 = _challenge(client, artifact_id, claim_id, question="Another?")
+        ids = [c1["event"]["id"], c2["event"]["id"]]
+
+        resp = client.post(
+            f"/api/v1/events/{artifact_id}/batch-confirm",
+            json={"event_ids": ids},
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["events"]) == 2
+
+    def test_pending_events(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+
+        resp = client.get(f"/api/v1/events/{artifact_id}/pending")
+        assert resp.status_code == 200
+        # The challenge event is unconfirmed, so it should be pending
+        assert len(resp.json()["events"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Projection tests
+# ---------------------------------------------------------------------------
+
+
+class TestProjections:
+    def test_trajectory_returns_all_events(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/trajectory")
+        assert resp.status_code == 200
+        events = resp.json()["events"]
+        # At least park + challenge
+        assert len(events) >= 2
+        types = [e["type"] for e in events]
+        assert "park" in types
+        assert "challenge" in types
+
+    def test_doc_projection(self, client: TestClient):
+        """DOC contains only survived, confirmed, no-debt content."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        _answer(client, artifact_id, claim_id)
+        verdict_result = _verdict(client, artifact_id, claim_id)
+        verdict_event_id = verdict_result["event"]["id"]
+
+        # Confirm the verdict
+        _confirm(client, artifact_id, verdict_event_id)
+
+        # Promote
+        client.post(f"/api/v1/promote/{artifact_id}/{claim_id}")
+
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/doc")
+        assert resp.status_code == 200
+        doc_events = resp.json()["events"]
+        # DOC should have content (at least the answer and verdict)
+        assert len(doc_events) >= 1
+        # No debt, no killed, no park in DOC
+        for e in doc_events:
+            assert e["debt"] is False
+            assert e["type"] != "park"
+            if e["type"] == "verdict":
+                assert e["payload"]["outcome"] != "kill"
+
+
+# ---------------------------------------------------------------------------
+# Lens feed tests
+# ---------------------------------------------------------------------------
+
+
+class TestLensFeed:
+    def test_lens_feed_parked_artifact_returns_409(self, client: TestClient):
+        """Cannot feed a parked artifact to Lens."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        resp = client.post(
+            f"/api/v1/lens-feed/{artifact_id}",
+            json={"library_id": "lib-1"},
+        )
+        assert resp.status_code == 409
+
+    def test_lens_feed_after_grill(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        challenge_result = _challenge(client, artifact_id, claim_id)
+        _confirm(client, artifact_id, challenge_result["event"]["id"])
+        _answer(client, artifact_id, claim_id)
+        verdict_result = _verdict(client, artifact_id, claim_id)
+        _confirm(client, artifact_id, verdict_result["event"]["id"])
+
+        resp = client.post(
+            f"/api/v1/lens-feed/{artifact_id}",
+            json={"library_id": "lib-1"},
+        )
+        assert resp.status_code == 200
+        entries = resp.json()["entries"]
+        assert len(entries) >= 1
+
+    def test_query_lens_feed(self, client: TestClient):
+        resp = client.get("/api/v1/lens-feed", params={"library_id": "lib-1"})
+        assert resp.status_code == 200
+        assert resp.json()["entries"] == []
+
+
+# ---------------------------------------------------------------------------
+# Full end-to-end flow through API
+# ---------------------------------------------------------------------------
+
+
+class TestFullFlow:
+    def test_park_grill_verdict_confirm_promote_doc(self, client: TestClient):
+        """Full flow: park -> grill -> verdict -> confirm -> promote -> get doc."""
+        # 1. Park
+        park_data = _park(client, body="quantum entanglement improves ML")
+        artifact_id = park_data["artifact"]["id"]
+        claim_id = park_data["claim"]["id"]
+
+        # 2. Start grill
+        _start_grill(client, artifact_id)
+
+        # 3. Challenge -> answer -> verdict(survive)
+        challenge_result = _challenge(client, artifact_id, claim_id, "Evidence?")
+        challenge_event_id = challenge_result["event"]["id"]
+
+        answer_result = _answer(client, artifact_id, claim_id, "Paper XYZ shows...")
+
+        verdict_result = _verdict(client, artifact_id, claim_id, "survive", "evidence checks out")
+        verdict_event_id = verdict_result["event"]["id"]
+
+        # 4. Confirm the verdict (and challenge for lens feed completeness)
+        _confirm(client, artifact_id, challenge_event_id)
+        _confirm(client, artifact_id, verdict_event_id)
+
+        # 5. Promote
+        resp = client.post(f"/api/v1/promote/{artifact_id}/{claim_id}")
+        assert resp.status_code == 200
+
+        # 6. Get doc
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/doc")
+        assert resp.status_code == 200
+        doc_events = resp.json()["events"]
+        assert len(doc_events) >= 1
+
+        # No park, no killed, no debt in DOC
+        for e in doc_events:
+            assert e["type"] != "park"
+            assert e["debt"] is False
+
+        # 7. Trajectory should contain everything
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/trajectory")
+        assert resp.status_code == 200
+        all_events = resp.json()["events"]
+        types = [e["type"] for e in all_events]
+        assert "park" in types
+        assert "challenge" in types
+        assert "answer" in types
+        assert "verdict" in types
+        assert "confirm" in types
+        assert "promote" in types
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: Grill state validation via API
+# ---------------------------------------------------------------------------
+
+
+class TestGrillStateValidation:
+    def test_challenge_on_nonexistent_artifact_returns_400(self, client: TestClient):
+        """challenge on an artifact with no events -> 400."""
+        resp = client.post(
+            "/api/v1/grill/nonexistent-id/challenge",
+            json={"claim_id": "c1", "question": "Why?"},
+        )
+        assert resp.status_code == 400
+
+    def test_verdict_without_prior_challenge_returns_400(self, client: TestClient):
+        """verdict on parked-only artifact (no challenge) -> 400."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/verdict",
+            json={"claim_id": claim_id, "outcome": "survive", "rationale": "ok"},
+        )
+        assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Acceptance criterion 3 — killed idea
+# ---------------------------------------------------------------------------
+
+
+class TestKilledIdea:
+    def test_killed_verdict_in_trajectory_not_in_doc(self, client: TestClient):
+        """Park -> grill -> challenge -> answer -> verdict(kill) -> confirm.
+
+        Trajectory contains the killed verdict; DOC does NOT.
+        """
+        # Park
+        data = _park(client, body="bad hypothesis")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+
+        # Grill cycle -> kill
+        _start_grill(client, artifact_id)
+        challenge_result = _challenge(client, artifact_id, claim_id, "Evidence?")
+        _answer(client, artifact_id, claim_id, "I have none")
+        verdict_result = _verdict(client, artifact_id, claim_id, "kill", "unsupported")
+        verdict_event_id = verdict_result["event"]["id"]
+
+        # Confirm the verdict
+        _confirm(client, artifact_id, challenge_result["event"]["id"])
+        _confirm(client, artifact_id, verdict_event_id)
+
+        # Trajectory should contain the killed verdict
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/trajectory")
+        assert resp.status_code == 200
+        traj_events = resp.json()["events"]
+        kill_verdicts = [
+            e for e in traj_events
+            if e["type"] == "verdict" and e["payload"].get("outcome") == "kill"
+        ]
+        assert len(kill_verdicts) >= 1
+
+        # DOC should NOT contain killed claim's events
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/doc")
+        assert resp.status_code == 200
+        doc_events = resp.json()["events"]
+        # No events referencing the killed claim should appear in DOC
+        for e in doc_events:
+            if e.get("target_ref") == claim_id:
+                assert e["type"] != "verdict" or e["payload"].get("outcome") != "kill"
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Acceptance criterion 5 — lens feed via API
+# ---------------------------------------------------------------------------
+
+
+class TestLensFeedViaAPI:
+    def test_full_grill_then_lens_feed_ingest_and_query(self, client: TestClient):
+        """Park -> full grill -> confirm -> ingest lens feed -> query returns entries."""
+        data = _park(client, library_id="lib-lens")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+
+        # Full grill cycle
+        _start_grill(client, artifact_id)
+        challenge_result = _challenge(client, artifact_id, claim_id, "Prove it")
+        _answer(client, artifact_id, claim_id, "Study X shows Y")
+        verdict_result = _verdict(client, artifact_id, claim_id, "survive", "solid")
+        _confirm(client, artifact_id, challenge_result["event"]["id"])
+        _confirm(client, artifact_id, verdict_result["event"]["id"])
+
+        # Ingest into lens feed
+        resp = client.post(
+            f"/api/v1/lens-feed/{artifact_id}",
+            json={"library_id": "lib-lens"},
+        )
+        assert resp.status_code == 200
+        entries = resp.json()["entries"]
+        assert len(entries) >= 1
+
+        # Query lens feed by library_id
+        resp = client.get("/api/v1/lens-feed", params={"library_id": "lib-lens"})
+        assert resp.status_code == 200
+        queried = resp.json()["entries"]
+        assert len(queried) >= 1
+        # All entries should belong to the correct library
+        for entry in queried:
+            assert entry["library_id"] == "lib-lens"
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Acceptance criterion 6 — review kind uses same flow
+# ---------------------------------------------------------------------------
+
+
+class TestReviewKind:
+    def test_review_kind_same_grill_flow_as_idea(self, client: TestClient):
+        """Park with kind='review' -> full grill cycle -> same event types as idea."""
+        data = _park(client, kind="review", body="review of paper Z")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        assert data["artifact"]["kind"] == "review"
+
+        # Full grill cycle
+        _start_grill(client, artifact_id, kind="review")
+        challenge_result = _challenge(client, artifact_id, claim_id, "Justify this critique")
+        _answer(client, artifact_id, claim_id, "Evidence from paper X")
+        verdict_result = _verdict(client, artifact_id, claim_id, "survive", "solid critique")
+
+        # Confirm
+        _confirm(client, artifact_id, challenge_result["event"]["id"])
+        _confirm(client, artifact_id, verdict_result["event"]["id"])
+
+        # Trajectory should have the same event types as an idea flow
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/trajectory")
+        assert resp.status_code == 200
+        event_types = {e["type"] for e in resp.json()["events"]}
+        assert {"park", "challenge", "answer", "verdict", "confirm"}.issubset(event_types)
