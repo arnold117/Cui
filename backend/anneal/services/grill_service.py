@@ -21,6 +21,8 @@ from anneal.domain.events import (
     make_event,
 )
 from anneal.domain.projections import has_grill_events, is_parked
+from anneal.llm.client import LLMClient
+from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
 from anneal.services.event_service import EventService
 from anneal.store.event_store import EventStore
 
@@ -32,9 +34,10 @@ class GrillService:
     "泛化抽象，不泛化实现" — schema is generic, implementation is narrow).
     """
 
-    def __init__(self, store: EventStore, event_service: EventService) -> None:
+    def __init__(self, store: EventStore, event_service: EventService, llm: LLMClient | None = None) -> None:
         self._store = store
         self._event_service = event_service
+        self._llm = llm
 
     # ------------------------------------------------------------------
     # Transition gate
@@ -192,5 +195,45 @@ class GrillService:
             debt=True,
             target_ref=claim_id,
             payload={"outcome": "survive", "rationale": "bypass — debt incurred"},
+        )
+        return self._event_service.append_event(artifact_id, event)
+
+    # ------------------------------------------------------------------
+    # Auto-grill (LLM-powered)
+    # ------------------------------------------------------------------
+
+    def auto_challenge(self, artifact_id: str, claim_id: str, claim_body: str, context: str = "") -> Event:
+        """LLM-generated challenge. confirmed=False per spec §2.6."""
+        if self._llm is None:
+            raise LLMNotConfiguredError("LLM client not configured")
+        from anneal.llm.prompts import build_challenge_prompt
+        self._assert_artifact_was_parked(artifact_id)
+        system, user = build_challenge_prompt(claim_body, context)
+        result = self._llm.complete_json(system, user)
+        question = result.get("question", "")
+        if not question:
+            raise LLMResponseError("LLM returned empty challenge question")
+        event = make_event(
+            type=CHALLENGE, actor="system", confirmed=False,
+            target_ref=claim_id,
+            payload={"question": question, "target_aspect": result.get("target_aspect", ""), "auto_generated": True},
+        )
+        return self._event_service.append_event(artifact_id, event)
+
+    def auto_verdict(self, artifact_id: str, claim_id: str, claim_body: str, question: str, answer: str) -> Event:
+        """LLM-generated verdict. confirmed=False per spec §2.6."""
+        if self._llm is None:
+            raise LLMNotConfiguredError("LLM client not configured")
+        from anneal.llm.prompts import build_verdict_prompt
+        self._assert_has_challenge(artifact_id)
+        system, user = build_verdict_prompt(claim_body, question, answer)
+        result = self._llm.complete_json(system, user)
+        outcome = result.get("outcome", "")
+        if outcome not in ("survive", "kill"):
+            raise LLMResponseError(f"LLM returned invalid verdict outcome: {outcome!r}")
+        event = make_event(
+            type=VERDICT, actor="system", confirmed=False,
+            target_ref=claim_id,
+            payload={"outcome": outcome, "rationale": result.get("rationale", ""), "confidence": result.get("confidence", 0.0), "auto_generated": True},
         )
         return self._event_service.append_event(artifact_id, event)

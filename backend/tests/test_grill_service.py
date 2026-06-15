@@ -1,5 +1,7 @@
 """Tests for anneal.services.grill_service — adversarial questioning loop."""
 
+import json
+
 import pytest
 
 from anneal.domain.events import (
@@ -11,10 +13,12 @@ from anneal.domain.events import (
     make_event,
 )
 from anneal.domain.projections import claim_status, lens_feed_projection
+from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
 from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
 from anneal.services.park_service import ParkService
 from anneal.store.event_store import InMemoryEventStore
+from tests.fakes import FakeLLMClient
 
 
 # ---------------------------------------------------------------------------
@@ -455,3 +459,145 @@ class TestParkToGrillIntegration:
         assert ANSWER in event_types
         assert VERDICT in event_types
         assert CONFIRM in event_types
+
+
+# ===========================================================================
+# auto_challenge (LLM-powered)
+# ===========================================================================
+
+
+class TestAutoChallenge:
+    def test_creates_event_confirmed_false(self):
+        """auto_challenge produces CHALLENGE event with confirmed=False, actor=system."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"question": "How do you know?", "target_aspect": "evidence"})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert event.type == CHALLENGE
+        assert event.confirmed is False
+        assert event.actor == "system"
+        assert event.payload["question"] == "How do you know?"
+        assert event.payload["target_aspect"] == "evidence"
+        assert event.payload["auto_generated"] is True
+
+    def test_without_llm_raises(self):
+        """auto_challenge raises LLMNotConfiguredError when llm=None."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        svc = GrillService(store, event_svc)  # no llm
+        _park(store)
+
+        with pytest.raises(LLMNotConfiguredError, match="not configured"):
+            svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+    def test_bad_json_raises(self):
+        """auto_challenge raises LLMResponseError on unparseable response."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient(["not valid json at all"])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+
+        with pytest.raises(LLMResponseError, match="Failed to parse JSON"):
+            svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+    def test_empty_question_raises(self):
+        """auto_challenge raises LLMResponseError when question is empty."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"question": "", "target_aspect": "logic"})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+
+        with pytest.raises(LLMResponseError, match="empty challenge question"):
+            svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+    def test_validates_artifact_was_parked(self):
+        """auto_challenge on empty artifact raises ValueError."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"question": "Why?", "target_aspect": "logic"})])
+        svc = GrillService(store, event_svc, llm=llm)
+
+        with pytest.raises(ValueError, match="has no events"):
+            svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+
+# ===========================================================================
+# auto_verdict (LLM-powered)
+# ===========================================================================
+
+
+class TestAutoVerdict:
+    def test_survive_confirmed_false(self):
+        """auto_verdict survive has confirmed=False, payload has outcome/rationale/confidence."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"outcome": "survive", "rationale": "Evidence holds up", "confidence": 0.85})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because study Z")
+
+        assert event.type == VERDICT
+        assert event.confirmed is False
+        assert event.actor == "system"
+        assert event.payload["outcome"] == "survive"
+        assert event.payload["rationale"] == "Evidence holds up"
+        assert event.payload["confidence"] == 0.85
+        assert event.payload["auto_generated"] is True
+
+    def test_kill_confirmed_false(self):
+        """auto_verdict kill has confirmed=False."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"outcome": "kill", "rationale": "No evidence", "confidence": 0.9})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Prove it")
+
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+        assert event.type == VERDICT
+        assert event.confirmed is False
+        assert event.payload["outcome"] == "kill"
+        assert event.payload["auto_generated"] is True
+
+    def test_invalid_outcome_raises(self):
+        """auto_verdict raises LLMResponseError on invalid outcome (e.g. 'maybe')."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"outcome": "maybe", "rationale": "unsure", "confidence": 0.5})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+        with pytest.raises(LLMResponseError, match="invalid verdict outcome"):
+            svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+
+    def test_without_llm_raises(self):
+        """auto_verdict raises LLMNotConfiguredError when llm=None."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        svc = GrillService(store, event_svc)  # no llm
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+        with pytest.raises(LLMNotConfiguredError, match="not configured"):
+            svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+
+    def test_requires_prior_challenge(self):
+        """auto_verdict on parked-only artifact (no challenge) raises ValueError."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"outcome": "survive", "rationale": "OK", "confidence": 0.8})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+
+        with pytest.raises(ValueError, match="No challenge exists"):
+            svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
