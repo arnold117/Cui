@@ -12,6 +12,8 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
+from anneal.llm.client import create_client
+from anneal.llm.config import load_llm_config
 from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
 from anneal.services.lens_feed_service import (
@@ -36,11 +38,19 @@ def _init_state() -> None:
     feed_store = InMemoryLensFeedStore()
     event_service = EventService(event_store)
 
+    llm_config = load_llm_config()
+    llm_client = None
+    if llm_config:
+        try:
+            llm_client = create_client(llm_config)
+        except ImportError:
+            pass  # LLM SDK not installed — auto-grill endpoints return 501
+
     _state["event_store"] = event_store
     _state["feed_store"] = feed_store
     _state["event_service"] = event_service
     _state["park_service"] = ParkService(event_store, event_service)
-    _state["grill_service"] = GrillService(event_store, event_service)
+    _state["grill_service"] = GrillService(event_store, event_service, llm=llm_client)
     _state["promote_service"] = PromoteService(event_store, event_service)
     _state["lens_feed_service"] = LensFeedService(event_store, feed_store)
 

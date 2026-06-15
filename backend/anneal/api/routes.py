@@ -24,6 +24,7 @@ from anneal.domain.invariants import (
     ParkIsolationViolation,
     UngrilledError,
 )
+from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
 from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
 from anneal.services.lens_feed_service import LensFeedService
@@ -79,6 +80,19 @@ class BatchConfirmRequest(BaseModel):
 
 class RetractRequest(BaseModel):
     event_id: str
+
+
+class AutoChallengeRequest(BaseModel):
+    claim_id: str
+    claim_body: str
+    context: str = ""
+
+
+class AutoVerdictRequest(BaseModel):
+    claim_id: str
+    claim_body: str
+    question: str
+    answer: str
 
 
 class LensFeedIngestRequest(BaseModel):
@@ -214,6 +228,42 @@ def grill_bypass(
     except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
         raise _handle_domain_error(exc)
     return {"event": event.model_dump(mode="json")}
+
+
+@router.post("/grill/{artifact_id}/auto-challenge")
+def auto_challenge(
+    artifact_id: str,
+    req: AutoChallengeRequest,
+    grill_svc: GrillService = Depends(get_grill_service),
+):
+    try:
+        event = grill_svc.auto_challenge(artifact_id, req.claim_id, req.claim_body, req.context)
+        return {"event": event.model_dump(mode="json")}
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except LLMResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
+        raise _handle_domain_error(exc)
+
+
+@router.post("/grill/{artifact_id}/auto-verdict")
+def auto_verdict(
+    artifact_id: str,
+    req: AutoVerdictRequest,
+    grill_svc: GrillService = Depends(get_grill_service),
+):
+    try:
+        event = grill_svc.auto_verdict(
+            artifact_id, req.claim_id, req.claim_body, req.question, req.answer,
+        )
+        return {"event": event.model_dump(mode="json")}
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except LLMResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
+        raise _handle_domain_error(exc)
 
 
 # ---------------------------------------------------------------------------

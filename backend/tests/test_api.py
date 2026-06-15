@@ -6,10 +6,14 @@ and domain-error-to-HTTP mappings.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from anneal.api.app import create_app
+from anneal.api.deps import _state
+from tests.fakes import FakeLLMClient
 
 
 @pytest.fixture()
@@ -568,3 +572,131 @@ class TestReviewKind:
         assert resp.status_code == 200
         event_types = {e["type"] for e in resp.json()["events"]}
         assert {"park", "challenge", "answer", "verdict", "confirm"}.issubset(event_types)
+
+
+# ---------------------------------------------------------------------------
+# Auto-grill (LLM-powered) API tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def client_with_challenge_llm():
+    """TestClient with a FakeLLMClient that returns a challenge response."""
+    app = create_app()
+    with TestClient(app) as c:
+        fake_llm = FakeLLMClient([
+            json.dumps({"question": "What evidence supports this?", "target_aspect": "evidence"}),
+        ])
+        _state["grill_service"]._llm = fake_llm
+        yield c
+
+
+@pytest.fixture()
+def client_with_verdict_llm():
+    """TestClient with a FakeLLMClient that returns a verdict response."""
+    app = create_app()
+    with TestClient(app) as c:
+        fake_llm = FakeLLMClient([
+            json.dumps({"outcome": "survive", "rationale": "well supported", "confidence": 0.9}),
+        ])
+        _state["grill_service"]._llm = fake_llm
+        yield c
+
+
+@pytest.fixture()
+def client_with_bad_llm():
+    """TestClient with a FakeLLMClient that returns garbage (unparseable JSON)."""
+    app = create_app()
+    with TestClient(app) as c:
+        fake_llm = FakeLLMClient(["this is not json at all"])
+        _state["grill_service"]._llm = fake_llm
+        yield c
+
+
+class TestAutoGrillAPI:
+    def test_auto_challenge_returns_event(self, client_with_challenge_llm: TestClient):
+        """POST /grill/{id}/auto-challenge -> 200 with CHALLENGE event."""
+        data = _park(client_with_challenge_llm)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client_with_challenge_llm, artifact_id)
+
+        resp = client_with_challenge_llm.post(
+            f"/api/v1/grill/{artifact_id}/auto-challenge",
+            json={"claim_id": claim_id, "claim_body": "test idea", "context": ""},
+        )
+        assert resp.status_code == 200
+        event = resp.json()["event"]
+        assert event["type"] == "challenge"
+        assert event["confirmed"] is False
+        assert event["payload"]["auto_generated"] is True
+        assert event["payload"]["question"] == "What evidence supports this?"
+
+    def test_auto_challenge_without_llm_returns_501(self, client: TestClient):
+        """POST /grill/{id}/auto-challenge without LLM configured -> 501."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/auto-challenge",
+            json={"claim_id": claim_id, "claim_body": "test idea"},
+        )
+        assert resp.status_code == 501
+
+    def test_auto_verdict_returns_event(self, client_with_verdict_llm: TestClient):
+        """POST /grill/{id}/auto-verdict -> 200 with VERDICT event."""
+        data = _park(client_with_verdict_llm)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client_with_verdict_llm, artifact_id)
+        _challenge(client_with_verdict_llm, artifact_id, claim_id)
+
+        resp = client_with_verdict_llm.post(
+            f"/api/v1/grill/{artifact_id}/auto-verdict",
+            json={
+                "claim_id": claim_id,
+                "claim_body": "test idea",
+                "question": "Why?",
+                "answer": "Because evidence.",
+            },
+        )
+        assert resp.status_code == 200
+        event = resp.json()["event"]
+        assert event["type"] == "verdict"
+        assert event["confirmed"] is False
+        assert event["payload"]["auto_generated"] is True
+        assert event["payload"]["outcome"] in ("survive", "kill")
+
+    def test_auto_verdict_without_llm_returns_501(self, client: TestClient):
+        """POST /grill/{id}/auto-verdict without LLM configured -> 501."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/auto-verdict",
+            json={
+                "claim_id": claim_id,
+                "claim_body": "test idea",
+                "question": "Why?",
+                "answer": "Because.",
+            },
+        )
+        assert resp.status_code == 501
+
+    def test_auto_challenge_bad_json_returns_502(self, client_with_bad_llm: TestClient):
+        """POST /grill/{id}/auto-challenge with LLM returning garbage -> 502."""
+        data = _park(client_with_bad_llm)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client_with_bad_llm, artifact_id)
+
+        resp = client_with_bad_llm.post(
+            f"/api/v1/grill/{artifact_id}/auto-challenge",
+            json={"claim_id": claim_id, "claim_body": "test idea"},
+        )
+        assert resp.status_code == 502
