@@ -6,6 +6,10 @@ No side effects, no state, no I/O.
 
 from __future__ import annotations
 
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
 from anneal.domain.events import (
     ANSWER,
     CHALLENGE,
@@ -117,6 +121,7 @@ def doc_projection(events: list[Event]) -> list[Event]:
     retracted = retracted_event_ids(events)
     survived = _survived_claim_ids(events)
     killed = _killed_claim_ids(events)
+    confirmed = _confirmed_event_ids(events)
 
     result: list[Event] = []
     for e in events:
@@ -132,8 +137,11 @@ def doc_projection(events: list[Event]) -> list[Event]:
         # Skip debt-bearing events.
         if e.debt:
             continue
-        # Skip unconfirmed events.
-        if not e.confirmed:
+        # Skip unconfirmed events. An event counts as confirmed if its own
+        # flag is set OR a non-retracted CONFIRM event targets it — the
+        # append-only confirm flow leaves the original event's flag False
+        # (mirrors lens_feed Fix 5 / claim_status Fix H1).
+        if not e.confirmed and e.id not in confirmed:
             continue
         # Skip kill verdicts.
         if e.type == VERDICT and e.payload.get("outcome") == "kill":
@@ -268,3 +276,80 @@ def is_parked(events: list[Event]) -> bool:
     events = sorted(events, key=lambda e: e.ts)
     has_park = any(e.type == PARK for e in events)
     return has_park and not has_grill_events(events)
+
+
+class DocVersion(BaseModel):
+    """A snapshot of the DOC, emitted whenever its content actually changes.
+
+    The DOC content at any point is defined by doc_projection(...) run over the
+    prefix of events up to and including the triggering event. A new version is
+    emitted only when that projected content (the set of event IDs) differs from
+    the previously emitted version.
+    """
+
+    version: int
+    ts: datetime
+    triggering_event_id: str
+    triggering_event_type: str
+    doc: list[Event]
+    added_event_ids: list[str] = Field(default_factory=list)
+    removed_event_ids: list[str] = Field(default_factory=list)
+
+
+def snapshot_projection(events: list[Event]) -> list[DocVersion]:
+    """Spec §3.3: DOC version history derived from event prefixes.
+
+    A "version" is a snapshot of the DOC. A new version is emitted whenever the
+    DOC content actually changes — i.e. whenever the SET of event IDs returned
+    by doc_projection over the prefix events[0..i] differs from the previously
+    emitted version's id-set.
+
+    - Walk events in ts order, growing a prefix one event at a time.
+    - For each prefix, compute doc_projection(prefix) and diff its id-set
+      against the previously emitted id-set (baseline = empty set).
+    - On a difference, emit a DocVersion with a 1-based sequential `version`,
+      the triggering event's ts/id/type, the full doc snapshot, and the
+      added/removed event ids (in doc order for added).
+    - No leading empty version (baseline is empty), but a transition BACK to an
+      empty doc (e.g. everything retracted) IS a real change and emits.
+    - Event types are never special-cased; only doc_projection outputs are
+      diffed — promote, confirmed survive verdicts, substance edits, retracts,
+      and CONFIRM meta-events that flip in-doc content all surface naturally.
+    """
+    # Defensive sort (Fix 7).
+    events = sorted(events, key=lambda e: e.ts)
+
+    versions: list[DocVersion] = []
+    prev_doc: list[Event] = []
+    prev_ids: set[str] = set()
+    counter = 0
+
+    for i in range(len(events)):
+        prefix = events[: i + 1]
+        current = doc_projection(prefix)
+        current_ids = {e.id for e in current}
+
+        if current_ids == prev_ids:
+            continue
+
+        counter += 1
+        trigger = events[i]
+        # added in current-doc order; removed in prior-doc order — both
+        # deterministic and meaningful (no set-iteration ordering).
+        added = [e.id for e in current if e.id not in prev_ids]
+        removed = [e.id for e in prev_doc if e.id not in current_ids]
+        versions.append(
+            DocVersion(
+                version=counter,
+                ts=trigger.ts,
+                triggering_event_id=trigger.id,
+                triggering_event_type=trigger.type,
+                doc=current,
+                added_event_ids=added,
+                removed_event_ids=removed,
+            )
+        )
+        prev_doc = current
+        prev_ids = current_ids
+
+    return versions

@@ -289,13 +289,20 @@ class TestAcceptanceCriteria:
         doc = svc.promote_svc.get_doc(artifact.id)
         assert len(doc) > 0, "DOC should not be empty after promote"
 
+        # "Confirmed" means raw flag set OR a non-retracted CONFIRM event
+        # targets it — the append-only confirm flow leaves the original
+        # event's raw flag False, so assert no still-pending event leaks in.
+        pending_ids = {e.id for e in svc.event_svc.pending_events(artifact.id)}
+
         for evt in doc:
             # No park events.
             assert evt.type != PARK, "PARK events must not appear in DOC"
             # No debt-bearing events.
             assert evt.debt is False, "Debt-bearing events must not appear in DOC"
-            # All must be confirmed.
-            assert evt.confirmed is True, "Unconfirmed events must not appear in DOC"
+            # No pending (unconfirmed) events.
+            assert evt.id not in pending_ids, (
+                "Pending (unconfirmed) events must not appear in DOC"
+            )
             # No meta-events.
             assert evt.type not in {CONFIRM, RETRACT}, (
                 "Meta-events must not appear in DOC"

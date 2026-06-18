@@ -346,13 +346,19 @@ class TestGetDocAfterPromote:
         # DOC must not be empty.
         assert len(doc) > 0
 
+        # "Confirmed" means raw flag set OR a non-retracted CONFIRM event
+        # targets it (append-only confirm flow leaves the raw flag False).
+        pending_ids = {e.id for e in event_svc.pending_events(artifact_id)}
+
         for evt in doc:
             # No park events in DOC.
             assert evt.type != PARK, "PARK events must not appear in DOC"
             # No debt-bearing events.
             assert evt.debt is False, "Debt-bearing events must not appear in DOC"
-            # All must be confirmed.
-            assert evt.confirmed is True, "Unconfirmed events must not appear in DOC"
+            # No pending (unconfirmed) events.
+            assert evt.id not in pending_ids, (
+                "Pending (unconfirmed) events must not appear in DOC"
+            )
             # No meta-events.
             assert evt.type not in {CONFIRM, RETRACT}, (
                 "Meta-events (CONFIRM/RETRACT) must not appear in DOC"

@@ -1,5 +1,7 @@
 """Tests for anneal.domain.projections — pure projection functions."""
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from anneal.domain.events import (
@@ -9,6 +11,7 @@ from anneal.domain.events import (
     CONFIRM,
     DRAFT,
     EDIT,
+    Event,
     GROUND,
     PARK,
     PROMOTE,
@@ -17,6 +20,7 @@ from anneal.domain.events import (
     make_event,
 )
 from anneal.domain.projections import (
+    DocVersion,
     _killed_claim_ids,
     _survived_claim_ids,
     claim_status,
@@ -26,6 +30,7 @@ from anneal.domain.projections import (
     lens_feed_projection,
     pending_events,
     retracted_event_ids,
+    snapshot_projection,
 )
 
 
@@ -118,6 +123,43 @@ class TestDocProjection:
         # The challenge passes, but the confirm meta-event does not.
         assert e in result
         assert c not in result
+
+    def test_includes_event_confirmed_via_confirm_event(self):
+        """Regression: an event confirmed through the append-only CONFIRM flow
+        (raw confirmed=False + a CONFIRM event targeting it) must appear in the
+        doc — not only events born confirmed=True. Covers the substance-edit
+        flow (spec §2.6 #5), where edits are created pending and batch-confirmed.
+        Before the fix, doc_projection read only the raw flag and these edits
+        never reached the DOC.
+        """
+        edit = make_event(
+            type=EDIT,
+            actor="user",
+            confirmed=False,
+            payload={"scope": "substance", "content": "revised body"},
+        )
+        confirm = _confirm(edit.id)
+        events = [edit, confirm]
+        result = doc_projection(events)
+        assert edit in result
+        assert confirm not in result
+
+    def test_excludes_event_whose_confirm_is_retracted(self):
+        """A CONFIRM that is itself retracted does not count (Fix 6): the
+        edit it confirmed must stay out of the doc."""
+        edit = make_event(
+            type=EDIT,
+            actor="user",
+            confirmed=False,
+            payload={"scope": "substance"},
+        )
+        confirm = _confirm(edit.id)
+        retract = make_event(
+            type=RETRACT, actor="user", target_ref=confirm.id, confirmed=True
+        )
+        events = [edit, confirm, retract]
+        result = doc_projection(events)
+        assert edit not in result
 
     def test_full_doc_scenario(self):
         """Integration: park -> grill -> survive -> doc includes clean events."""
@@ -665,3 +707,190 @@ class TestConfirmedVerdictsOnly:
         # unconfirmed).
         verdict_in_doc = [e for e in result if e.type == VERDICT]
         assert len(verdict_in_doc) == 0
+
+
+# ===========================================================================
+# snapshot_projection — DOC version history (Fix: snapshot projection)
+# ===========================================================================
+
+_T0 = datetime(2026, 1, 1)
+
+
+def _at(minutes: int) -> datetime:
+    """Deterministic ts at a fixed offset (snapshot_projection sorts by ts)."""
+    return _T0 + timedelta(minutes=minutes)
+
+
+def _ev(ts_min: int, **kw) -> Event:
+    """Construct an Event with an explicit ts (make_event can't set ts)."""
+    kw.setdefault("actor", "system")
+    return Event(ts=_at(ts_min), **kw)
+
+
+def _survive_v(ts_min: int, claim_id: str = CLAIM_A, confirmed: bool = True) -> Event:
+    return _ev(
+        ts_min,
+        type=VERDICT,
+        payload={"outcome": "survive"},
+        target_ref=claim_id,
+        confirmed=confirmed,
+    )
+
+
+class TestSnapshotProjection:
+    def test_empty_events_returns_empty(self):
+        """1. No events -> no versions."""
+        assert snapshot_projection([]) == []
+
+    def test_park_only_returns_empty(self):
+        """2. Park-only artifact never makes the doc non-empty -> no versions."""
+        park = _ev(1, type=PARK, actor="user", confirmed=True)
+        assert snapshot_projection([park]) == []
+
+    def test_grill_churn_no_surviving_content_no_versions(self):
+        """3. Challenge+answer that never land in doc (unconfirmed) -> no versions.
+
+        Verified against doc_projection: unconfirmed events are excluded, so the
+        doc stays empty across the whole stream.
+        """
+        challenge = _ev(1, type=CHALLENGE, target_ref=CLAIM_A, confirmed=False)
+        answer = _ev(2, type=ANSWER, actor="user", target_ref=CLAIM_A, confirmed=False)
+        # Sanity: doc_projection really is empty for this stream.
+        assert doc_projection([challenge, answer]) == []
+        assert snapshot_projection([challenge, answer]) == []
+
+    def test_single_confirmed_survive_verdict_one_version(self):
+        """4. One confirmed survive verdict -> exactly 1 non-empty version."""
+        v = _survive_v(1)
+        versions = snapshot_projection([v])
+        assert len(versions) == 1
+        ver = versions[0]
+        assert ver.version == 1
+        assert ver.triggering_event_id == v.id
+        assert ver.triggering_event_type == VERDICT
+        assert v.id in ver.added_event_ids
+        assert ver.removed_event_ids == []
+        assert len(ver.doc) >= 1
+        assert v in ver.doc
+
+    def test_two_separate_survive_verdicts_two_versions(self):
+        """5. Survive A then survive B -> 2 versions; second adds only B's verdict."""
+        va = _survive_v(1, CLAIM_A)
+        vb = _survive_v(2, CLAIM_B)
+        versions = snapshot_projection([va, vb])
+        assert len(versions) == 2
+        assert versions[0].added_event_ids == [va.id]
+        assert versions[1].version == 2
+        assert versions[1].added_event_ids == [vb.id]
+        assert versions[1].removed_event_ids == []
+        # Doc grows: second snapshot contains both verdicts.
+        assert va in versions[1].doc
+        assert vb in versions[1].doc
+
+    def test_promote_flow_produces_version(self):
+        """6. A confirmed promote event lands in doc -> an additional version.
+
+        Verified against doc_projection: a confirmed PROMOTE passes through.
+        """
+        v = _survive_v(1, CLAIM_A)
+        promote = _ev(2, type=PROMOTE, actor="user", confirmed=True)
+        assert promote in doc_projection([v, promote])
+        versions = snapshot_projection([v, promote])
+        assert len(versions) == 2
+        assert versions[1].triggering_event_id == promote.id
+        assert versions[1].triggering_event_type == PROMOTE
+        assert promote.id in versions[1].added_event_ids
+
+    def test_retract_of_counted_verdict_shrinks_doc(self):
+        """7. Retract a previously-counted survive verdict -> later version removes it."""
+        v = _survive_v(1, CLAIM_A)
+        r = _ev(2, type=RETRACT, actor="user", target_ref=v.id, confirmed=True)
+        versions = snapshot_projection([v, r])
+        assert len(versions) == 2
+        # First version: verdict enters doc.
+        assert v.id in versions[0].added_event_ids
+        # Second version: triggered by retract, doc shrinks back to empty.
+        assert versions[1].triggering_event_id == r.id
+        assert versions[1].triggering_event_type == RETRACT
+        assert v.id in versions[1].removed_event_ids
+        assert versions[1].doc == []
+
+    def test_confirmed_substance_edit_produces_version(self):
+        """8. A confirmed substance EDIT lands in doc -> a version.
+
+        Verified against doc_projection: it does NOT special-case EDIT scope;
+        a confirmed, non-debt EDIT passes through regardless of scope.
+        """
+        edit = _ev(
+            1,
+            type=EDIT,
+            actor="user",
+            payload={"scope": "substance"},
+            confirmed=True,
+        )
+        assert edit in doc_projection([edit])
+        versions = snapshot_projection([edit])
+        assert len(versions) == 1
+        assert versions[0].triggering_event_type == EDIT
+        assert edit.id in versions[0].added_event_ids
+
+    def test_confirm_meta_event_triggers_version(self):
+        """9. A CONFIRM that flips a previously-unconfirmed survive verdict in.
+
+        Flow: a confirmed challenge enters the doc; a confirmed kill verdict
+        removes it (claim killed); an unconfirmed survive verdict has no effect
+        until a CONFIRM targets it — at which point the claim is no longer
+        killed and the challenge re-enters the doc. The triggering event is the
+        CONFIRM. Verified against doc_projection prefix-by-prefix.
+        """
+        challenge = _ev(1, type=CHALLENGE, target_ref=CLAIM_A, confirmed=True)
+        kill_v = _ev(
+            2, type=VERDICT, payload={"outcome": "kill"}, target_ref=CLAIM_A, confirmed=True
+        )
+        survive_unconfirmed = _ev(
+            3, type=VERDICT, payload={"outcome": "survive"}, target_ref=CLAIM_A, confirmed=False
+        )
+        confirm = _ev(
+            4, type=CONFIRM, actor="user", target_ref=survive_unconfirmed.id, confirmed=True
+        )
+        events = [challenge, kill_v, survive_unconfirmed, confirm]
+        versions = snapshot_projection(events)
+        # v1: challenge enters; v2: kill removes it; v3: confirm re-adds it.
+        assert len(versions) == 3
+        last = versions[-1]
+        assert last.triggering_event_id == confirm.id
+        assert last.triggering_event_type == CONFIRM
+        assert challenge.id in last.added_event_ids
+        assert challenge in last.doc
+
+    def test_shuffled_input_same_as_sorted(self):
+        """10. Defensive: shuffled (non-ts) input yields the same versions."""
+        va = _survive_v(1, CLAIM_A)
+        vb = _survive_v(2, CLAIM_B)
+        sorted_versions = snapshot_projection([va, vb])
+        shuffled_versions = snapshot_projection([vb, va])
+
+        def fingerprint(vs):
+            return [
+                (v.version, v.triggering_event_id, v.added_event_ids, v.removed_event_ids)
+                for v in vs
+            ]
+
+        assert fingerprint(sorted_versions) == fingerprint(shuffled_versions)
+
+    def test_no_duplicate_consecutive_versions(self):
+        """11. A stretch where doc is unchanged emits only one version."""
+        v = _survive_v(1, CLAIM_A)
+        # Two unconfirmed events that never enter the doc -> no new versions.
+        noise1 = _ev(2, type=CHALLENGE, target_ref=CLAIM_B, confirmed=False)
+        noise2 = _ev(3, type=ANSWER, actor="user", target_ref=CLAIM_B, confirmed=False)
+        versions = snapshot_projection([v, noise1, noise2])
+        assert len(versions) == 1
+        assert versions[0].triggering_event_id == v.id
+
+    def test_versions_are_docversion_instances(self):
+        """Returned items are DocVersion pydantic models."""
+        v = _survive_v(1, CLAIM_A)
+        versions = snapshot_projection([v])
+        assert all(isinstance(x, DocVersion) for x in versions)
+        assert versions[0].ts == v.ts

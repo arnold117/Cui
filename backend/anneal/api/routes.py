@@ -422,6 +422,18 @@ def get_lens_feed_projection(
     return {"events": [e.model_dump(mode="json") for e in feed]}
 
 
+@router.get("/artifact/{artifact_id}/versions")
+def get_versions(
+    artifact_id: str,
+    store: EventStore = Depends(get_event_store),
+):
+    from anneal.domain.projections import snapshot_projection
+
+    events = store.get_events(artifact_id)
+    versions = snapshot_projection(events)
+    return {"versions": [v.model_dump(mode="json") for v in versions]}
+
+
 # ---------------------------------------------------------------------------
 # Lens feed endpoints
 # ---------------------------------------------------------------------------

@@ -4,12 +4,13 @@ import ParkView from "./components/ParkView"
 import GrillView from "./components/GrillView"
 import DocView from "./components/DocView"
 import TrajectoryView from "./components/TrajectoryView"
+import VersionsView from "./components/VersionsView"
 import EmptyState from "./components/EmptyState"
 import { getArtifact, getTrajectory, getClaim } from "./api"
 import { deriveClaimStatus } from "./utils"
 import type { Artifact, Claim, ClaimStatus } from "./types"
 
-type DocTab = "doc" | "trajectory"
+type DocTab = "doc" | "trajectory" | "versions"
 
 function App() {
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
@@ -156,6 +157,16 @@ function App() {
           >
             轨迹
           </button>
+          <button
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              docTab === "versions"
+                ? "border-purple-500 text-purple-300"
+                : "border-transparent text-zinc-500 hover:text-zinc-300"
+            }`}
+            onClick={() => setDocTab("versions")}
+          >
+            版本
+          </button>
           <div className="flex-1" />
           <div className="flex items-center pr-1">
             <span
@@ -173,8 +184,10 @@ function App() {
         {/* Tab content */}
         {docTab === "doc" ? (
           <DocView artifactId={artifact.id} libraryId={artifact.library_id} />
-        ) : (
+        ) : docTab === "trajectory" ? (
           <TrajectoryView artifactId={artifact.id} />
+        ) : (
+          <VersionsView artifactId={artifact.id} />
         )}
       </div>
     )

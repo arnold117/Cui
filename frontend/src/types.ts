@@ -16,6 +16,16 @@ export type EventType =
   | "gap" | "draft" | "constrain" | "revise" | "ground"
   | "promote" | "edit" | "confirm" | "retract"
 
+export interface DocVersion {
+  version: number
+  ts: string
+  triggering_event_id: string
+  triggering_event_type: EventType
+  doc: Event[]
+  added_event_ids: string[]
+  removed_event_ids: string[]
+}
+
 export interface Artifact {
   id: string
   library_id: string

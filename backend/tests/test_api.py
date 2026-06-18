@@ -381,6 +381,47 @@ class TestProjections:
             if e["type"] == "verdict":
                 assert e["payload"]["outcome"] != "kill"
 
+    def test_versions_empty_for_no_doc_content(self, client: TestClient):
+        """A parked-only artifact produces no DOC versions."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/versions")
+        assert resp.status_code == 200
+        assert resp.json() == {"versions": []}
+
+    def test_versions_projection(self, client: TestClient):
+        """An artifact whose events produce DOC content emits versions."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        challenge_result = _challenge(client, artifact_id, claim_id)
+        _answer(client, artifact_id, claim_id)
+        verdict_result = _verdict(client, artifact_id, claim_id)
+
+        # Confirm the challenge + verdict so DOC content materialises.
+        _confirm(client, artifact_id, challenge_result["event"]["id"])
+        _confirm(client, artifact_id, verdict_result["event"]["id"])
+
+        # Promote so the claim's content lands in the DOC.
+        client.post(f"/api/v1/promote/{artifact_id}/{claim_id}")
+
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/versions")
+        assert resp.status_code == 200
+        versions = resp.json()["versions"]
+        assert len(versions) >= 1
+        for v in versions:
+            assert set(v.keys()) >= {
+                "version",
+                "ts",
+                "triggering_event_id",
+                "triggering_event_type",
+                "doc",
+                "added_event_ids",
+                "removed_event_ids",
+            }
+
 
 # ---------------------------------------------------------------------------
 # Lens feed tests

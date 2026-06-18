@@ -1,4 +1,4 @@
-import type { Artifact, Claim, Event } from "./types"
+import type { Artifact, Claim, DocVersion, Event } from "./types"
 
 const BASE = "/api/v1"
 
@@ -59,6 +59,9 @@ export const getTrajectory = (artifactId: string) =>
 
 export const getDoc = (artifactId: string) =>
   request<{ events: Event[] }>("GET", `/artifact/${artifactId}/doc`)
+
+export const getVersions = (artifactId: string) =>
+  request<{ versions: DocVersion[] }>("GET", `/artifact/${artifactId}/versions`)
 
 // Edit
 export const createEdit = (artifactId: string, content: string, scope: "surface" | "substance") =>
