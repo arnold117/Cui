@@ -13,6 +13,7 @@ dependencies = [
   "python-dotenv",
   "sqlalchemy>=2.0",
   "psycopg2-binary",
+  "httpx",
 ]
 
 [project.optional-dependencies]
@@ -25,3 +26,6 @@ dev = [
   "httpx",
   "pytest-asyncio",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
