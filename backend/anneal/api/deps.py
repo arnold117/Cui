@@ -18,8 +18,10 @@ from fastapi import FastAPI
 from anneal.domain.models import Library
 from anneal.llm.client import create_client
 from anneal.llm.config import load_llm_config
+from anneal.services.collect_service import CollectService
 from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
+from anneal.services.grounding_service import GroundingService
 from anneal.services.lens_feed_service import (
     InMemoryLensFeedStore,
     LensFeedService,
@@ -85,7 +87,11 @@ def _init_state() -> None:
     _state["repository"] = repo
     _state["event_service"] = event_service
     _state["park_service"] = ParkService(event_store, event_service, repo=repo)
+    _state["collect_service"] = CollectService(event_store, event_service, repo=repo)
     _state["grill_service"] = GrillService(event_store, event_service, llm=llm_client)
+    _state["grounding_service"] = GroundingService(
+        event_store, event_service, repo=repo, llm=llm_client
+    )
     _state["promote_service"] = PromoteService(event_store, event_service)
     _state["lens_feed_service"] = LensFeedService(event_store, feed_store)
 
@@ -115,8 +121,16 @@ def get_park_service() -> ParkService:
     return _state["park_service"]  # type: ignore[return-value]
 
 
+def get_collect_service() -> CollectService:
+    return _state["collect_service"]  # type: ignore[return-value]
+
+
 def get_grill_service() -> GrillService:
     return _state["grill_service"]  # type: ignore[return-value]
+
+
+def get_grounding_service() -> GroundingService:
+    return _state["grounding_service"]  # type: ignore[return-value]
 
 
 def get_promote_service() -> PromoteService:

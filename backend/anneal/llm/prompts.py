@@ -14,6 +14,27 @@ def build_challenge_prompt(claim: str, context: str) -> tuple[str, str]:
     return system, user
 
 
+def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) -> tuple[str, str]:
+    system = (
+        "You are a rigorous evidence assessor. Your job is to judge whether a "
+        "research paper SUPPORTS a given claim, based solely on the paper's "
+        "title and abstract. Do not invent evidence not present in the abstract. "
+        "If the abstract does not bear on the claim, the claim is not supported.\n\n"
+        "Respond ONLY with valid JSON in this exact format:\n"
+        '{"supported": true or false, '
+        '"evidence": "<short quote or paraphrase from the abstract that bears on '
+        'the claim, or empty string if none>", '
+        '"assessment": "<one-sentence rationale>"}'
+    )
+    user = (
+        f"Claim: {claim}\n\n"
+        f"Paper title: {paper_title}\n\n"
+        f"Paper abstract: {paper_abstract}\n\n"
+        "Does this paper support the claim?"
+    )
+    return system, user
+
+
 def build_verdict_prompt(claim: str, question: str, answer: str) -> tuple[str, str]:
     system = (
         "You are a rigorous academic judge evaluating whether a claim survives "
