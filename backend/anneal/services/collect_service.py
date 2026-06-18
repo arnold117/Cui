@@ -19,14 +19,17 @@ from dotenv import load_dotenv
 
 from anneal.domain.events import COLLECT_MATERIAL, make_event
 from anneal.domain.models import Material
-from anneal.search.openalex import search_openalex
+from anneal.search.multi import search_all
 from anneal.services.event_service import EventService
 from anneal.store.event_store import EventStore
 from anneal.store.repository import Repository
 
 
 def _load_contact_email() -> str | None:
-    """Read the OpenAlex polite-pool contact email from env. None if unset."""
+    """Read the polite-pool contact email from env. None if unset.
+
+    Used as ``mailto`` for OpenAlex and CrossRef polite pools.
+    """
     load_dotenv()
     return os.getenv("OPENALEX_CONTACT") or None
 
@@ -47,21 +50,27 @@ class CollectService:
         library_id: str,
         query: str,
         max_results: int = 10,
+        sources: list[str] | None = None,
     ) -> list[Material]:
-        """Search the source, persist each hit as a Material, log COLLECT events.
+        """Search all sources, persist each deduped hit, log COLLECT events.
 
-        - Calls ``search_openalex`` with the configured polite-pool contact.
-        - Builds a native ``Material(kind="paper")`` per result with provenance
-          (source/source_id/doi/url/query) and payload (title/authors/abstract/
-          year/venue/citations/pdf_urls).
+        - Calls ``search_all`` (multi-source + dedupe) with the configured
+          polite-pool contact; ``sources=None`` searches every source.
+        - Builds a native ``Material(kind="paper")`` per *deduped* result with
+          provenance (source/source_id/doi/url/query/sources) and payload
+          (title/authors/abstract/year/venue/citations/pdf_urls). The merged
+          ``sources`` list from dedupe is persisted into provenance.
         - Persists each via ``repo.create_material``.
         - Appends one ``collect_material`` event per material (confirmed=True)
           targeting the material id, on the *artifact*'s event stream.
         - Returns the created Material objects (empty list if the search
           degraded to no results).
         """
-        results = await search_openalex(
-            query, max_results=max_results, mailto=_load_contact_email()
+        results = await search_all(
+            query,
+            sources=sources,
+            max_per_source=max_results,
+            mailto=_load_contact_email(),
         )
 
         materials: list[Material] = []
@@ -75,6 +84,7 @@ class CollectService:
                     "doi": paper["doi"],
                     "url": paper["url"],
                     "query": query,
+                    "sources": paper.get("sources", [paper["source"]]),
                 },
                 payload={
                     "title": paper["title"],

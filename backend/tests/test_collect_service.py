@@ -1,8 +1,9 @@
 """Tests for anneal.services.collect_service — native dict->Material mapping.
 
-No real network: we monkeypatch ``collect_service.search_openalex`` with a fake
-async adapter that returns canned neutral dicts. The store/repo/event-service
-are the real in-memory implementations (mirroring test_park_service.py).
+No real network: we monkeypatch ``collect_service.search_all`` (the multi-source
+orchestrator) with a fake async function that returns canned neutral dicts. The
+store/repo/event-service are the real in-memory implementations (mirroring
+test_park_service.py).
 """
 
 from __future__ import annotations
@@ -63,12 +64,12 @@ def _neutral(source_id: str, title: str) -> dict:
 
 
 def _patch_adapter(monkeypatch, results: list[dict]):
-    async def fake_search(query, max_results=10, mailto=None):
-        fake_search.calls.append((query, max_results, mailto))
-        return results[:max_results]
+    async def fake_search(query, sources=None, max_per_source=10, mailto=None):
+        fake_search.calls.append((query, max_per_source, mailto, sources))
+        return results[:max_per_source]
 
     fake_search.calls = []
-    monkeypatch.setattr(collect_mod, "search_openalex", fake_search)
+    monkeypatch.setattr(collect_mod, "search_all", fake_search)
     return fake_search
 
 
@@ -98,6 +99,7 @@ class TestCollect:
             "doi": "10.1/W1",
             "url": "https://openalex.org/W1",
             "query": "annealing",
+            "sources": ["openalex"],
         }
         assert material.payload == {
             "title": "first",
@@ -148,6 +150,22 @@ class TestCollect:
 
         assert fake.calls[0][0] == "needle"
         assert fake.calls[0][1] == 3
+
+    async def test_persists_merged_sources_into_provenance(self, svc, monkeypatch):
+        # A deduped paper carries a multi-source ``sources`` list.
+        paper = dict(_neutral("W1", "first"), sources=["openalex", "crossref"])
+        _patch_adapter(monkeypatch, [paper])
+
+        (material,) = await svc.collect(ARTIFACT, LIBRARY, "q")
+
+        assert material.provenance["sources"] == ["openalex", "crossref"]
+
+    async def test_passes_sources_filter_to_orchestrator(self, svc, monkeypatch):
+        fake = _patch_adapter(monkeypatch, [_neutral("W1", "first")])
+
+        await svc.collect(ARTIFACT, LIBRARY, "q", sources=["openalex", "arxiv"])
+
+        assert fake.calls[0][3] == ["openalex", "arxiv"]
 
     async def test_reads_contact_email_from_env(self, svc, monkeypatch):
         fake = _patch_adapter(monkeypatch, [_neutral("W1", "first")])

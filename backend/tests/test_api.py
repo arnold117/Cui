@@ -877,12 +877,12 @@ def _fake_paper(source_id: str = "W1", title: str = "A paper") -> dict:
 
 
 def _patch_search(monkeypatch, papers: list[dict]) -> None:
-    """Patch the search adapter used by CollectService so no network hits."""
-    async def _fake_search(query, max_results=10, mailto=None):
-        return papers[:max_results]
+    """Patch the multi-source orchestrator used by CollectService (no network)."""
+    async def _fake_search(query, sources=None, max_per_source=10, mailto=None):
+        return papers[:max_per_source]
 
     monkeypatch.setattr(
-        "anneal.services.collect_service.search_openalex", _fake_search
+        "anneal.services.collect_service.search_all", _fake_search
     )
 
 
