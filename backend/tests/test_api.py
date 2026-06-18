@@ -852,3 +852,205 @@ class TestAutoGrillAPI:
             json={"claim_id": claim_id, "claim_body": "test idea"},
         )
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Collect (literature search) API tests
+# ---------------------------------------------------------------------------
+
+
+def _fake_paper(source_id: str = "W1", title: str = "A paper") -> dict:
+    """A neutral OpenAlex-shaped result dict (as search_openalex yields)."""
+    return {
+        "source": "openalex",
+        "source_id": source_id,
+        "doi": f"10.1234/{source_id}",
+        "url": f"https://openalex.org/{source_id}",
+        "title": title,
+        "authors": ["Alice", "Bob"],
+        "abstract": "An abstract about the topic.",
+        "year": 2023,
+        "venue": "Journal of Things",
+        "citations": 7,
+        "pdf_urls": [],
+    }
+
+
+def _patch_search(monkeypatch, papers: list[dict]) -> None:
+    """Patch the search adapter used by CollectService so no network hits."""
+    async def _fake_search(query, max_results=10, mailto=None):
+        return papers[:max_results]
+
+    monkeypatch.setattr(
+        "anneal.services.collect_service.search_openalex", _fake_search
+    )
+
+
+class TestCollectAPI:
+    def test_collect_returns_materials_and_logs_events(self, client: TestClient, monkeypatch):
+        _patch_search(monkeypatch, [_fake_paper("W1", "First"), _fake_paper("W2", "Second")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+
+        resp = client.post(
+            f"/api/v1/artifact/{artifact_id}/collect",
+            json={"library_id": "lib-1", "query": "topic", "max_results": 10},
+        )
+        assert resp.status_code == 200, resp.text
+        materials = resp.json()["materials"]
+        assert len(materials) == 2
+        assert materials[0]["payload"]["title"] == "First"
+        assert materials[0]["kind"] == "paper"
+
+        # collect_material events landed on the artifact's stream
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/trajectory")
+        assert resp.status_code == 200
+        collect_events = [
+            e for e in resp.json()["events"] if e["type"] == "collect_material"
+        ]
+        assert len(collect_events) == 2
+        assert {e["payload"]["title"] for e in collect_events} == {"First", "Second"}
+
+    def test_collect_nonexistent_artifact_returns_404(self, client: TestClient, monkeypatch):
+        _patch_search(monkeypatch, [_fake_paper()])
+        resp = client.post(
+            "/api/v1/artifact/nope/collect",
+            json={"library_id": "lib-1", "query": "topic"},
+        )
+        assert resp.status_code == 404
+
+    def test_list_materials_after_collect(self, client: TestClient, monkeypatch):
+        _patch_search(monkeypatch, [_fake_paper("W1", "First"), _fake_paper("W2", "Second")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        client.post(
+            f"/api/v1/artifact/{artifact_id}/collect",
+            json={"library_id": "lib-1", "query": "topic"},
+        )
+
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/materials")
+        assert resp.status_code == 200, resp.text
+        materials = resp.json()["materials"]
+        assert len(materials) == 2
+        assert {m["payload"]["title"] for m in materials} == {"First", "Second"}
+
+    def test_list_materials_nonexistent_artifact_returns_404(self, client: TestClient):
+        resp = client.get("/api/v1/artifact/nope/materials")
+        assert resp.status_code == 404
+
+    def test_list_materials_empty_when_none_collected(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        resp = client.get(f"/api/v1/artifact/{artifact_id}/materials")
+        assert resp.status_code == 200
+        assert resp.json()["materials"] == []
+
+
+# ---------------------------------------------------------------------------
+# Grounding API tests
+# ---------------------------------------------------------------------------
+
+
+def _collect_one(client: TestClient, artifact_id: str) -> str:
+    """Collect a single patched paper and return its material id."""
+    resp = client.post(
+        f"/api/v1/artifact/{artifact_id}/collect",
+        json={"library_id": "lib-1", "query": "topic"},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["materials"][0]["id"]
+
+
+class TestGroundingAPI:
+    def test_manual_ground_returns_pending_event_then_confirm(self, client: TestClient, monkeypatch):
+        _patch_search(monkeypatch, [_fake_paper("W1", "Grounding paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+
+        resp = client.post(
+            f"/api/v1/grounding/{artifact_id}/ground",
+            json={
+                "claim_id": claim_id,
+                "material_id": material_id,
+                "supported": True,
+                "evidence": "Section 3 shows X.",
+                "assessment": "Directly supports.",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        event = resp.json()["event"]
+        assert event["type"] == "ground"
+        assert event["confirmed"] is False
+        assert event["target_ref"] == claim_id
+        assert event["payload"]["material_id"] == material_id
+        assert event["payload"]["supported"] is True
+        assert event["payload"]["evidence"] == "Section 3 shows X."
+        assert event["payload"]["title"] == "Grounding paper"
+
+        # The pending GROUND event can be confirmed via the existing gate.
+        confirm = _confirm(client, artifact_id, event["id"])
+        assert confirm["event"]["type"] == "confirm"
+        assert confirm["event"]["target_ref"] == event["id"]
+
+    def test_ground_unknown_material_returns_400(self, client: TestClient):
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        resp = client.post(
+            f"/api/v1/grounding/{artifact_id}/ground",
+            json={"claim_id": claim_id, "material_id": "missing", "supported": True},
+        )
+        assert resp.status_code == 400
+
+    def test_auto_ground_without_llm_returns_501(self, client: TestClient, monkeypatch):
+        _patch_search(monkeypatch, [_fake_paper("W1", "Paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+
+        resp = client.post(
+            f"/api/v1/grounding/{artifact_id}/auto-ground",
+            json={
+                "claim_id": claim_id,
+                "claim_body": "test idea",
+                "material_id": material_id,
+            },
+        )
+        assert resp.status_code == 501
+
+    def test_auto_ground_with_llm_returns_pending_event(self, client: TestClient, monkeypatch):
+        """With a FakeLLM wired onto the grounding service, auto-ground yields a
+        pending GROUND event."""
+        _patch_search(monkeypatch, [_fake_paper("W1", "Paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+
+        fake_llm = FakeLLMClient([
+            json.dumps({
+                "supported": True,
+                "evidence": "Abstract states the result.",
+                "assessment": "Supports the claim.",
+            }),
+        ])
+        _state["grounding_service"]._llm = fake_llm
+
+        resp = client.post(
+            f"/api/v1/grounding/{artifact_id}/auto-ground",
+            json={
+                "claim_id": claim_id,
+                "claim_body": "test idea",
+                "material_id": material_id,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        event = resp.json()["event"]
+        assert event["type"] == "ground"
+        assert event["confirmed"] is False
+        assert event["target_ref"] == claim_id
+        assert event["payload"]["supported"] is True
+        assert event["payload"]["auto_generated"] is True

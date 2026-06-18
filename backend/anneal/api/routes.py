@@ -11,9 +11,11 @@ from pydantic import BaseModel
 
 from anneal.domain.events import EDIT, make_event
 from anneal.api.deps import (
+    get_collect_service,
     get_event_service,
     get_event_store,
     get_grill_service,
+    get_grounding_service,
     get_lens_feed_service,
     get_park_service,
     get_promote_service,
@@ -26,8 +28,10 @@ from anneal.domain.invariants import (
     UngrilledError,
 )
 from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
+from anneal.services.collect_service import CollectService
 from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
+from anneal.services.grounding_service import GroundingService
 from anneal.services.lens_feed_service import LensFeedService
 from anneal.services.park_service import ParkService
 from anneal.services.promote_service import PromoteService
@@ -104,6 +108,26 @@ class EditRequest(BaseModel):
 
 class LensFeedIngestRequest(BaseModel):
     library_id: str
+
+
+class CollectRequest(BaseModel):
+    library_id: str
+    query: str
+    max_results: int = 10
+
+
+class GroundRequest(BaseModel):
+    claim_id: str
+    material_id: str
+    supported: bool
+    evidence: str = ""
+    assessment: str = ""
+
+
+class AutoGroundRequest(BaseModel):
+    claim_id: str
+    claim_body: str
+    material_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +356,104 @@ def create_edit(
     )
     event_svc.append_event(artifact_id, event)
     return {"event": event.model_dump(mode="json")}
+
+
+# ---------------------------------------------------------------------------
+# Collect (literature search) endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/artifact/{artifact_id}/collect")
+async def collect_materials(
+    artifact_id: str,
+    req: CollectRequest,
+    collect_svc: CollectService = Depends(get_collect_service),
+    repo: Repository = Depends(get_repository),
+):
+    if repo.get_artifact(artifact_id) is None:
+        raise HTTPException(status_code=404, detail=f"Artifact {artifact_id} not found")
+    materials = await collect_svc.collect(
+        artifact_id, req.library_id, req.query, req.max_results
+    )
+    return {"materials": [m.model_dump(mode="json") for m in materials]}
+
+
+@router.get("/artifact/{artifact_id}/materials")
+def list_materials(
+    artifact_id: str,
+    repo: Repository = Depends(get_repository),
+    store: EventStore = Depends(get_event_store),
+):
+    """Derive the collected papers for an artifact from its event stream.
+
+    There is no ``repo.list_materials`` — instead read the artifact's
+    ``collect_material`` events, pull ``material_id`` from each payload,
+    resolve via ``repo.get_material`` (skipping any that vanished), and
+    dedupe by id while preserving collection order.
+    """
+    if repo.get_artifact(artifact_id) is None:
+        raise HTTPException(status_code=404, detail=f"Artifact {artifact_id} not found")
+
+    from anneal.domain.events import COLLECT_MATERIAL
+
+    seen: set[str] = set()
+    materials = []
+    for event in store.get_events(artifact_id):
+        if event.type != COLLECT_MATERIAL:
+            continue
+        mid = event.payload.get("material_id")
+        if not mid or mid in seen:
+            continue
+        material = repo.get_material(mid)
+        if material is None:
+            continue
+        seen.add(mid)
+        materials.append(material)
+    return {"materials": [m.model_dump(mode="json") for m in materials]}
+
+
+# ---------------------------------------------------------------------------
+# Grounding endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/grounding/{artifact_id}/ground")
+def ground(
+    artifact_id: str,
+    req: GroundRequest,
+    grounding_svc: GroundingService = Depends(get_grounding_service),
+):
+    try:
+        event = grounding_svc.ground(
+            artifact_id,
+            req.claim_id,
+            req.material_id,
+            req.supported,
+            req.evidence,
+            req.assessment,
+        )
+    except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
+        raise _handle_domain_error(exc)
+    return {"event": event.model_dump(mode="json")}
+
+
+@router.post("/grounding/{artifact_id}/auto-ground")
+def auto_ground(
+    artifact_id: str,
+    req: AutoGroundRequest,
+    grounding_svc: GroundingService = Depends(get_grounding_service),
+):
+    try:
+        event = grounding_svc.auto_ground(
+            artifact_id, req.claim_id, req.claim_body, req.material_id
+        )
+        return {"event": event.model_dump(mode="json")}
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except LLMResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
+        raise _handle_domain_error(exc)
 
 
 # ---------------------------------------------------------------------------

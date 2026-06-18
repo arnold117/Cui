@@ -3,6 +3,7 @@ import type { Claim, Artifact, Event } from "../types"
 import { useGrillFlow } from "../hooks/useGrillFlow"
 import { promote } from "../api"
 import GrillMessage from "./GrillMessage"
+import EvidencePanel from "./EvidencePanel"
 
 interface Props {
   artifactId: string
@@ -124,6 +125,12 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
           </span>
           <p className="text-sm text-zinc-200 leading-relaxed">{claim.body}</p>
         </div>
+        <EvidencePanel
+          artifactId={artifactId}
+          libraryId={artifact.library_id}
+          claimId={claim.id}
+          claimBody={claim.body}
+        />
       </div>
 
       {/* Scrollable conversation area */}

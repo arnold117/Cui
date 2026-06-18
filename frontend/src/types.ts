@@ -39,6 +39,14 @@ export interface Artifact {
   updated_at: string
 }
 
+export interface Material {
+  id: string
+  library_id: string
+  kind: string
+  provenance: Record<string, unknown>
+  payload: Record<string, unknown>
+}
+
 export interface Claim {
   id: string
   library_id: string

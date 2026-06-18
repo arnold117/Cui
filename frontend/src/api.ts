@@ -1,4 +1,4 @@
-import type { Artifact, Claim, DocVersion, Event } from "./types"
+import type { Artifact, Claim, DocVersion, Event, Material } from "./types"
 
 const BASE = "/api/v1"
 
@@ -74,6 +74,20 @@ export const batchConfirm = (artifactId: string, eventIds: string[]) =>
 // Promote
 export const promote = (artifactId: string, claimId: string) =>
   request<{ event: Event }>("POST", `/promote/${artifactId}/${claimId}`)
+
+// Collect (literature search)
+export const collectMaterials = (artifactId: string, libraryId: string, query: string, maxResults = 10) =>
+  request<{ materials: Material[] }>("POST", `/artifact/${artifactId}/collect`, { library_id: libraryId, query, max_results: maxResults })
+
+export const listMaterials = (artifactId: string) =>
+  request<{ materials: Material[] }>("GET", `/artifact/${artifactId}/materials`)
+
+// Grounding
+export const autoGround = (artifactId: string, claimId: string, claimBody: string, materialId: string) =>
+  request<{ event: Event }>("POST", `/grounding/${artifactId}/auto-ground`, { claim_id: claimId, claim_body: claimBody, material_id: materialId })
+
+export const groundManual = (artifactId: string, claimId: string, materialId: string, supported: boolean, evidence = "", assessment = "") =>
+  request<{ event: Event }>("POST", `/grounding/${artifactId}/ground`, { claim_id: claimId, material_id: materialId, supported, evidence, assessment })
 
 // Lens feed
 export const ingestLensFeed = (artifactId: string, libraryId: string) =>
