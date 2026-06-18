@@ -95,6 +95,36 @@ def no_sleep(monkeypatch):
     return delays
 
 
+class TestArxivConfig:
+    def test_base_url_is_https(self):
+        # arXiv 301-redirects http -> https; the base URL must be https so the
+        # adapter does not depend on redirect-following in production.
+        assert arxiv.BASE_URL == "https://export.arxiv.org/api/query"
+        assert arxiv.BASE_URL.startswith("https://")
+
+    async def test_client_constructed_with_follow_redirects(self, monkeypatch):
+        # Belt-and-suspenders: the AsyncClient must be built with
+        # follow_redirects=True so any future redirect is followed too.
+        captured_kwargs = {}
+
+        class _Client:
+            def __init__(self, *a, **k):
+                captured_kwargs.update(k)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return None
+
+            async def get(self, url, params=None):
+                return _FakeResponse(200, SAMPLE_FEED)
+
+        monkeypatch.setattr(arxiv.httpx, "AsyncClient", _Client)
+        await search_arxiv("annealing")
+        assert captured_kwargs.get("follow_redirects") is True
+
+
 class TestMapArxiv:
     def test_maps_neutral_schema(self):
         root = ET.fromstring(SAMPLE_FEED)

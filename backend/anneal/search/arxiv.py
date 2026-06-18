@@ -1,8 +1,12 @@
 """arXiv search adapter — pure fetcher, neutral dict contract.
 
-Built natively against the arXiv Atom API (``http://export.arxiv.org/api/query``)
+Built natively against the arXiv Atom API (``https://export.arxiv.org/api/query``)
 with ``httpx`` and stdlib ``xml.etree.ElementTree`` — no ``arxiv`` library, no
 new dependency.
+
+NOTE: arXiv 301-redirects http -> https. httpx does NOT follow redirects by
+default, so we use the https URL *and* construct the client with
+``follow_redirects=True`` (belt-and-suspenders for any future redirect).
 
 arXiv rate-limits aggressively, so ``search_arxiv`` implements **exponential
 backoff**: on a 429/503 status or a transient request error it retries up to
@@ -24,7 +28,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "http://export.arxiv.org/api/query"
+BASE_URL = "https://export.arxiv.org/api/query"
 TIMEOUT_SECONDS = 15.0
 
 # Exponential backoff for arXiv's aggressive rate limiting.
@@ -130,7 +134,9 @@ async def search_arxiv(
     attempt = 0
     while True:
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(
+                timeout=TIMEOUT_SECONDS, follow_redirects=True
+            ) as client:
                 response = await client.get(BASE_URL, params=params)
                 if response.status_code in RETRY_STATUSES:
                     if attempt < MAX_RETRIES:
