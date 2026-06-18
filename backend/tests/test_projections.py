@@ -24,6 +24,7 @@ from anneal.domain.projections import (
     _killed_claim_ids,
     _survived_claim_ids,
     claim_status,
+    confirmed_ground_evidence,
     doc_projection,
     has_unresolved_debt,
     is_parked,
@@ -894,3 +895,52 @@ class TestSnapshotProjection:
         versions = snapshot_projection([v])
         assert all(isinstance(x, DocVersion) for x in versions)
         assert versions[0].ts == v.ts
+
+
+# ===========================================================================
+# confirmed_ground_evidence — P1 证据对辩 input
+# ===========================================================================
+
+
+def _ground(ts_min: int, claim_id: str = CLAIM_A, **kw) -> Event:
+    """A GROUND event with an explicit ts and a minimal payload."""
+    kw.setdefault("actor", "system")
+    payload = kw.pop("payload", {"supported": True, "title": "Paper", "source": "arxiv"})
+    return _ev(ts_min, type=GROUND, target_ref=claim_id, payload=payload, **kw)
+
+
+class TestConfirmedGroundEvidence:
+    def test_confirmed_ground_returned(self):
+        """A ground event confirmed via a CONFIRM event is returned."""
+        g = _ground(1, confirmed=False)
+        confirm = _ev(2, type=CONFIRM, actor="user", target_ref=g.id, confirmed=True)
+        result = confirmed_ground_evidence([g, confirm], CLAIM_A)
+        assert result == [g]
+
+    def test_raw_confirmed_ground_returned(self):
+        """A ground event with raw confirmed=True is returned."""
+        g = _ground(1, confirmed=True)
+        assert confirmed_ground_evidence([g], CLAIM_A) == [g]
+
+    def test_pending_ground_excluded(self):
+        """A pending (unconfirmed) ground event is NOT returned."""
+        g = _ground(1, confirmed=False)
+        assert confirmed_ground_evidence([g], CLAIM_A) == []
+
+    def test_retracted_ground_excluded(self):
+        """A confirmed-then-retracted ground event is NOT returned."""
+        g = _ground(1, confirmed=True)
+        retract = _ev(2, type=RETRACT, actor="user", target_ref=g.id, confirmed=True)
+        assert confirmed_ground_evidence([g, retract], CLAIM_A) == []
+
+    def test_other_claim_excluded(self):
+        """A confirmed ground for a DIFFERENT claim is NOT returned."""
+        g = _ground(1, claim_id=CLAIM_B, confirmed=True)
+        assert confirmed_ground_evidence([g], CLAIM_A) == []
+
+    def test_ts_order_preserved(self):
+        """Multiple confirmed ground events come back in ts order."""
+        g2 = _ground(2, confirmed=True)
+        g1 = _ground(1, confirmed=True)
+        result = confirmed_ground_evidence([g2, g1], CLAIM_A)
+        assert result == [g1, g2]

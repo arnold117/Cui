@@ -602,3 +602,129 @@ class TestAutoVerdict:
 
         with pytest.raises(ValueError, match="No challenge exists"):
             svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+
+
+# ===========================================================================
+# Evidence-aware auto-grill (P1: 观点对辩 → 证据对辩)
+# ===========================================================================
+
+
+from anneal.domain.models import Material
+from anneal.services.grounding_service import GroundingService
+from anneal.store.repository import InMemoryRepository
+from tests.fakes import CapturingLLMClient
+
+
+def _seed_confirmed_ground(
+    store, event_svc, supported: bool, title: str = "Landmark RCT"
+):
+    """Realistically seed a CONFIRMED ground event for CLAIM_A on ARTIFACT.
+
+    Goes through GroundingService.ground (PENDING) + EventService.confirm_event,
+    so the confirmed-via-CONFIRM path is exercised (the ground event's own
+    confirmed flag stays False — append-only).
+    """
+    repo = InMemoryRepository()
+    material = Material(
+        library_id="lib-1",
+        kind="paper",
+        provenance={"source": "arxiv"},
+        payload={"title": title, "abstract": "..."},
+    )
+    repo.create_material(material)
+    grounding = GroundingService(store, event_svc, repo)
+    ground_ev = grounding.ground(
+        ARTIFACT,
+        CLAIM_A,
+        material.id,
+        supported=supported,
+        evidence="effect size 0.8",
+        assessment="strong" if supported else "refutes",
+    )
+    event_svc.confirm_event(ARTIFACT, ground_ev.id)
+    return ground_ev
+
+
+class TestAutoChallengeEvidenceAware:
+    def test_confirmed_ground_evidence_in_prompt(self):
+        """auto_challenge surfaces a confirmed ground event in the LLM prompt."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient([json.dumps({"question": "Q?", "target_aspect": "scope"})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        _seed_confirmed_ground(store, event_svc, supported=True, title="Landmark RCT")
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "Literature evidence:" in llm.last_user
+        assert "Landmark RCT" in llm.last_user
+        assert "SUPPORTS" in llm.last_user
+
+    def test_pending_ground_not_in_prompt(self):
+        """A PENDING (unconfirmed) ground event must NOT leak into the prompt."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient([json.dumps({"question": "Q?", "target_aspect": "scope"})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        # Ground but DO NOT confirm.
+        repo = InMemoryRepository()
+        material = Material(library_id="lib-1", kind="paper",
+                            provenance={"source": "arxiv"}, payload={"title": "Unconfirmed"})
+        repo.create_material(material)
+        GroundingService(store, event_svc, repo).ground(
+            ARTIFACT, CLAIM_A, material.id, supported=True
+        )
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "Literature evidence:" not in llm.last_user
+        assert "Unconfirmed" not in llm.last_user
+
+    def test_no_ground_evidence_no_block(self):
+        """No ground events at all -> no evidence block in the prompt."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient([json.dumps({"question": "Q?", "target_aspect": "scope"})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "Literature evidence:" not in llm.last_user
+
+
+class TestAutoVerdictEvidenceAware:
+    def test_confirmed_ground_evidence_in_prompt(self):
+        """auto_verdict surfaces a confirmed ground event in the LLM prompt."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient(
+            [json.dumps({"outcome": "kill", "rationale": "r", "confidence": 0.9})]
+        )
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+        _seed_confirmed_ground(store, event_svc, supported=False, title="Refuting Study")
+
+        svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+
+        assert "Literature evidence:" in llm.last_user
+        assert "Refuting Study" in llm.last_user
+        assert "CONTRADICTS" in llm.last_user
+
+    def test_no_ground_evidence_no_block(self):
+        """No confirmed ground evidence -> no evidence block in verdict prompt."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient(
+            [json.dumps({"outcome": "survive", "rationale": "r", "confidence": 0.8})]
+        )
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+        svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+
+        assert "Literature evidence:" not in llm.last_user

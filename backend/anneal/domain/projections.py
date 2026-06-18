@@ -99,6 +99,31 @@ def _killed_claim_ids(events: list[Event]) -> set[str]:
     return {cid for cid, outcome in last_verdict.items() if outcome == "kill"}
 
 
+def confirmed_ground_evidence(events: list[Event], claim_id: str) -> list[Event]:
+    """Confirmed, non-retracted GROUND events targeting ``claim_id``.
+
+    Completes P1's "观点对辩 → 证据对辩": confirmed literature-grounding
+    evidence becomes a first-class input the grill can reason over.
+
+    A GROUND event counts only if it is CONFIRMED (raw ``confirmed`` flag OR a
+    non-retracted CONFIRM event targets it — the append-only confirm flow
+    leaves the ground event's own flag False) and NOT itself retracted.
+    Preserves ts order.
+    """
+    # Defensive sort (Fix 7).
+    events = sorted(events, key=lambda e: e.ts)
+    retracted = retracted_event_ids(events)
+    confirmed = _confirmed_event_ids(events)
+    return [
+        e
+        for e in events
+        if e.type == GROUND
+        and e.target_ref == claim_id
+        and e.id not in retracted
+        and (e.confirmed or e.id in confirmed)
+    ]
+
+
 def doc_projection(events: list[Event]) -> list[Event]:
     """Spec §3.3: doc = project(events: survive AND NOT debt AND confirmed).
 

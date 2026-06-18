@@ -20,7 +20,11 @@ from anneal.domain.events import (
     Event,
     make_event,
 )
-from anneal.domain.projections import has_grill_events, is_parked
+from anneal.domain.projections import (
+    confirmed_ground_evidence,
+    has_grill_events,
+    is_parked,
+)
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
 from anneal.services.event_service import EventService
@@ -206,9 +210,13 @@ class GrillService:
         """LLM-generated challenge. confirmed=False per spec §2.6."""
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
-        from anneal.llm.prompts import build_challenge_prompt
+        from anneal.llm.prompts import build_challenge_prompt, format_evidence_block
         self._assert_artifact_was_parked(artifact_id)
-        system, user = build_challenge_prompt(claim_body, context)
+        evidence_events = confirmed_ground_evidence(
+            self._store.get_events(artifact_id), claim_id
+        )
+        evidence = format_evidence_block(evidence_events)
+        system, user = build_challenge_prompt(claim_body, context, evidence)
         result = self._llm.complete_json(system, user)
         question = result.get("question", "")
         if not question:
@@ -224,9 +232,13 @@ class GrillService:
         """LLM-generated verdict. confirmed=False per spec §2.6."""
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
-        from anneal.llm.prompts import build_verdict_prompt
+        from anneal.llm.prompts import build_verdict_prompt, format_evidence_block
         self._assert_has_challenge(artifact_id)
-        system, user = build_verdict_prompt(claim_body, question, answer)
+        evidence_events = confirmed_ground_evidence(
+            self._store.get_events(artifact_id), claim_id
+        )
+        evidence = format_evidence_block(evidence_events)
+        system, user = build_verdict_prompt(claim_body, question, answer, evidence)
         result = self._llm.complete_json(system, user)
         outcome = result.get("outcome", "")
         if outcome not in ("survive", "kill"):
