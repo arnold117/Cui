@@ -103,7 +103,13 @@ export interface GraphNode {
 export interface GraphEdge {
   source: string
   target: string
-  type: "contradicts" | "grounds"
+  type:
+    | "contradicts"
+    | "grounds"
+    | "builds_on"
+    | "depends_on"
+    | "shares_method"
+    | "shares_gap"
 }
 
 export interface CorpusGraph {

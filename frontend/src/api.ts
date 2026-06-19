@@ -34,6 +34,16 @@ export const listArtifacts = (libraryId: string) =>
 export const getCorpusGraph = (libraryId = "default") =>
   request<CorpusGraph>("GET", `/library/${libraryId}/graph`)
 
+// Lazily compute LLM-typed semantic edges (builds_on / depends_on /
+// shares_method / shares_gap) for the corpus graph. Idempotent / compute-once.
+// May return 501 when no LLM is configured — callers MUST swallow that so the
+// structural (Tier 0) graph still renders.
+export const buildEdges = (libraryId = "default") =>
+  request<{ created: number; events: unknown[] }>(
+    "POST",
+    `/library/${libraryId}/build-edges`,
+  )
+
 // Grill
 export const startGrill = (artifactId: string, kind: string) =>
   request<{ status: string }>("POST", `/grill/${artifactId}/start`, { kind })

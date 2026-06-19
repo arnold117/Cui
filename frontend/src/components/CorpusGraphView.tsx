@@ -27,9 +27,32 @@ function claimFill(status: string | null): string {
 const MATERIAL_FILL = "#1e3a5f" // muted blue
 const MATERIAL_STROKE = "#60a5fa" // blue-400
 
-const EDGE_COLOR: Record<GraphEdge["type"], string> = {
-  contradicts: "#f87171", // red-400
-  grounds: "#52525b", // zinc-600
+// Per-edge-type visual style. Four semantic groups, each visually distinct but
+// kept within the zinc-950 dark idiom:
+//   contradicts            — red dashed (tension)
+//   grounds                — zinc solid (evidence)
+//   builds_on/depends_on   — emerald/teal solid, DIRECTIONAL (arrowhead)
+//   shares_method/shares_gap — violet/indigo dotted (similarity, undirected)
+interface EdgeStyle {
+  color: string
+  width: number
+  dash?: string
+  directed?: boolean
+}
+
+const EDGE_STYLE: Record<GraphEdge["type"], EdgeStyle> = {
+  contradicts: { color: "#f87171", width: 2, dash: "5 4" }, // red-400
+  grounds: { color: "#52525b", width: 1.5 }, // zinc-600
+  builds_on: { color: "#34d399", width: 1.8, directed: true }, // emerald-400
+  depends_on: { color: "#2dd4bf", width: 1.8, directed: true }, // teal-400
+  shares_method: { color: "#a78bfa", width: 1.6, dash: "2 4" }, // violet-400
+  shares_gap: { color: "#818cf8", width: 1.6, dash: "2 4" }, // indigo-400
+}
+
+// Unique color used per directed type for its own arrowhead marker.
+const DIRECTED_MARKER: Partial<Record<GraphEdge["type"], string>> = {
+  builds_on: EDGE_STYLE.builds_on.color,
+  depends_on: EDGE_STYLE.depends_on.color,
 }
 
 function truncate(s: string, n = 28): string {
@@ -130,32 +153,64 @@ function layout(graph: CorpusGraph): Positioned[] {
 export default function CorpusGraphView({ libraryId = "default" }: Props) {
   const [graph, setGraph] = useState<CorpusGraph | null>(null)
   const [loading, setLoading] = useState(true)
+  // `building` shows the "算关系中…" hint while semantic edges are computed.
+  const [building, setBuilding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Lazy-compute semantic edges, THEN fetch the graph. buildEdges failures
+  // (e.g. 501 when no LLM is configured, or any network error) are swallowed —
+  // the structural Tier 0 graph must still render. Only a getCorpusGraph
+  // failure is a real error worth surfacing.
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setBuilding(true)
     setError(null)
 
     api
-      .getCorpusGraph(libraryId)
+      .buildEdges(libraryId)
+      .catch(() => {
+        /* swallow — graph renders with whatever edges already exist */
+      })
+      .then(() => {
+        if (cancelled) return
+        setBuilding(false)
+        return api.getCorpusGraph(libraryId)
+      })
       .then(g => {
-        if (!cancelled) {
-          setGraph(g)
-          setLoading(false)
-        }
+        if (cancelled || !g) return
+        setGraph(g)
+        setLoading(false)
       })
       .catch(e => {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load corpus graph")
-          setLoading(false)
-        }
+        if (cancelled) return
+        setBuilding(false)
+        setError(e instanceof Error ? e.message : "Failed to load corpus graph")
+        setLoading(false)
       })
 
     return () => {
       cancelled = true
     }
   }, [libraryId])
+
+  // Manual "重算关系" — recompute semantic edges then refetch. Keeps the
+  // current graph on-screen (no full-screen loader); shows the building hint
+  // in the header. buildEdges errors are swallowed here too.
+  async function recompute() {
+    if (building) return
+    setBuilding(true)
+    setError(null)
+    try {
+      await api.buildEdges(libraryId).catch(() => {})
+      const g = await api.getCorpusGraph(libraryId)
+      setGraph(g)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load corpus graph")
+    } finally {
+      setBuilding(false)
+    }
+  }
 
   const positioned = useMemo(() => (graph ? layout(graph) : []), [graph])
   const posById = useMemo(() => {
@@ -167,7 +222,9 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <p className="text-sm text-zinc-500">Loading corpus graph...</p>
+        <p className="text-sm text-zinc-500">
+          {building ? "算关系中…" : "Loading corpus graph..."}
+        </p>
       </div>
     )
   }
@@ -213,19 +270,19 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
             </svg>
             material
           </span>
-          <span className="flex items-center gap-1.5">
-            <svg width="22" height="8">
-              <line x1="0" y1="4" x2="22" y2="4" stroke={EDGE_COLOR.contradicts} strokeWidth="2" />
-            </svg>
-            contradicts
-          </span>
-          <span className="flex items-center gap-1.5">
-            <svg width="22" height="8">
-              <line x1="0" y1="4" x2="22" y2="4" stroke={EDGE_COLOR.grounds} strokeWidth="2" />
-            </svg>
-            grounds
-          </span>
+          <LegendEdge style={EDGE_STYLE.contradicts} label="矛盾 contradicts" />
+          <LegendEdge style={EDGE_STYLE.grounds} label="取证 grounds" />
+          <LegendEdge style={EDGE_STYLE.builds_on} label="承接 builds_on·depends_on" />
+          <LegendEdge style={EDGE_STYLE.shares_method} label="相似 shares_method·shares_gap" />
         </div>
+        <button
+          type="button"
+          onClick={recompute}
+          disabled={building}
+          className="ml-auto shrink-0 rounded border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {building ? "算关系中…" : "重算关系"}
+        </button>
       </div>
 
       {/* Graph */}
@@ -235,11 +292,30 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
           className="w-full h-full"
           style={{ minHeight: HEIGHT }}
         >
+          {/* arrowhead markers for directional (ancestry/dependency) edges */}
+          <defs>
+            {Object.entries(DIRECTED_MARKER).map(([type, color]) => (
+              <marker
+                key={type}
+                id={`arrow-${type}`}
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
+              </marker>
+            ))}
+          </defs>
+
           {/* edges first (under nodes) */}
           {graph!.edges.map((e, i) => {
             const s = posById.get(e.source)
             const t = posById.get(e.target)
             if (!s || !t) return null
+            const st = EDGE_STYLE[e.type]
             return (
               <line
                 key={`e-${i}`}
@@ -247,9 +323,10 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
                 y1={s.y}
                 x2={t.x}
                 y2={t.y}
-                stroke={EDGE_COLOR[e.type]}
-                strokeWidth={e.type === "contradicts" ? 2 : 1.5}
-                strokeDasharray={e.type === "contradicts" ? "5 4" : undefined}
+                stroke={st.color}
+                strokeWidth={st.width}
+                strokeDasharray={st.dash}
+                markerEnd={st.directed ? `url(#arrow-${e.type})` : undefined}
                 opacity={0.8}
               />
             )
@@ -269,6 +346,28 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
       <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  )
+}
+
+function LegendEdge({ style, label }: { style: EdgeStyle; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <svg width="22" height="8">
+        <line
+          x1="0"
+          y1="4"
+          x2={style.directed ? 16 : 22}
+          y2="4"
+          stroke={style.color}
+          strokeWidth={style.width}
+          strokeDasharray={style.dash}
+        />
+        {style.directed && (
+          <path d="M 16 1 L 22 4 L 16 7 z" fill={style.color} />
+        )}
+      </svg>
       {label}
     </span>
   )
