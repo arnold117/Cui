@@ -132,6 +132,112 @@ def build_contradiction_prompt(
     return system, user
 
 
+def build_taste_prompt(
+    claim: str,
+    prior_art_papers: list[dict],
+    past_claims: list[tuple[str, str, str]],
+) -> tuple[str, str]:
+    """Position a CURRENT claim on the taste/worth axis (Lens 第二刀 / 品味锚).
+
+    ``prior_art_papers``: neutral paper dicts (title/abstract/source_id) — the
+    NOVELTY anchor. May be EMPTY (degraded: literature未对位).
+    ``past_claims``: ``(claim_body, past_outcome, claim_id)`` tuples — the user's
+    OWN grilled kill/survive record, the TASTE anchor. Guaranteed NON-empty
+    (history is the gate; the service won't call this without history).
+
+    Implements the four anti-sycophancy layers (spec §2 Q-C, the make-or-break):
+    no-anchor-no-verdict, anchor-first, skeptical asymmetric bar, anti-praise.
+
+    RED LINE: taste = WORTH relative to the USER'S OWN history, NEVER the
+    field's consensus; literature only establishes novelty; NEVER an absolute
+    quality score or "good/bad" — only RELATIVE positioning.
+    """
+    system = (
+        "You position a researcher's CURRENT claim on the TASTE/WORTH axis, "
+        "anchored to two kinds of fact: (1) real prior-art papers, and (2) the "
+        "researcher's OWN past claims that they already grilled (survived or "
+        "killed).\n\n"
+        "TWO ORTHOGONAL AXES — do NOT conflate them:\n"
+        "- NOVELTY axis: has this been done / how much increment? This is "
+        "literature-measurable and FACTUAL. The prior-art papers establish "
+        "novelty ONLY.\n"
+        "- TASTE/WORTH axis: is this WORTH doing? This is a PERSONAL, often "
+        "CONTRARIAN judgment. It is NEVER derivable from consensus or from what "
+        "everyone in the field does. The ONLY legitimate source of the taste "
+        "judgment is the researcher's OWN past claims — what they killed, what "
+        "they defended, what they keep choosing to do or not do. NEVER anchor "
+        "taste to 'what the field considers good' or 'what is on-trend'.\n\n"
+        "ANTI-SYCOPHANCY — THIS IS THE FAILURE MODE. Your default behavior is to "
+        "praise and agree with the claim. That default is WRONG here and "
+        "corrodes trust. You must instead give an honest, often UNFLATTERING, "
+        "RELATIVE positioning, and explicitly NAME what is NOT novel.\n\n"
+        "Follow these rules:\n"
+        "1. NO ANCHOR, NO VERDICT: only assign a tier you can ANCHOR to a "
+        "SPECIFIC paper or past claim that was actually provided to you, cited "
+        "by its exact title or id. If you cannot anchor the tier to a real "
+        "provided paper or past claim, say so — emit empty anchors and the "
+        "system will drop the verdict. NEVER invent a paper or claim.\n"
+        "2. ANCHOR FIRST, THEN POSITION: FIRST identify the closest prior work "
+        "(from the given papers) and the most-similar past claim(s) (from the "
+        "given history). THEN let the tier FOLLOW from those anchors. The tier "
+        "must be derived from the anchors, not from a global impression.\n"
+        "3. SKEPTICAL, ASYMMETRIC BAR: default toward 'replication' or "
+        "'incremental'. 'tasteful' requires an EXPLICIT argument for why this is "
+        "NOT just incremental or replication, PLUS strong anchors. Do NOT hand "
+        "out 'tasteful' easily.\n"
+        "4. NEVER SCORE: do NOT output any absolute quality score, rating, or "
+        "'good/bad' verdict. Only RELATIVE positioning — relative to these "
+        "papers and relative to the user's own past claims.\n\n"
+        "The four tiers:\n"
+        "- 'replication': essentially already done (in the prior art or the "
+        "user's history).\n"
+        "- 'incremental': a small increment over existing work / the user's own "
+        "pattern.\n"
+        "- 'novel_but_tasteless': genuinely novel on the novelty axis, but the "
+        "user's own history reveals it is not worth doing.\n"
+        "- 'tasteful': novel AND worth doing, judged against the user's OWN "
+        "revealed preferences — the highest bar, requires strong anchors.\n\n"
+        "Respond ONLY with valid JSON in this exact format:\n"
+        '{"tier": "replication" | "incremental" | "novel_but_tasteless" | '
+        '"tasteful", '
+        '"reasoning": "<relative positioning, NO scoring, name what is not '
+        'novel>", '
+        '"anchored_papers": [{"title": "<exact title of a provided paper>"}], '
+        '"anchored_claims": [{"past_claim_id": "<id of a provided past claim>"}], '
+        '"question": "<a refutable challenge, e.g. what is the worthwhile '
+        'increment here?>"}'
+    )
+
+    if prior_art_papers:
+        papers_block = "\n\n".join(
+            f"- Title: {p.get('title', '')}\n  Abstract: {p.get('abstract', '')}"
+            for p in prior_art_papers
+        )
+    else:
+        papers_block = (
+            "(none — no prior-art papers matched; the novelty axis cannot be "
+            "anchored to literature. Base your positioning on the user's history "
+            "and note in reasoning that literature did not match.)"
+        )
+
+    past_block = "\n\n".join(
+        f"- past_claim_id: {claim_id}\n  Outcome: the user {outcome} this\n"
+        f"  Claim: {body}"
+        for body, outcome, claim_id in past_claims
+    )
+
+    user = (
+        f"Current claim (being grilled now): {claim}\n\n"
+        f"Prior-art papers (NOVELTY anchor):\n{papers_block}\n\n"
+        f"The user's OWN past grilled claims (TASTE anchor):\n{past_block}\n\n"
+        "First find the closest prior work and the most-similar past claim(s), "
+        "then position the current claim on the taste/worth axis. Anchor every "
+        "tier to a specific provided paper or past claim; if you cannot anchor "
+        "it, leave the anchors empty."
+    )
+    return system, user
+
+
 def build_verdict_prompt(
     claim: str, question: str, answer: str, evidence: str = ""
 ) -> tuple[str, str]:

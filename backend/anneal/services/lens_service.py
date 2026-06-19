@@ -29,13 +29,18 @@ from anneal.domain.projections import claim_status
 from anneal.lens.prefilter import prefilter_candidates
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError
-from anneal.llm.prompts import build_contradiction_prompt
+from anneal.llm.prompts import build_contradiction_prompt, build_taste_prompt
+from anneal.search.openalex import search_openalex
+from anneal.services.collect_service import _load_contact_email
 from anneal.services.event_service import EventService
 from anneal.store.event_store import EventStore
 from anneal.store.repository import Repository
 
 # Past-claim outcomes that qualify as grilled trajectory (candidate set).
 _GRILLED_STATUSES = {"survived", "killed"}
+
+# The four taste rubric tiers (spec §2). Anything else = no verdict.
+_TASTE_TIERS = {"replication", "incremental", "novel_but_tasteless", "tasteful"}
 
 
 class LensService:
@@ -118,6 +123,105 @@ class LensService:
             created.append(self._event_service.append_event(artifact_id, event))
 
         return created
+
+    # ------------------------------------------------------------------
+    # Taste anchor (Lens 第二刀 / 品味锚)
+    # ------------------------------------------------------------------
+
+    async def assess_taste(
+        self, artifact_id: str, claim_id: str, claim_body: str
+    ) -> list[Event]:
+        """Position the current claim on the taste/worth axis (品味锚).
+
+        Anchors the claim to two facts — its NOVELTY position relative to real
+        literature, and its TASTE/WORTH position relative to the user's OWN
+        grilled kill/survive history — and surfaces ONE aggregate pending
+        ``CHALLENGE`` (``payload.kind="taste"``) carrying a 4-tier rubric verdict.
+
+        Anti-sycophancy is enforced STRUCTURALLY (we do not trust the model):
+
+        - **History is the gate (Q-G)**: no grilled history → ``return []``
+          (silent cold-start; the only legitimate taste source is the user's
+          own trajectory — never field consensus).
+        - **Literature is optional (degraded)**: an empty literature search still
+          surfaces a verdict, anchored to history alone.
+        - **No-anchor-no-verdict**: the model's anchors are FILTERED to those
+          that match a real returned paper / shortlisted past claim; if BOTH
+          anchor lists are empty after filtering → ``return []``.
+
+        NEVER gates/modifies claim status; NEVER emits a numeric/absolute score
+        (取证不定见 + taste 打分红线).
+
+        Raises ``LLMNotConfiguredError`` if no LLM client is injected and
+        ``ValueError`` if the current artifact cannot be resolved.
+        """
+        if self._llm is None:
+            raise LLMNotConfiguredError("LLM client not configured")
+
+        artifact = self._repo.get_artifact(artifact_id)
+        if artifact is None:
+            raise ValueError(f"Artifact {artifact_id!r} not found")
+        library_id = artifact.library_id
+
+        # History anchor — the GATE. No grilled history → silent (Q-G).
+        candidates = self._grilled_candidates(library_id, claim_id, artifact_id)
+        shortlist = prefilter_candidates(claim_body, candidates)
+        if not shortlist:
+            return []
+
+        shortlist_ids = {past.id for past in shortlist}
+        past_claims: list[tuple[str, str, str]] = [
+            (past.body, self._claim_status_of(past), past.id) for past in shortlist
+        ]
+
+        # Literature anchor — OPTIONAL. May degrade to [] (history present).
+        papers = await search_openalex(
+            claim_body, max_results=5, mailto=_load_contact_email()
+        )
+        paper_titles = {p.get("title", "") for p in papers if p.get("title")}
+
+        system, user = build_taste_prompt(claim_body, papers, past_claims)
+        result = self._llm.complete_json(system, user)
+
+        # Validate tier; anything off-rubric = no verdict.
+        tier = result.get("tier")
+        if tier not in _TASTE_TIERS:
+            return []
+
+        # Structural anchor filtering — drop hallucinated anchors. A real anchor
+        # must cite a paper title that was actually returned, or a past_claim_id
+        # that is actually in the shortlist.
+        anchored_papers = [
+            ap
+            for ap in (result.get("anchored_papers") or [])
+            if isinstance(ap, dict) and ap.get("title") in paper_titles
+        ]
+        anchored_claims = [
+            ac
+            for ac in (result.get("anchored_claims") or [])
+            if isinstance(ac, dict) and ac.get("past_claim_id") in shortlist_ids
+        ]
+
+        # No-anchor-no-verdict: a taste verdict must cite ≥1 real anchor.
+        if not anchored_papers and not anchored_claims:
+            return []
+
+        event = make_event(
+            type=CHALLENGE,
+            actor="system",
+            confirmed=False,
+            target_ref=claim_id,
+            payload={
+                "kind": "taste",
+                "tier": tier,
+                "reasoning": result.get("reasoning", ""),
+                "anchored_papers": anchored_papers,
+                "anchored_claims": anchored_claims,
+                "question": result.get("question", ""),
+                "auto_generated": True,
+            },
+        )
+        return [self._event_service.append_event(artifact_id, event)]
 
     # ------------------------------------------------------------------
     # Candidate enumeration
