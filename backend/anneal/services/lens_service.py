@@ -24,8 +24,16 @@ Dependency: EventStore + EventService + Repository -> LensService.
 
 from __future__ import annotations
 
-from anneal.domain.events import CHALLENGE, Event, make_event
-from anneal.domain.projections import claim_status
+from typing import Literal
+
+from pydantic import BaseModel
+
+from anneal.domain.events import CHALLENGE, GROUND, Event, make_event
+from anneal.domain.projections import (
+    _confirmed_event_ids,
+    claim_status,
+    retracted_event_ids,
+)
 from anneal.lens.prefilter import prefilter_candidates
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError
@@ -41,6 +49,35 @@ _GRILLED_STATUSES = {"survived", "killed"}
 
 # The four taste rubric tiers (spec §2). Anything else = no verdict.
 _TASTE_TIERS = {"replication", "incremental", "novel_but_tasteless", "tasteful"}
+
+
+# ---------------------------------------------------------------------------
+# Corpus graph (Lens 第三刀 / ③ 可查询语料 — Tier 0, pure structural projection)
+# ---------------------------------------------------------------------------
+
+
+class GraphNode(BaseModel):
+    """A node in the corpus graph — a claim or a grounded material."""
+
+    id: str
+    type: Literal["claim", "material"]
+    label: str
+    status: str | None = None  # claim_status for claims; None for materials
+
+
+class GraphEdge(BaseModel):
+    """A confirmed structural relationship between two nodes."""
+
+    source: str
+    target: str
+    type: Literal["contradicts", "grounds"]
+
+
+class CorpusGraph(BaseModel):
+    """The user's Library corpus as a graph (Tier 0: zero LLM / persistence)."""
+
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
 
 
 class LensService:
@@ -257,3 +294,106 @@ class LensService:
         """
         events = self._store.get_events(claim.artifact_ids[0])
         return claim_status(events, claim.id)
+
+    # ------------------------------------------------------------------
+    # Corpus graph (Lens 第三刀 / ③ 可查询语料 — Tier 0)
+    # ------------------------------------------------------------------
+
+    def corpus_graph(self, library_id: str) -> CorpusGraph:
+        """Build the Library's corpus graph from existing events (PURE READ).
+
+        Tier 0 — ZERO LLM, ZERO persistence, ZERO embedding. Computed on the
+        fly like every other projection. The PULL counterpart to ①②: the user
+        queries their own corpus as a graph of claim/material nodes joined by
+        CONFIRMED structural edges.
+
+        Nodes:
+        - One ``claim`` node per Library claim that has a parking artifact
+          (``claim.artifact_ids[0]``); label = body, status = ``claim_status``.
+        - One ``material`` node per material that a confirmed GROUND edge points
+          at (added lazily; skipped if the material can't be resolved).
+
+        Edges (取证不定见 / Q-5 — CONFIRMED relations only):
+        - ``contradicts``: a CONFIRMED, non-retracted ② ``lens_contradiction``
+          CHALLENGE → ``current_claim —contradicts→ past_claim``.
+        - ``grounds``: a CONFIRMED, non-retracted GROUND → ``claim —grounds→
+          material``.
+
+        Pending/unconfirmed/retracted contradictions and grounds produce NO
+        edges. Edges whose endpoint node isn't in the graph (e.g. a
+        ``past_claim_id`` pointing outside this Library) are dropped. Identical
+        edges are deduped. Output is sorted deterministically.
+        """
+        # --- Claim nodes (and the set of artifact streams to scan) ---
+        claim_ids: set[str] = set()
+        artifact_ids: set[str] = set()
+        nodes: dict[str, GraphNode] = {}
+
+        for claim in self._repo.list_claims(library_id):
+            if not claim.artifact_ids:
+                continue
+            artifact_id = claim.artifact_ids[0]
+            artifact_ids.add(artifact_id)
+            claim_ids.add(claim.id)
+            nodes[claim.id] = GraphNode(
+                id=claim.id,
+                type="claim",
+                label=claim.body,
+                status=claim_status(self._store.get_events(artifact_id), claim.id),
+            )
+
+        # --- Edges: scan each artifact's event stream, confirmed-only ---
+        edge_keys: set[tuple[str, str, str]] = set()
+        edges: list[GraphEdge] = []
+
+        def _add_edge(source: str, target: str, etype: str) -> None:
+            key = (source, target, etype)
+            if key in edge_keys:
+                return
+            edge_keys.add(key)
+            edges.append(GraphEdge(source=source, target=target, type=etype))
+
+        for artifact_id in artifact_ids:
+            events = self._store.get_events(artifact_id)
+            confirmed = _confirmed_event_ids(events)
+            retracted = retracted_event_ids(events)
+            for e in events:
+                # An event "counts" iff confirmed AND not retracted (Q-5).
+                if not (e.confirmed or e.id in confirmed):
+                    continue
+                if e.id in retracted:
+                    continue
+
+                if e.type == CHALLENGE and e.payload.get("kind") == "lens_contradiction":
+                    source = e.target_ref
+                    target = e.payload.get("past_claim_id")
+                    if source is None or target is None:
+                        continue
+                    # Drop dangling: both endpoints must be claim nodes in scope.
+                    if source not in claim_ids or target not in claim_ids:
+                        continue
+                    _add_edge(source, target, "contradicts")
+
+                elif e.type == GROUND:
+                    source = e.target_ref
+                    material_id = e.payload.get("material_id")
+                    if source is None or not material_id:
+                        continue
+                    if source not in claim_ids:
+                        continue
+                    # Ensure a material node exists (skip if unresolvable).
+                    if material_id not in nodes:
+                        material = self._repo.get_material(material_id)
+                        if material is None:
+                            continue
+                        label = material.payload.get("title", "") or str(
+                            material.provenance
+                        )
+                        nodes[material_id] = GraphNode(
+                            id=material_id, type="material", label=label
+                        )
+                    _add_edge(source, material_id, "grounds")
+
+        sorted_nodes = sorted(nodes.values(), key=lambda n: (n.type, n.id))
+        sorted_edges = sorted(edges, key=lambda x: (x.source, x.target, x.type))
+        return CorpusGraph(nodes=sorted_nodes, edges=sorted_edges)

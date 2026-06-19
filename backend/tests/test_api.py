@@ -1327,3 +1327,33 @@ class TestEvidenceEndpoint:
         )
         assert resp.status_code == 200
         assert resp.json()["events"] == []
+
+
+class TestCorpusGraph:
+    """GET /library/{id}/graph — Lens 第三刀 / ③ corpus graph (Tier 0)."""
+
+    def test_empty_library_returns_empty_graph_not_404(self, client: TestClient):
+        resp = client.get("/api/v1/library/empty-lib/graph")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"nodes": [], "edges": []}
+
+    def test_graph_shape_with_claim_nodes(self, client: TestClient):
+        # Park + grill + confirmed survive verdict -> a survived claim node.
+        data = _park(client, library_id="graph-lib")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        verdict = _verdict(client, artifact_id, claim_id, outcome="survive")
+        _confirm(client, artifact_id, verdict["event"]["id"])
+
+        resp = client.get("/api/v1/library/graph-lib/graph")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert set(body.keys()) == {"nodes", "edges"}
+        assert isinstance(body["nodes"], list)
+        assert isinstance(body["edges"], list)
+        node = next(n for n in body["nodes"] if n["id"] == claim_id)
+        assert node["type"] == "claim"
+        assert node["status"] == "survived"
+        assert node["label"] == data["claim"]["body"]

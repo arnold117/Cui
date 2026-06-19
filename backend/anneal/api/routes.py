@@ -519,6 +519,25 @@ async def assess_taste(
 
 
 # ---------------------------------------------------------------------------
+# Lens corpus graph (Lens 第三刀 / ③ 可查询语料 — Tier 0, pure projection)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/library/{library_id}/graph")
+def get_corpus_graph(
+    library_id: str,
+    lens_svc: LensService = Depends(get_lens_service),
+):
+    """The Library's corpus graph — claim/material nodes + confirmed edges.
+
+    Pure structural projection (Tier 0): NO LLM, NO persistence, NO embedding.
+    Read-only and never 404 — an empty/unknown library yields an empty graph.
+    """
+    graph = lens_svc.corpus_graph(library_id)
+    return graph.model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
 # Event (confirmation gate) endpoints
 # ---------------------------------------------------------------------------
 
