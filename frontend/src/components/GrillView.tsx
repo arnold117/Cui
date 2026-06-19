@@ -272,7 +272,32 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
             </p>
           )}
 
-          {!isKilled && flow.claimState === "all_resolved" && (
+          {/* Survived + stopped: distinct terminal "拷问完成" screen. */}
+          {!isKilled && flow.claimState === "all_resolved" && flow.stopped && (
+            <div className="space-y-3">
+              <div className="bg-emerald-950/30 border border-emerald-700/40 rounded-lg px-4 py-4">
+                <p className="text-sm font-medium text-emerald-400 mb-2">
+                  ✅ 拷问完成
+                </p>
+                <p className="text-sm text-zinc-300">
+                  Claim 存活了 {flow.rounds} 轮挑战。
+                </p>
+                <p className="text-xs text-zinc-500 leading-relaxed mt-2">
+                  这条 claim 经受住了拷问。你可以将它 Promote 成正式结论。
+                </p>
+              </div>
+              <button
+                className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                onClick={handlePromote}
+                disabled={promoting}
+              >
+                {promoting ? "Promoting..." : "Promote to DOC"}
+              </button>
+              {promoteError && <p className="text-red-400 text-sm">{promoteError}</p>}
+            </div>
+          )}
+
+          {!isKilled && flow.claimState === "all_resolved" && !flow.stopped && (
             <div className="space-y-3">
               <div className="bg-zinc-800/40 border border-zinc-700/40 rounded-lg px-4 py-3">
                 <p className="text-sm font-medium text-emerald-400 mb-2">

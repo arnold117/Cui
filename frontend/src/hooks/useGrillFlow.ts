@@ -42,6 +42,10 @@ export interface GrillFlowState {
   /** Count of LLM-sourced challenges only. Lens challenges are surfaced
    * tensions, not grill "rounds", so they are excluded from this counter. */
   rounds: number
+  /** True once the user clicked "到此为止" on a survived claim. Drives the
+   * distinct terminal "拷问完成" screen. Reset whenever a new challenge is
+   * created or the user continues, so re-grilling clears the terminal screen. */
+  stopped: boolean
 }
 
 export interface GrillFlowActions {
@@ -225,6 +229,7 @@ export function useGrillFlow(
   const [events, setEvents] = useState<Event[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [stopped, setStopped] = useState(false)
   const mountedRef = useRef(true)
   // Guards the auto-scan-once-per-grill-start behavior: set true the moment a
   // grill is started so we never re-scan on continue or on re-render.
@@ -273,6 +278,7 @@ export function useGrillFlow(
   const startGrill = useCallback(async () => {
     setError(null)
     setLoading(true)
+    setStopped(false)
     try {
       await api.startGrill(artifactId, artifactKind)
       const { event: challengeEvent } = await api.autoChallenge(
@@ -417,6 +423,7 @@ export function useGrillFlow(
   const continueGrill = useCallback(async () => {
     setError(null)
     setLoading(true)
+    setStopped(false)
     try {
       // Build context from previous rounds.
       const context = events
@@ -446,10 +453,11 @@ export function useGrillFlow(
     }
   }, [artifactId, claim.id, claim.body, events])
 
-  // stopGrill is a no-op on the event stream: when claimState is already
-  // "all_resolved", the user choosing "到此为止" simply leaves the board as-is.
-  // We refresh to settle the final state / sidebar.
+  // stopGrill does not mutate the event stream: when claimState is already
+  // "all_resolved", the user choosing "到此为止" flips into the terminal
+  // "拷问完成" screen. We refresh to settle the final state / sidebar.
   const stopGrill = useCallback(() => {
+    setStopped(true)
     void refreshEvents()
   }, [refreshEvents])
 
@@ -461,6 +469,7 @@ export function useGrillFlow(
     loading,
     unresolved,
     rounds,
+    stopped,
     startGrill,
     submitAnswer,
     confirmVerdict,
