@@ -198,6 +198,20 @@ class TestAnswer:
         event = svc.answer(ARTIFACT, CLAIM_A, "Because reasons")
         assert event.type == ANSWER
 
+    def test_answer_records_challenge_id_when_provided(self, svc, store):
+        """answer(challenge_id=...) records it in the ANSWER payload."""
+        _park(store)
+        challenge = svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+        event = svc.answer(ARTIFACT, CLAIM_A, "Because X", challenge_id=challenge.id)
+        assert event.payload["challenge_id"] == challenge.id
+
+    def test_answer_omits_challenge_id_when_not_provided(self, svc, store):
+        """Without challenge_id, the ANSWER payload carries no challenge_id key."""
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+        event = svc.answer(ARTIFACT, CLAIM_A, "Because X")
+        assert "challenge_id" not in event.payload
+
 
 # ===========================================================================
 # verdict
@@ -252,6 +266,22 @@ class TestVerdict:
         _park(store)
         with pytest.raises(ValueError, match="No challenge exists"):
             svc.verdict(ARTIFACT, CLAIM_A, "survive", "OK")
+
+    def test_verdict_records_challenge_id_when_provided(self, svc, store):
+        """verdict(challenge_id=...) records it in the VERDICT payload."""
+        _park(store)
+        challenge = svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+        event = svc.verdict(
+            ARTIFACT, CLAIM_A, "survive", "OK", challenge_id=challenge.id
+        )
+        assert event.payload["challenge_id"] == challenge.id
+
+    def test_verdict_omits_challenge_id_when_not_provided(self, svc, store):
+        """Without challenge_id, the VERDICT payload carries no challenge_id key."""
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+        event = svc.verdict(ARTIFACT, CLAIM_A, "survive", "OK")
+        assert "challenge_id" not in event.payload
 
 
 # ===========================================================================
@@ -552,6 +582,33 @@ class TestAutoVerdict:
         assert event.payload["rationale"] == "Evidence holds up"
         assert event.payload["confidence"] == 0.85
         assert event.payload["auto_generated"] is True
+
+    def test_records_challenge_id_when_provided(self):
+        """auto_verdict(challenge_id=...) records it in the VERDICT payload."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"outcome": "survive", "rationale": "OK", "confidence": 0.8})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        challenge = svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+        event = svc.auto_verdict(
+            ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because Z",
+            challenge_id=challenge.id,
+        )
+        assert event.payload["challenge_id"] == challenge.id
+
+    def test_omits_challenge_id_when_not_provided(self):
+        """Without challenge_id, the auto_verdict payload carries no challenge_id."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps({"outcome": "survive", "rationale": "OK", "confidence": 0.8})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because Z")
+        assert "challenge_id" not in event.payload
 
     def test_kill_confirmed_false(self):
         """auto_verdict kill has confirmed=False."""

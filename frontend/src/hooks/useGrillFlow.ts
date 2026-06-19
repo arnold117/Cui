@@ -1,40 +1,64 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import type { Event, Claim } from "../types"
+import { isLensChallenge } from "../types"
 import * as api from "../api"
 
-export type GrillPhase =
-  | "idle"
-  | "starting"
-  | "challenging"
-  | "awaiting_answer"
-  | "answering"
-  | "verdicting"
-  | "awaiting_decision"
-  | "confirmed_survive"
-  | "confirmed_kill"
-  | "done"
+// ---------------------------------------------------------------------------
+// Challenge-centric model (spec docs/spec-lens-contradiction.md §2 前端集成)
+//
+// The old hook collapsed "the claim's overall grill state" and "the active
+// challenge's state" into ONE global `phase`, so only a single linear
+// challenge → answer → verdict thread worked. We now derive PER-CHALLENGE
+// state from the event stream, so multiple challenges (the LLM grill challenge
+// AND Lens-surfaced contradiction challenges) coexist, each independently
+// answered / verdicted. A lens challenge is just a `challenge` event with
+// payload.kind === "lens_contradiction"; it shares the SAME lifecycle and is
+// distinguished only by a badge in the UI.
+// ---------------------------------------------------------------------------
+
+export type ChallengeState =
+  | "awaiting_answer" // no answer for this challenge yet
+  | "awaiting_verdict" // answered, but no verdict yet
+  | "awaiting_decision" // verdict exists but is not yet confirmed
+  | "resolved" // verdict is confirmed
+
+export interface ChallengeView {
+  event: Event // the `challenge` event
+  state: ChallengeState
+  answerEvent?: Event
+  verdictEvent?: Event
+  source: "grill" | "lens"
+}
+
+export type ClaimState = "idle" | "grilling" | "all_resolved"
 
 export interface GrillFlowState {
   events: Event[]
-  phase: GrillPhase
+  challenges: ChallengeView[]
+  claimState: ClaimState
   error: string | null
   loading: boolean
   unresolved: string[]
+  /** Count of LLM-sourced challenges only. Lens challenges are surfaced
+   * tensions, not grill "rounds", so they are excluded from this counter. */
   rounds: number
 }
 
 export interface GrillFlowActions {
   startGrill: () => void
-  submitAnswer: (text: string) => void
-  confirmVerdict: (eventId: string) => void
-  retractVerdict: (eventId: string) => void
+  /** Answer a SPECIFIC challenge by id, then auto-verdict against THAT
+   * challenge's question. */
+  submitAnswer: (challengeId: string, text: string) => void
+  confirmVerdict: (verdictId: string) => void
+  retractVerdict: (verdictId: string) => void
   continueGrill: () => void
   stopGrill: () => void
+  scanLens: () => void
   refreshEvents: () => void
 }
 
 // ---------------------------------------------------------------------------
-// Phase reconstruction from event list
+// Pure derivation helpers (the testable core).
 // ---------------------------------------------------------------------------
 
 function getRetractedIds(events: Event[]): Set<string> {
@@ -56,77 +80,137 @@ function getConfirmedIds(events: Event[]): Set<string> {
   return confirmed
 }
 
-function countRounds(events: Event[]): number {
-  return events.filter(e => e.type === "challenge").length
+function isConfirmed(
+  event: Event,
+  confirmedIds: Set<string>,
+): boolean {
+  return event.confirmed || confirmedIds.has(event.id)
 }
 
-function computeUnresolved(events: Event[]): string[] {
+/**
+ * Derive the per-challenge lifecycle view for a claim from the event stream.
+ *
+ * Pairing rule — ID FIRST, ts-window fallback:
+ *
+ *   1. An `answer`/`verdict` belongs to challenge C iff
+ *      `event.payload.challenge_id === C.event.id`. This is the only correct
+ *      rule once challenges run in parallel: at grill start the LLM challenge
+ *      is created, then the Lens auto-scan opens contradiction challenges, so
+ *      several challenges exist BEFORE any answer. A ts-window cannot tell
+ *      which open challenge a later answer belongs to — the explicit
+ *      `challenge_id` (written by the backend when the frontend threads it
+ *      through) does.
+ *
+ *   2. Only when an answer/verdict carries NO `challenge_id` (legacy /
+ *      single-thread data recorded before this link existed) do we fall back
+ *      to the original ts-window heuristic: the event belongs to the last
+ *      challenge whose ts <= the event's ts (i.e. its open window
+ *      [C.ts, nextChallenge.ts)). This keeps old linear trajectories deriving
+ *      correctly.
+ *
+ * If two answers/verdicts somehow resolve to the same challenge, the first by
+ * ts wins (the challenge is answered once; later duplicates are ignored).
+ */
+export function deriveChallenges(events: Event[], claimId: string): ChallengeView[] {
   const retracted = getRetractedIds(events)
   const confirmed = getConfirmedIds(events)
-  const unresolved: string[] = []
 
-  for (const e of events) {
-    if (e.type === "challenge" && !retracted.has(e.id)) {
-      // Check if there's a corresponding survived verdict
-      const question = (e.payload.question as string) ?? ""
-      const hasResolution = events.some(
-        v =>
-          v.type === "verdict" &&
-          !retracted.has(v.id) &&
-          (v.confirmed || confirmed.has(v.id)) &&
-          v.payload.outcome === "survive"
-      )
-      if (!hasResolution) {
-        unresolved.push(question)
-      }
-    }
-  }
+  // Events relevant to THIS claim thread, in ts order. We key off target_ref
+  // for challenge/answer/verdict (all carry the claim id as target_ref in the
+  // backend); challenges without target_ref still count via type fallback.
+  const targetsClaim = (e: Event) =>
+    e.target_ref === claimId || e.target_ref == null
 
-  return unresolved
-}
-
-function reconstructPhase(events: Event[]): GrillPhase {
-  const retracted = getRetractedIds(events)
-  const confirmed = getConfirmedIds(events)
-
-  const hasPark = events.some(e => e.type === "park")
-  const grillEvents = events.filter(e =>
-    ["challenge", "answer", "verdict"].includes(e.type) && !retracted.has(e.id)
+  const sorted = [...events].sort(
+    (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
   )
 
-  if (hasPark && grillEvents.length === 0) return "idle"
-  if (grillEvents.length === 0) return "idle"
+  // Ordered, non-retracted challenges for this claim.
+  const challengeEvents = sorted.filter(
+    e => e.type === "challenge" && !retracted.has(e.id) && targetsClaim(e),
+  )
 
-  // Walk from the end to find the latest active state
-  const active = grillEvents.filter(e => !retracted.has(e.id))
-  if (active.length === 0) return "idle"
+  const challengeIds = new Set(challengeEvents.map(c => c.id))
 
-  const last = active[active.length - 1]
-
-  if (last.type === "challenge") {
-    // Unconfirmed challenge with no answer after it
-    const hasAnswer = active.some(
-      e => e.type === "answer" && new Date(e.ts) >= new Date(last.ts)
-    )
-    if (!hasAnswer) return "awaiting_answer"
+  // For an event lacking challenge_id, find the challenge whose ts-window it
+  // falls into: the last challenge with ts <= event ts (legacy heuristic).
+  const challengeIdByTsWindow = (e: Event): string | undefined => {
+    const t = new Date(e.ts).getTime()
+    let match: string | undefined
+    for (const c of challengeEvents) {
+      if (new Date(c.ts).getTime() <= t) match = c.id
+      else break // challengeEvents is ts-sorted
+    }
+    return match
   }
 
-  if (last.type === "answer") {
-    // Answer but no verdict after it
-    return "verdicting"
+  // Resolve which challenge an answer/verdict belongs to: id first, ts-window
+  // fallback only when no (recognized) challenge_id is present.
+  const ownerOf = (e: Event): string | undefined => {
+    const linked = e.payload?.challenge_id as string | undefined
+    if (linked && challengeIds.has(linked)) return linked
+    if (linked) return undefined // links to a retracted/foreign challenge → drop
+    return challengeIdByTsWindow(e)
   }
 
-  if (last.type === "verdict") {
-    const isConfirmed = last.confirmed || confirmed.has(last.id)
-    if (!isConfirmed) return "awaiting_decision"
+  const views: ChallengeView[] = challengeEvents.map((challenge) => {
+    const isOwned = (e: Event) =>
+      targetsClaim(e) && !retracted.has(e.id) && ownerOf(e) === challenge.id
 
-    const outcome = last.payload.outcome as string
-    if (outcome === "kill") return "done"
-    // Survive + confirmed → user can choose to continue or stop
-    return "awaiting_decision"
-  }
+    const answerEvent = sorted.find(e => e.type === "answer" && isOwned(e))
+    const verdictEvent = sorted.find(e => e.type === "verdict" && isOwned(e))
 
-  return "idle"
+    let state: ChallengeState
+    if (!answerEvent) {
+      state = "awaiting_answer"
+    } else if (!verdictEvent) {
+      state = "awaiting_verdict"
+    } else if (isConfirmed(verdictEvent, confirmed)) {
+      state = "resolved"
+    } else {
+      state = "awaiting_decision"
+    }
+
+    return {
+      event: challenge,
+      state,
+      answerEvent,
+      verdictEvent,
+      source: isLensChallenge(challenge) ? "lens" : "grill",
+    }
+  })
+
+  return views
+}
+
+/**
+ * Roll the per-challenge states up into the claim's overall state.
+ *   - "idle"          — no challenges at all.
+ *   - "grilling"      — at least one challenge is not yet resolved.
+ *   - "all_resolved"  — at least one challenge AND every challenge resolved.
+ *
+ * A confirmed KILL counts as resolved (its challenge's verdict is confirmed),
+ * so a killed claim with no other open challenges rolls up to "all_resolved".
+ * The UI then reads the last confirmed verdict's outcome to decide whether to
+ * show promote (survive) vs kill messaging — mirroring the old `done` /
+ * `confirmed_kill` split, now driven by the rollup instead of a global phase.
+ */
+export function deriveClaimState(challenges: ChallengeView[]): ClaimState {
+  if (challenges.length === 0) return "idle"
+  const allResolved = challenges.every(c => c.state === "resolved")
+  return allResolved ? "all_resolved" : "grilling"
+}
+
+function countRounds(challenges: ChallengeView[]): number {
+  // Only LLM-sourced challenges count as grill rounds (lens ones are surfaced
+  // tensions, not rounds). See `rounds` doc above.
+  return challenges.filter(c => c.source === "grill").length
+}
+
+function computeUnresolved(challenges: ChallengeView[]): string[] {
+  return challenges
+    .filter(c => c.state !== "resolved")
+    .map(c => (c.event.payload.question as string) ?? "")
 }
 
 // ---------------------------------------------------------------------------
@@ -139,22 +223,25 @@ export function useGrillFlow(
   artifactKind: string,
 ): GrillFlowState & GrillFlowActions {
   const [events, setEvents] = useState<Event[]>([])
-  const [phase, setPhase] = useState<GrillPhase>("idle")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const mountedRef = useRef(true)
+  // Guards the auto-scan-once-per-grill-start behavior: set true the moment a
+  // grill is started so we never re-scan on continue or on re-render.
+  const lensScannedRef = useRef(false)
 
-  // Derived
-  const rounds = countRounds(events)
-  const unresolved = computeUnresolved(events)
+  // Derived, event-sourced state.
+  const challenges = deriveChallenges(events, claim.id)
+  const claimState = deriveClaimState(challenges)
+  const rounds = countRounds(challenges)
+  const unresolved = computeUnresolved(challenges)
 
-  // Fetch trajectory and reconstruct phase
+  // Fetch trajectory; state derives from `events` purely.
   const refreshEvents = useCallback(async () => {
     try {
       const { events: fetched } = await api.getTrajectory(artifactId)
       if (!mountedRef.current) return
       setEvents(fetched)
-      setPhase(reconstructPhase(fetched))
     } catch (e) {
       if (!mountedRef.current) return
       setError(e instanceof Error ? e.message : "Failed to fetch trajectory")
@@ -164,18 +251,30 @@ export function useGrillFlow(
   useEffect(() => {
     mountedRef.current = true
     refreshEvents()
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+    }
   }, [refreshEvents])
+
+  // --- Lens scan (fire-and-forget; failures must NOT break grill) ---
+
+  const scanLens = useCallback(async () => {
+    try {
+      await api.scanContradictions(artifactId, claim.id, claim.body)
+      if (!mountedRef.current) return
+      await refreshEvents()
+    } catch {
+      // Swallow: a lens failure (e.g. 501 when no LLM) must never break grill.
+    }
+  }, [artifactId, claim.id, claim.body, refreshEvents])
 
   // --- Actions ---
 
   const startGrill = useCallback(async () => {
     setError(null)
-    setPhase("starting")
     setLoading(true)
     try {
       await api.startGrill(artifactId, artifactKind)
-      setPhase("challenging")
       const { event: challengeEvent } = await api.autoChallenge(
         artifactId,
         claim.id,
@@ -183,128 +282,150 @@ export function useGrillFlow(
       )
       if (!mountedRef.current) return
       setEvents(prev => [...prev, challengeEvent])
-      setPhase("awaiting_answer")
+      // Auto-scan the Lens once, AFTER the first challenge exists, guarded so
+      // it only runs once per grill start (not on continue, not per render).
+      if (!lensScannedRef.current) {
+        lensScannedRef.current = true
+        void scanLens()
+      }
     } catch (e) {
       if (!mountedRef.current) return
       setError(e instanceof Error ? e.message : "Failed to start grill")
-      setPhase("idle")
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [artifactId, artifactKind, claim.id, claim.body])
+  }, [artifactId, artifactKind, claim.id, claim.body, scanLens])
 
-  const submitAnswer = useCallback(async (text: string) => {
-    setError(null)
-    setPhase("answering")
-    setLoading(true)
-    try {
-      const { event: answerEvent } = await api.answer(artifactId, claim.id, text)
-      if (!mountedRef.current) return
-      setEvents(prev => [...prev, answerEvent])
+  const submitAnswer = useCallback(
+    async (challengeId: string, text: string) => {
+      setError(null)
+      setLoading(true)
+      try {
+        const { event: answerEvent } = await api.answer(
+          artifactId,
+          claim.id,
+          challengeId,
+          text,
+        )
+        if (!mountedRef.current) return
+        setEvents(prev => [...prev, answerEvent])
 
-      setPhase("verdicting")
-      // Find the last challenge question for auto-verdict
-      const allEvents = [...events, answerEvent]
-      const lastChallenge = [...allEvents]
-        .reverse()
-        .find(e => e.type === "challenge")
-      const question = (lastChallenge?.payload?.question as string) ?? ""
+        // Verdict against the SPECIFIC challenge being answered (not "the last
+        // challenge"). Pull its question straight off the targeted event, and
+        // thread challengeId so the verdict event is paired back to it by id.
+        const challengeEvt = events.find(e => e.id === challengeId)
+        const question = (challengeEvt?.payload?.question as string) ?? ""
 
-      const { event: verdictEvent } = await api.autoVerdict(
-        artifactId,
-        claim.id,
-        claim.body,
-        question,
-        text,
-      )
-      if (!mountedRef.current) return
-      setEvents(prev => [...prev, verdictEvent])
-      setPhase("awaiting_decision")
-    } catch (e) {
-      if (!mountedRef.current) return
-      setError(e instanceof Error ? e.message : "Failed to submit answer")
-      setPhase("awaiting_answer")
-    } finally {
-      if (mountedRef.current) setLoading(false)
-    }
-  }, [artifactId, claim.id, claim.body, events])
+        const { event: verdictEvent } = await api.autoVerdict(
+          artifactId,
+          claim.id,
+          claim.body,
+          question,
+          text,
+          challengeId,
+        )
+        if (!mountedRef.current) return
+        setEvents(prev => [...prev, verdictEvent])
+      } catch (e) {
+        if (!mountedRef.current) return
+        setError(e instanceof Error ? e.message : "Failed to submit answer")
+      } finally {
+        if (mountedRef.current) setLoading(false)
+      }
+    },
+    [artifactId, claim.id, claim.body, events],
+  )
 
-  const confirmVerdict = useCallback(async (eventId: string) => {
-    setError(null)
-    setLoading(true)
-    try {
-      // Confirm the verdict
-      const { event: confirmEvt } = await api.confirmEvent(artifactId, eventId)
-      if (!mountedRef.current) return
-      setEvents(prev => [...prev, confirmEvt])
+  const confirmVerdict = useCallback(
+    async (verdictId: string) => {
+      setError(null)
+      setLoading(true)
+      try {
+        const { event: confirmEvt } = await api.confirmEvent(artifactId, verdictId)
+        if (!mountedRef.current) return
+        setEvents(prev => [...prev, confirmEvt])
 
-      // Also confirm the challenge that led to this verdict
-      const verdictEvt = events.find(e => e.id === eventId)
-      if (verdictEvt) {
-        // Find the matching challenge (most recent challenge before this verdict)
-        const verdictIdx = events.findIndex(e => e.id === eventId)
-        for (let i = verdictIdx - 1; i >= 0; i--) {
-          if (events[i].type === "challenge" && !events[i].confirmed) {
-            const { event: challengeConfirm } = await api.confirmEvent(artifactId, events[i].id)
-            if (!mountedRef.current) return
-            setEvents(prev => [...prev, challengeConfirm])
-            break
+        // Also confirm the challenge that owns this verdict so the challenge
+        // bubble leaves the pending gate too. Prefer the explicit link
+        // (verdict.payload.challenge_id) — correct under parallel challenges —
+        // and fall back to the legacy "most recent unconfirmed challenge before
+        // this verdict in ts order" scan only when no link is present.
+        const verdictEvt = events.find(e => e.id === verdictId)
+        const linkedChallengeId = verdictEvt?.payload?.challenge_id as
+          | string
+          | undefined
+
+        let challengeToConfirm: Event | undefined
+        if (linkedChallengeId) {
+          challengeToConfirm = events.find(
+            e =>
+              e.id === linkedChallengeId &&
+              e.type === "challenge" &&
+              !e.confirmed,
+          )
+        } else {
+          const verdictIdx = events.findIndex(e => e.id === verdictId)
+          if (verdictIdx >= 0) {
+            for (let i = verdictIdx - 1; i >= 0; i--) {
+              if (events[i].type === "challenge" && !events[i].confirmed) {
+                challengeToConfirm = events[i]
+                break
+              }
+            }
           }
         }
+
+        if (challengeToConfirm) {
+          const { event: challengeConfirm } = await api.confirmEvent(
+            artifactId,
+            challengeToConfirm.id,
+          )
+          if (!mountedRef.current) return
+          setEvents(prev => [...prev, challengeConfirm])
+        }
+
+        await refreshEvents()
+      } catch (e) {
+        if (!mountedRef.current) return
+        setError(e instanceof Error ? e.message : "Failed to confirm verdict")
+      } finally {
+        if (mountedRef.current) setLoading(false)
       }
+    },
+    [artifactId, events, refreshEvents],
+  )
 
-      // Refresh events from backend to ensure clean state
-      await refreshEvents()
-      if (!mountedRef.current) return
-
-      // Determine next state — show transition before final state
-      const confirmed = events.find(e => e.id === eventId)
-      const outcome = confirmed?.payload?.outcome as string
-      if (outcome === "kill") {
-        setPhase("confirmed_kill")
-      } else {
-        setPhase("confirmed_survive")
-        // After a brief pause, transition to awaiting_decision
-        setTimeout(() => {
-          if (mountedRef.current) setPhase("awaiting_decision")
-        }, 800)
+  const retractVerdict = useCallback(
+    async (verdictId: string) => {
+      setError(null)
+      setLoading(true)
+      try {
+        const { event: retractEvt } = await api.retractEvent(artifactId, verdictId)
+        if (!mountedRef.current) return
+        setEvents(prev => [...prev, retractEvt])
+        await refreshEvents()
+      } catch (e) {
+        if (!mountedRef.current) return
+        setError(e instanceof Error ? e.message : "Failed to retract verdict")
+      } finally {
+        if (mountedRef.current) setLoading(false)
       }
-    } catch (e) {
-      if (!mountedRef.current) return
-      setError(e instanceof Error ? e.message : "Failed to confirm verdict")
-    } finally {
-      if (mountedRef.current) setLoading(false)
-    }
-  }, [artifactId, events, refreshEvents])
-
-  const retractVerdict = useCallback(async (eventId: string) => {
-    setError(null)
-    setLoading(true)
-    try {
-      const { event: retractEvt } = await api.retractEvent(artifactId, eventId)
-      if (!mountedRef.current) return
-      setEvents(prev => [...prev, retractEvt])
-      setPhase("awaiting_answer")
-    } catch (e) {
-      if (!mountedRef.current) return
-      setError(e instanceof Error ? e.message : "Failed to retract verdict")
-    } finally {
-      if (mountedRef.current) setLoading(false)
-    }
-  }, [artifactId])
+    },
+    [artifactId, refreshEvents],
+  )
 
   const continueGrill = useCallback(async () => {
     setError(null)
-    setPhase("challenging")
     setLoading(true)
     try {
-      // Build context from previous rounds
+      // Build context from previous rounds.
       const context = events
         .filter(e => ["challenge", "answer", "verdict"].includes(e.type))
         .map(e => {
           if (e.type === "challenge") return `Q: ${e.payload.question}`
           if (e.type === "answer") return `A: ${e.payload.response}`
-          if (e.type === "verdict") return `Verdict: ${e.payload.outcome} - ${e.payload.rationale}`
+          if (e.type === "verdict")
+            return `Verdict: ${e.payload.outcome} - ${e.payload.rationale}`
           return ""
         })
         .join("\n")
@@ -317,23 +438,25 @@ export function useGrillFlow(
       )
       if (!mountedRef.current) return
       setEvents(prev => [...prev, challengeEvent])
-      setPhase("awaiting_answer")
     } catch (e) {
       if (!mountedRef.current) return
       setError(e instanceof Error ? e.message : "Failed to continue grill")
-      setPhase("awaiting_decision")
     } finally {
       if (mountedRef.current) setLoading(false)
     }
   }, [artifactId, claim.id, claim.body, events])
 
+  // stopGrill is a no-op on the event stream: when claimState is already
+  // "all_resolved", the user choosing "到此为止" simply leaves the board as-is.
+  // We refresh to settle the final state / sidebar.
   const stopGrill = useCallback(() => {
-    setPhase("done")
-  }, [])
+    void refreshEvents()
+  }, [refreshEvents])
 
   return {
     events,
-    phase,
+    challenges,
+    claimState,
     error,
     loading,
     unresolved,
@@ -344,6 +467,7 @@ export function useGrillFlow(
     retractVerdict,
     continueGrill,
     stopGrill,
+    scanLens,
     refreshEvents,
   }
 }

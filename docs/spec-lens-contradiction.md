@@ -40,6 +40,12 @@
   - 白嫖整套 grill 机器：challenge → answer → verdict → 确认/撤回。用户**答辩**旧结论冲突，系统判这次理由站不站得住——历史真正进到 grill 被解决，不是飘个提示。
   - 零投影改动（lens_feed / doc / claim_status 已认 CHALLENGE）；前端复用 GrillMessage，按 `payload.kind` 加「⟲ 来自你的轨迹」徽章。
   - 硬/软、survived/killed 的差异全压进 payload（`tension_type`、`past_outcome`），**不拆动词**。措辞差异只是渲染/prompt 细节。
+- **前端集成（Q-D 落地时新增，2026-06-19 已决）**：Q-D「lens challenge 走完整 challenge→answer→verdict」与现有 `useGrillFlow` 的**线性单线程** phase 状态机冲突（注入 lens challenge 会灌水轮数、错乱 answer 路由）。选**重做状态机为 challenge 为中心**（option 3）：
+  - 每条 challenge（LLM 或 lens）**各自一个生命周期**，从事件派生：`awaiting_answer → awaiting_verdict → awaiting_decision → resolved`。lens 与 LLM challenge **同生命周期**（真守 Q-D）。
+  - claim 整体状态 = 所有 challenge 的 rollup（全 resolved 才解锁 继续/到此/promote）。
+  - UI：线性聊天 → **多 challenge 并行板**，每条 inline 答辩框 / 确认-撤回 / resolved 徽章。
+  - `submitAnswer(challengeId, text)` 按 challenge id 定向，不再「找最后一个 challenge」。
+  - 全局 phase 是当初的简化；这次把「claim 整体状态」与「单条 challenge 状态」两层拆开。
 
 ---
 

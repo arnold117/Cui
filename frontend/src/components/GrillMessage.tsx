@@ -36,14 +36,44 @@ export default function GrillMessage({ event, onConfirm, onRetract, isPending, i
   // challenge: left-aligned system bubble
   if (event.type === "challenge") {
     const question = (event.payload.question as string) ?? ""
+    const isLens = event.payload.kind === "lens_contradiction"
+    const pastOutcome = event.payload.past_outcome as string | undefined
+    const tension = (event.payload.tension as string) ?? ""
+    const provenanceNote =
+      pastOutcome === "survived"
+        ? "你已确立过相反结论"
+        : pastOutcome === "killed"
+          ? "你已否决过这个想法"
+          : ""
+
     return (
       <div className="flex justify-start">
         <div className="max-w-[75%] space-y-2">
-          <div className="bg-blue-950/60 border border-blue-800/40 rounded-xl rounded-tl-sm px-4 py-3">
-            <div className="flex items-center gap-2 mb-1">
-              <p className="text-xs text-blue-400 font-medium">Challenge</p>
+          <div
+            className={`rounded-xl rounded-tl-sm px-4 py-3 border ${
+              isLens
+                ? "bg-violet-950/50 border-violet-700/40"
+                : "bg-blue-950/60 border-blue-800/40"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {isLens ? (
+                <span className="text-[10px] font-semibold text-violet-200 bg-violet-700/50 border border-violet-600/40 px-1.5 py-0.5 rounded-full">
+                  ⟲ 来自你的轨迹
+                </span>
+              ) : (
+                <p className="text-xs text-blue-400 font-medium">Challenge</p>
+              )}
               {evidenceBadge}
             </div>
+            {isLens && provenanceNote && (
+              <p className="text-[11px] text-violet-300/90 mb-1">{provenanceNote}</p>
+            )}
+            {isLens && tension && (
+              <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap mb-1.5">
+                {tension}
+              </p>
+            )}
             <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{question}</p>
           </div>
           {isPending && !isLoading && (

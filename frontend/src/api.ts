@@ -37,11 +37,11 @@ export const startGrill = (artifactId: string, kind: string) =>
 export const autoChallenge = (artifactId: string, claimId: string, claimBody: string, context = "") =>
   request<{ event: Event }>("POST", `/grill/${artifactId}/auto-challenge`, { claim_id: claimId, claim_body: claimBody, context })
 
-export const answer = (artifactId: string, claimId: string, response: string) =>
-  request<{ event: Event }>("POST", `/grill/${artifactId}/answer`, { claim_id: claimId, response })
+export const answer = (artifactId: string, claimId: string, challengeId: string, response: string) =>
+  request<{ event: Event }>("POST", `/grill/${artifactId}/answer`, { claim_id: claimId, response, challenge_id: challengeId })
 
-export const autoVerdict = (artifactId: string, claimId: string, claimBody: string, question: string, answerText: string) =>
-  request<{ event: Event }>("POST", `/grill/${artifactId}/auto-verdict`, { claim_id: claimId, claim_body: claimBody, question, answer: answerText })
+export const autoVerdict = (artifactId: string, claimId: string, claimBody: string, question: string, answerText: string, challengeId: string) =>
+  request<{ event: Event }>("POST", `/grill/${artifactId}/auto-verdict`, { claim_id: claimId, claim_body: claimBody, question, answer: answerText, challenge_id: challengeId })
 
 // Events
 export const confirmEvent = (artifactId: string, eventId: string) =>
@@ -98,3 +98,18 @@ export const ingestLensFeed = (artifactId: string, libraryId: string) =>
 
 export const queryLensFeed = (libraryId: string) =>
   request<{ entries: unknown[] }>("GET", `/lens-feed?library_id=${libraryId}`)
+
+// Lens cross-idea contradiction scan. Surfaces pending `challenge` events with
+// payload.kind === "lens_contradiction". May fail (e.g. 501) when no LLM is
+// configured — callers must swallow that so a lens failure never breaks grill.
+export const scanContradictions = (
+  artifactId: string,
+  claimId: string,
+  claimBody: string,
+  includeSoft = false,
+) =>
+  request<{ events: Event[] }>("POST", `/lens/${artifactId}/scan-contradictions`, {
+    claim_id: claimId,
+    claim_body: claimBody,
+    include_soft: includeSoft,
+  })

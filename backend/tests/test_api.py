@@ -187,6 +187,35 @@ class TestGrill:
         assert "event" in result
         assert result["event"]["type"] == "answer"
 
+    def test_answer_threads_challenge_id_into_payload(self, client: TestClient):
+        """POST /answer with challenge_id records it in the ANSWER payload."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        challenge_id = _challenge(client, artifact_id, claim_id)["event"]["id"]
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/answer",
+            json={"claim_id": claim_id, "response": "Because.", "challenge_id": challenge_id},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["event"]["payload"]["challenge_id"] == challenge_id
+
+    def test_verdict_threads_challenge_id_into_payload(self, client: TestClient):
+        """POST /verdict with challenge_id records it in the VERDICT payload."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        challenge_id = _challenge(client, artifact_id, claim_id)["event"]["id"]
+        _answer(client, artifact_id, claim_id)
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/verdict",
+            json={"claim_id": claim_id, "outcome": "survive", "rationale": "ok", "challenge_id": challenge_id},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["event"]["payload"]["challenge_id"] == challenge_id
+
     def test_verdict_returns_event(self, client: TestClient):
         data = _park(client)
         artifact_id = data["artifact"]["id"]
@@ -852,6 +881,99 @@ class TestAutoGrillAPI:
             json={"claim_id": claim_id, "claim_body": "test idea"},
         )
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Lens (cross-idea contradiction detection) API tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def client_with_contradiction_llm(monkeypatch):
+    """TestClient with a FakeLLMClient that reports a hard contradiction."""
+    monkeypatch.setenv("ANNEAL_LLM_KEY", "")
+    monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
+    app = create_app()
+    with TestClient(app) as c:
+        fake_llm = FakeLLMClient([
+            json.dumps({
+                "contradicts": True,
+                "tension_type": "hard",
+                "tension": "Past claim was upheld but the current claim asserts the opposite.",
+                "question": "How do you reconcile this with the survived claim?",
+            }),
+        ])
+        _state["lens_service"]._llm = fake_llm
+        yield c
+
+
+def _grill_to_survived(client: TestClient, body: str) -> dict:
+    """Park a claim and drive it through a full grill to confirmed survived.
+
+    Returns the original park response (artifact + claim).
+    """
+    data = _park(client, body=body)
+    artifact_id = data["artifact"]["id"]
+    claim_id = data["claim"]["id"]
+    _start_grill(client, artifact_id)
+    _challenge(client, artifact_id, claim_id)
+    _answer(client, artifact_id, claim_id)
+    verdict_result = _verdict(client, artifact_id, claim_id, outcome="survive")
+    _confirm(client, artifact_id, verdict_result["event"]["id"])
+    return data
+
+
+class TestLensScanContradictionsAPI:
+    def test_scan_without_llm_returns_501(self, client: TestClient):
+        """POST /lens/{id}/scan-contradictions without LLM configured -> 501."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+
+        resp = client.post(
+            f"/api/v1/lens/{artifact_id}/scan-contradictions",
+            json={"claim_id": claim_id, "claim_body": "test idea"},
+        )
+        assert resp.status_code == 501
+
+    def test_scan_surfaces_lens_contradiction(self, client_with_contradiction_llm: TestClient):
+        """A survived past claim + fake LLM hit -> one pending lens-contradiction
+        CHALLENGE targeting the current claim."""
+        client = client_with_contradiction_llm
+        body = "anesthesia reduces postoperative pain"
+
+        # Past claim, fully grilled to survived.
+        _grill_to_survived(client, body)
+
+        # Current claim being grilled (same library, different artifact).
+        current = _park(client, body=body)
+        cur_artifact_id = current["artifact"]["id"]
+        cur_claim_id = current["claim"]["id"]
+        _start_grill(client, cur_artifact_id)
+
+        resp = client.post(
+            f"/api/v1/lens/{cur_artifact_id}/scan-contradictions",
+            json={"claim_id": cur_claim_id, "claim_body": body},
+        )
+        assert resp.status_code == 200, resp.text
+        events = resp.json()["events"]
+        assert len(events) == 1
+        event = events[0]
+        assert event["type"] == "challenge"
+        assert event["confirmed"] is False
+        assert event["target_ref"] == cur_claim_id
+        assert event["payload"]["kind"] == "lens_contradiction"
+        assert event["payload"]["past_outcome"] == "survived"
+
+    def test_scan_nonexistent_artifact_returns_400(self, client_with_contradiction_llm: TestClient):
+        """ValueError for a missing artifact maps via _handle_domain_error -> 400."""
+        resp = client_with_contradiction_llm.post(
+            "/api/v1/lens/does-not-exist/scan-contradictions",
+            json={"claim_id": "c-missing", "claim_body": "anything"},
+        )
+        assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------

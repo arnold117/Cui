@@ -17,6 +17,7 @@ from anneal.api.deps import (
     get_grill_service,
     get_grounding_service,
     get_lens_feed_service,
+    get_lens_service,
     get_park_service,
     get_promote_service,
     get_repository,
@@ -33,6 +34,7 @@ from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
 from anneal.services.grounding_service import GroundingService
 from anneal.services.lens_feed_service import LensFeedService
+from anneal.services.lens_service import LensService
 from anneal.services.park_service import ParkService
 from anneal.services.promote_service import PromoteService
 from anneal.store.event_store import EventStore
@@ -64,12 +66,14 @@ class ChallengeRequest(BaseModel):
 class AnswerRequest(BaseModel):
     claim_id: str
     response: str
+    challenge_id: str | None = None
 
 
 class VerdictRequest(BaseModel):
     claim_id: str
     outcome: str
     rationale: str = ""
+    challenge_id: str | None = None
 
 
 class BypassRequest(BaseModel):
@@ -99,6 +103,7 @@ class AutoVerdictRequest(BaseModel):
     claim_body: str
     question: str
     answer: str
+    challenge_id: str | None = None
 
 
 class EditRequest(BaseModel):
@@ -128,6 +133,12 @@ class AutoGroundRequest(BaseModel):
     claim_id: str
     claim_body: str
     material_id: str
+
+
+class ScanContradictionsRequest(BaseModel):
+    claim_id: str
+    claim_body: str
+    include_soft: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +260,9 @@ def grill_answer(
     grill_svc: GrillService = Depends(get_grill_service),
 ):
     try:
-        event = grill_svc.answer(artifact_id, req.claim_id, req.response)
+        event = grill_svc.answer(
+            artifact_id, req.claim_id, req.response, req.challenge_id,
+        )
     except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
         raise _handle_domain_error(exc)
     return {"event": event.model_dump(mode="json")}
@@ -263,7 +276,7 @@ def grill_verdict(
 ):
     try:
         event = grill_svc.verdict(
-            artifact_id, req.claim_id, req.outcome, req.rationale,
+            artifact_id, req.claim_id, req.outcome, req.rationale, req.challenge_id,
         )
     except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
         raise _handle_domain_error(exc)
@@ -309,6 +322,7 @@ def auto_verdict(
     try:
         event = grill_svc.auto_verdict(
             artifact_id, req.claim_id, req.claim_body, req.question, req.answer,
+            req.challenge_id,
         )
         return {"event": event.model_dump(mode="json")}
     except LLMNotConfiguredError as exc:
@@ -448,6 +462,30 @@ def auto_ground(
             artifact_id, req.claim_id, req.claim_body, req.material_id
         )
         return {"event": event.model_dump(mode="json")}
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except LLMResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
+        raise _handle_domain_error(exc)
+
+
+# ---------------------------------------------------------------------------
+# Lens endpoint — cross-idea contradiction detection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/lens/{artifact_id}/scan-contradictions")
+def scan_contradictions(
+    artifact_id: str,
+    req: ScanContradictionsRequest,
+    lens_svc: LensService = Depends(get_lens_service),
+):
+    try:
+        events = lens_svc.scan_contradictions(
+            artifact_id, req.claim_id, req.claim_body, req.include_soft
+        )
+        return {"events": [e.model_dump(mode="json") for e in events]}
     except LLMNotConfiguredError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except LLMResponseError as exc:

@@ -56,6 +56,24 @@ export interface Claim {
   updated_at: string
 }
 
+// Payload shape carried by a `challenge` event surfaced by the Lens
+// (cross-idea contradiction). Distinguished from an LLM grill challenge only
+// by `kind === "lens_contradiction"` — same lifecycle otherwise.
+export interface LensChallengePayload {
+  kind: "lens_contradiction"
+  question: string
+  past_claim_id: string
+  past_artifact_id: string
+  past_outcome: "survived" | "killed"
+  tension_type: "hard" | "duplicate" | "soft"
+  tension: string
+  auto_generated: boolean
+}
+
+export function isLensChallenge(event: Event): boolean {
+  return event.type === "challenge" && event.payload.kind === "lens_contradiction"
+}
+
 export type ClaimStatus = "parked" | "grilling" | "survived" | "killed"
 
 export interface SidebarEntry {

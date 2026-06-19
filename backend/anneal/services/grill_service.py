@@ -135,21 +135,36 @@ class GrillService:
         )
         return self._event_service.append_event(artifact_id, event)
 
-    def answer(self, artifact_id: str, claim_id: str, response: str) -> Event:
+    def answer(
+        self,
+        artifact_id: str,
+        claim_id: str,
+        response: str,
+        challenge_id: str | None = None,
+    ) -> Event:
         """User answers a challenge. Appends ANSWER event.
 
         actor="user", confirmed=True (user doing it IS confirmation).
         target_ref=claim_id.
 
+        ``challenge_id`` is optional and additive: when provided it is recorded
+        in the payload so the answer can be paired to the specific challenge it
+        belongs to (required once challenges run in parallel — several may be
+        open at once, so ts-ordering alone is ambiguous). Omitting it keeps the
+        legacy linear behavior intact.
+
         Validates: at least one CHALLENGE event must exist.
         """
         self._assert_has_challenge(artifact_id)
+        payload: dict = {"response": response}
+        if challenge_id is not None:
+            payload["challenge_id"] = challenge_id
         event = make_event(
             type=ANSWER,
             actor="user",
             confirmed=True,
             target_ref=claim_id,
-            payload={"response": response},
+            payload=payload,
         )
         return self._event_service.append_event(artifact_id, event)
 
@@ -159,6 +174,7 @@ class GrillService:
         claim_id: str,
         outcome: str,
         rationale: str,
+        challenge_id: str | None = None,
     ) -> Event:
         """Judge verdict on a claim. Appends VERDICT event.
 
@@ -167,6 +183,10 @@ class GrillService:
         target_ref=claim_id.
         Killed ideas permanently remain in trajectory.
 
+        ``challenge_id`` is optional and additive: when provided it is recorded
+        in the payload so the verdict can be paired to the specific challenge it
+        resolves (see ``answer``). Omitting it keeps legacy behavior intact.
+
         Validates: at least one CHALLENGE event must exist.
         """
         self._assert_has_challenge(artifact_id)
@@ -174,12 +194,15 @@ class GrillService:
             raise ValueError(
                 f"Verdict outcome must be 'survive' or 'kill', got {outcome!r}"
             )
+        payload: dict = {"outcome": outcome, "rationale": rationale}
+        if challenge_id is not None:
+            payload["challenge_id"] = challenge_id
         event = make_event(
             type=VERDICT,
             actor="system",
             confirmed=False,
             target_ref=claim_id,
-            payload={"outcome": outcome, "rationale": rationale},
+            payload=payload,
         )
         return self._event_service.append_event(artifact_id, event)
 
@@ -234,8 +257,21 @@ class GrillService:
         )
         return self._event_service.append_event(artifact_id, event)
 
-    def auto_verdict(self, artifact_id: str, claim_id: str, claim_body: str, question: str, answer: str) -> Event:
-        """LLM-generated verdict. confirmed=False per spec §2.6."""
+    def auto_verdict(
+        self,
+        artifact_id: str,
+        claim_id: str,
+        claim_body: str,
+        question: str,
+        answer: str,
+        challenge_id: str | None = None,
+    ) -> Event:
+        """LLM-generated verdict. confirmed=False per spec §2.6.
+
+        ``challenge_id`` is optional and additive — when provided it is recorded
+        in the payload so the verdict pairs to the specific challenge it resolves
+        (see ``answer``/``verdict``). Omitting it keeps legacy behavior intact.
+        """
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
         from anneal.llm.prompts import build_verdict_prompt, format_evidence_block
@@ -249,16 +285,19 @@ class GrillService:
         outcome = result.get("outcome", "")
         if outcome not in ("survive", "kill"):
             raise LLMResponseError(f"LLM returned invalid verdict outcome: {outcome!r}")
+        payload: dict = {
+            "outcome": outcome,
+            "rationale": result.get("rationale", ""),
+            "confidence": result.get("confidence", 0.0),
+            "auto_generated": True,
+            "evidence_count": len(evidence_events),
+            "grounded_material_ids": [e.payload.get("material_id") for e in evidence_events],
+        }
+        if challenge_id is not None:
+            payload["challenge_id"] = challenge_id
         event = make_event(
             type=VERDICT, actor="system", confirmed=False,
             target_ref=claim_id,
-            payload={
-                "outcome": outcome,
-                "rationale": result.get("rationale", ""),
-                "confidence": result.get("confidence", 0.0),
-                "auto_generated": True,
-                "evidence_count": len(evidence_events),
-                "grounded_material_ids": [e.payload.get("material_id") for e in evidence_events],
-            },
+            payload=payload,
         )
         return self._event_service.append_event(artifact_id, event)
