@@ -14,6 +14,8 @@ interface Props {
   selectedId: string | null
   onSelect: (id: string | null) => void
   refreshKey: number
+  showGraph: boolean
+  onShowGraph: () => void
 }
 
 const STATUS_ORDER: ClaimStatus[] = ["grilling", "parked", "survived", "killed"]
@@ -24,7 +26,7 @@ const STATUS_LABELS: Record<ClaimStatus, string> = {
   killed: "Killed",
 }
 
-export default function Sidebar({ selectedId, onSelect, refreshKey }: Props) {
+export default function Sidebar({ selectedId, onSelect, refreshKey, showGraph, onShowGraph }: Props) {
   const [entries, setEntries] = useState<SidebarEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -95,12 +97,27 @@ export default function Sidebar({ selectedId, onSelect, refreshKey }: Props) {
                 goal={artifact.goal}
                 kind={artifact.kind}
                 status={s}
-                selected={artifact.id === selectedId}
+                selected={!showGraph && artifact.id === selectedId}
                 onClick={() => onSelect(artifact.id)}
               />
             ))}
           </div>
         ))}
+      </div>
+
+      {/* Footer: library-level corpus graph */}
+      <div className="shrink-0 border-t border-zinc-800 p-2">
+        <button
+          className={`w-full px-3 py-2 rounded-md text-left text-sm transition-colors ${
+            showGraph
+              ? "bg-zinc-800 text-purple-300"
+              : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+          }`}
+          onClick={onShowGraph}
+          title="View the library's corpus graph"
+        >
+          🕸 语料图
+        </button>
       </div>
     </aside>
   )

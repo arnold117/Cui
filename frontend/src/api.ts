@@ -1,4 +1,4 @@
-import type { Artifact, Claim, DocVersion, Event, Material } from "./types"
+import type { Artifact, Claim, CorpusGraph, DocVersion, Event, Material } from "./types"
 
 const BASE = "/api/v1"
 
@@ -29,6 +29,10 @@ export const getClaim = (id: string) =>
 
 export const listArtifacts = (libraryId: string) =>
   request<{ artifacts: Artifact[] }>("GET", `/artifacts?library_id=${libraryId}`)
+
+// Corpus graph (语料图) — library-level node-link view.
+export const getCorpusGraph = (libraryId = "default") =>
+  request<CorpusGraph>("GET", `/library/${libraryId}/graph`)
 
 // Grill
 export const startGrill = (artifactId: string, kind: string) =>

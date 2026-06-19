@@ -5,7 +5,9 @@ import GrillView from "./components/GrillView"
 import DocView from "./components/DocView"
 import TrajectoryView from "./components/TrajectoryView"
 import VersionsView from "./components/VersionsView"
+import CorpusGraphView from "./components/CorpusGraphView"
 import EmptyState from "./components/EmptyState"
+import { LIBRARY_ID } from "./constants"
 import { getArtifact, getTrajectory, getClaim } from "./api"
 import { deriveClaimStatus } from "./utils"
 import type { Artifact, Claim, ClaimStatus } from "./types"
@@ -14,6 +16,7 @@ type DocTab = "doc" | "trajectory" | "versions"
 
 function App() {
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
+  const [showGraph, setShowGraph] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Loaded data for selected artifact
@@ -29,8 +32,13 @@ function App() {
   }, [])
 
   const handleSelect = useCallback((id: string | null) => {
+    setShowGraph(false)
     setSelectedArtifactId(id)
     setDocTab("doc")
+  }, [])
+
+  const handleShowGraph = useCallback(() => {
+    setShowGraph(true)
   }, [])
 
   // Fetch artifact + claim + status when selection changes
@@ -92,6 +100,11 @@ function App() {
   }, [selectedArtifactId, refreshKey])
 
   const renderContent = () => {
+    // Library-level corpus graph view takes precedence over artifact views.
+    if (showGraph) {
+      return <CorpusGraphView libraryId={LIBRARY_ID} />
+    }
+
     // No selection: show park view
     if (selectedArtifactId === null) {
       return <ParkView onRefresh={handleRefresh} onSelect={(id) => setSelectedArtifactId(id)} />
@@ -199,6 +212,8 @@ function App() {
         selectedId={selectedArtifactId}
         onSelect={handleSelect}
         refreshKey={refreshKey}
+        showGraph={showGraph}
+        onShowGraph={handleShowGraph}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">

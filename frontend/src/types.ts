@@ -92,6 +92,25 @@ export function isTasteChallenge(event: Event): boolean {
   return event.type === "challenge" && event.payload.kind === "taste"
 }
 
+// Corpus graph (语料图) — library-level node-link view of confirmed relations.
+export interface GraphNode {
+  id: string
+  type: "claim" | "material"
+  label: string
+  status: string | null // survived/killed/parked/open — claim nodes only
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
+  type: "contradicts" | "grounds"
+}
+
+export interface CorpusGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+}
+
 export type ClaimStatus = "parked" | "grilling" | "survived" | "killed"
 
 export interface SidebarEntry {
