@@ -79,6 +79,9 @@ GET /library/{library_id}/graph   （纯投影，即时算）
 
 ## 6. 备注（Tier 1 / Tier 2，分期后续）
 
-- **Tier 1（持久语义图）**：grill 一个 claim 时 LLM 算 builds-on/same-method/contradicts 语义边并持久化（增量建图）。这是持久 Lens 存储进入点——届时单独拍 schema/存储/增量策略。无 embedding。
+- **Tier 1（持久语义图）**：grill 一个 claim 时 LLM 算语义边并持久化（增量建图）。这是持久 Lens 存储进入点——届时单独拍 schema/存储/增量策略。无 embedding。
+  - **边集已被 L4 scoping 反推定死**（见 `docs/scope-l4-agenda-copilot.md`）：`contradicts`（②已有，Tier 1 让它持久+主动算）+ `builds-on/depends-on`（新）+ `shares-method/shares-gap`（新）。
+  - 还要：**跨 Project 可遍历**（claim 带 project 归属）、claim status 在图上、**可算 centrality（节点度数）**——全是 L4 威胁检测（severity × centrality）的底座。
+  - **staleness 是新增的 bug 面**（持久化代价）：claim 被 edit(substance)/retract、verdict 翻转 → 相关边要失效/重算。grill Tier 1 时重点拍这条。
 - **Tier 2（完整 GraphRAG）**：实体抽取 + 社区检测 + 摘要 + dense vector。核心架构大决定，按 LitScribe 旧账"先拉出方向问题，不闷头改"。
 - 守的铁律：作用域 Library；取证不定见（只收已确认关系）；Tier 0/1 不碰 embedding。
