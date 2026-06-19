@@ -180,7 +180,10 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
     )
   }
 
-  const isEmpty = !graph || graph.nodes.length === 0 || graph.edges.length === 0
+  // Empty only when there are no nodes at all. Isolated claim nodes (no
+  // confirmed edges yet) still render — you want to SEE your corpus, not a
+  // blank screen just because relationships haven't formed.
+  const isEmpty = !graph || graph.nodes.length === 0
 
   if (isEmpty) {
     return (
