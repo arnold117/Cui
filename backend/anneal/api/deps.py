@@ -22,6 +22,7 @@ from anneal.services.collect_service import CollectService
 from anneal.services.event_service import EventService
 from anneal.services.grill_service import GrillService
 from anneal.services.grounding_service import GroundingService
+from anneal.services.lens_service import LensService
 from anneal.services.lens_feed_service import (
     InMemoryLensFeedStore,
     LensFeedService,
@@ -94,6 +95,9 @@ def _init_state() -> None:
     )
     _state["promote_service"] = PromoteService(event_store, event_service)
     _state["lens_feed_service"] = LensFeedService(event_store, feed_store)
+    _state["lens_service"] = LensService(
+        event_store, event_service, repo=repo, llm=llm_client
+    )
 
 
 @asynccontextmanager
@@ -139,6 +143,10 @@ def get_promote_service() -> PromoteService:
 
 def get_lens_feed_service() -> LensFeedService:
     return _state["lens_feed_service"]  # type: ignore[return-value]
+
+
+def get_lens_service() -> LensService:
+    return _state["lens_service"]  # type: ignore[return-value]
 
 
 def get_repository() -> Repository:

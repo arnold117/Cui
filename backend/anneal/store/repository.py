@@ -25,6 +25,7 @@ class Repository(Protocol):
     def list_artifacts(self, library_id: str) -> list[Artifact]: ...
     def create_claim(self, claim: Claim) -> None: ...
     def get_claim(self, claim_id: str) -> Claim | None: ...
+    def list_claims(self, library_id: str) -> list[Claim]: ...
     def create_material(self, material: Material) -> None: ...
     def get_material(self, material_id: str) -> Material | None: ...
     def create_conversation(self, conv: Conversation) -> None: ...
@@ -75,6 +76,9 @@ class InMemoryRepository:
 
     def get_claim(self, claim_id: str) -> Claim | None:
         return self._claims.get(claim_id)
+
+    def list_claims(self, library_id: str) -> list[Claim]:
+        return [c for c in self._claims.values() if c.library_id == library_id]
 
     # --- Material ---
 
@@ -278,6 +282,34 @@ class PostgresRepository:
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
+
+    def list_claims(self, library_id: str) -> list[Claim]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(schema.claims).where(
+                    schema.claims.c.library_id == library_id
+                )
+            ).fetchall()
+
+            claims: list[Claim] = []
+            for row in rows:
+                artifact_rows = conn.execute(
+                    select(schema.claim_artifacts.c.artifact_id).where(
+                        schema.claim_artifacts.c.claim_id == row.id
+                    )
+                ).fetchall()
+
+                claims.append(
+                    Claim(
+                        id=row.id,
+                        library_id=row.library_id,
+                        body=row.body,
+                        artifact_ids=[r.artifact_id for r in artifact_rows],
+                        created_at=row.created_at,
+                        updated_at=row.updated_at,
+                    )
+                )
+            return claims
 
     # --- Material ---
 

@@ -135,6 +135,27 @@ class TestClaimRoundTrip:
         repo = InMemoryRepository()
         assert repo.get_claim("no-such-id") is None
 
+    def test_list_claims_filters_by_library(self) -> None:
+        repo = InMemoryRepository()
+        c1 = Claim(id="c1", library_id="lib-1", body="b1")
+        c2 = Claim(id="c2", library_id="lib-1", body="b2")
+        c3 = Claim(id="c3", library_id="lib-2", body="b3")
+        repo.create_claim(c1)
+        repo.create_claim(c2)
+        repo.create_claim(c3)
+
+        lib1_claims = repo.list_claims("lib-1")
+        assert len(lib1_claims) == 2
+        assert {c.id for c in lib1_claims} == {"c1", "c2"}
+
+        lib2_claims = repo.list_claims("lib-2")
+        assert len(lib2_claims) == 1
+        assert lib2_claims[0].id == "c3"
+
+    def test_list_claims_empty(self) -> None:
+        repo = InMemoryRepository()
+        assert repo.list_claims("no-lib") == []
+
 
 class TestMaterialRoundTrip:
     def test_create_and_get(self) -> None:

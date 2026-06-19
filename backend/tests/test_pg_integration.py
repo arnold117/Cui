@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from anneal.domain.events import Event, make_event
-from anneal.domain.models import Artifact, Library, Project, Material
+from anneal.domain.models import Artifact, Claim, Library, Project, Material
 from anneal.services.lens_feed_service import LensFeedEntry, PostgresLensFeedStore
 from anneal.store.database import create_all_tables
 from anneal.store.event_store import DuplicateEventError, PostgresEventStore
@@ -154,6 +154,28 @@ class TestPostgresRepository:
         assert repo.get_artifact("nope") is None
         assert repo.get_library("nope") is None
         assert repo.get_claim("nope") is None
+
+    def test_list_claims(self, engine) -> None:
+        repo = PostgresRepository(engine)
+
+        lib1 = Library(id="lib-1", name="Lib 1")
+        lib2 = Library(id="lib-2", name="Lib 2")
+        repo.create_library(lib1)
+        repo.create_library(lib2)
+
+        c1 = Claim(id="c1", library_id="lib-1", body="b1")
+        c2 = Claim(id="c2", library_id="lib-1", body="b2")
+        c3 = Claim(id="c3", library_id="lib-2", body="b3")
+        repo.create_claim(c1)
+        repo.create_claim(c2)
+        repo.create_claim(c3)
+
+        lib1_claims = repo.list_claims("lib-1")
+        assert len(lib1_claims) == 2
+        assert {c.id for c in lib1_claims} == {"c1", "c2"}
+
+        lib2_claims = repo.list_claims("lib-2")
+        assert {c.id for c in lib2_claims} == {"c3"}
 
 
 # ------------------------------------------------------------------

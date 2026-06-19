@@ -81,6 +81,57 @@ def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) ->
     return system, user
 
 
+def build_contradiction_prompt(
+    current_claim: str, past_claim: str, past_outcome: str
+) -> tuple[str, str]:
+    """Judge whether the CURRENT claim conflicts with the user's OWN PAST claim.
+
+    The past claim was already grilled by the user and either ``survived`` or
+    ``killed`` (``past_outcome``). The reviewer identifies the *factual*
+    relationship between the two claims and, if they conflict, poses a single
+    challenge question grounded in that conflict.
+
+    RED LINE (spec §2): the reviewer must NOT score idea quality or give taste
+    judgments — only identify the relationship and pose a question. The verdict
+    on the current claim stays with the user (取证不定见).
+    """
+    system = (
+        "You are a rigorous reviewer comparing a researcher's CURRENT claim "
+        "against one of their OWN PAST claims that they previously grilled and "
+        "resolved (it either survived or was killed). Your ONLY job is to "
+        "identify the factual relationship between the two claims and, if they "
+        "conflict, to pose a single challenge question grounded in that "
+        "conflict.\n\n"
+        "Classify the relationship:\n"
+        '- "hard": a logical contradiction — the current claim asserts X and '
+        "the past claim asserts not-X (they cannot both hold).\n"
+        '- "duplicate": the current claim is essentially the same claim the '
+        "user already grilled (same assertion, restated).\n"
+        '- "soft": mere incremental-pattern tension — no logical conflict, e.g. '
+        "the current claim is yet another variant of the same method/angle as "
+        "the past one. Use this ONLY when there is a real tension but NOT a "
+        "logical contradiction or duplicate.\n\n"
+        "CRITICAL — you must NOT score, rank, praise, or criticize the quality, "
+        "novelty, or merit of either idea. Do NOT decide whether the current "
+        "claim is good or should survive. State only the factual relationship "
+        "and pose a question; the user decides the verdict.\n\n"
+        'Set "contradicts" to true ONLY when the relationship is hard, '
+        "duplicate, or a genuine soft tension worth surfacing; otherwise false.\n\n"
+        "Respond ONLY with valid JSON in this exact format:\n"
+        '{"contradicts": true or false, '
+        '"tension_type": "hard" or "duplicate" or "soft", '
+        '"tension": "<where they factually conflict, no quality judgment>", '
+        '"question": "<the challenge question to pose to the user>"}'
+    )
+    user = (
+        f"Current claim (being grilled now): {current_claim}\n\n"
+        f"Past claim (the user already {past_outcome} this one): {past_claim}\n\n"
+        "Do these claims contradict, duplicate, or stand in tension? "
+        "Identify the factual relationship and, if so, the challenge question."
+    )
+    return system, user
+
+
 def build_verdict_prompt(
     claim: str, question: str, answer: str, evidence: str = ""
 ) -> tuple[str, str]:
