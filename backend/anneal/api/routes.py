@@ -141,6 +141,11 @@ class ScanContradictionsRequest(BaseModel):
     include_soft: bool = False
 
 
+class AssessTasteRequest(BaseModel):
+    claim_id: str
+    claim_body: str
+
+
 # ---------------------------------------------------------------------------
 # Exception → HTTP mapping helper
 # ---------------------------------------------------------------------------
@@ -484,6 +489,25 @@ def scan_contradictions(
     try:
         events = lens_svc.scan_contradictions(
             artifact_id, req.claim_id, req.claim_body, req.include_soft
+        )
+        return {"events": [e.model_dump(mode="json") for e in events]}
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except LLMResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
+        raise _handle_domain_error(exc)
+
+
+@router.post("/lens/{artifact_id}/assess-taste")
+async def assess_taste(
+    artifact_id: str,
+    req: AssessTasteRequest,
+    lens_svc: LensService = Depends(get_lens_service),
+):
+    try:
+        events = await lens_svc.assess_taste(
+            artifact_id, req.claim_id, req.claim_body
         )
         return {"events": [e.model_dump(mode="json") for e in events]}
     except LLMNotConfiguredError as exc:

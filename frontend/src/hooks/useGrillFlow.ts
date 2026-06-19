@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import type { Event, Claim } from "../types"
-import { isLensChallenge } from "../types"
+import { isLensChallenge, isTasteChallenge } from "../types"
 import * as api from "../api"
 
 // ---------------------------------------------------------------------------
@@ -58,6 +58,9 @@ export interface GrillFlowActions {
   continueGrill: () => void
   stopGrill: () => void
   scanLens: () => void
+  /** User-initiated, on-demand taste-anchor assessment (评品味). NOT auto, NOT
+   * fired on grill start. Surfaces a taste `challenge` into the board. */
+  assessTaste: () => void
   refreshEvents: () => void
 }
 
@@ -180,7 +183,13 @@ export function deriveChallenges(events: Event[], claimId: string): ChallengeVie
       state,
       answerEvent,
       verdictEvent,
-      source: isLensChallenge(challenge) ? "lens" : "grill",
+      // Lens-surfaced challenges — cross-idea contradictions AND taste-anchor
+      // verdicts — are surfaced tensions, not grill rounds; both map to "lens"
+      // so countRounds excludes them.
+      source:
+        isLensChallenge(challenge) || isTasteChallenge(challenge)
+          ? "lens"
+          : "grill",
     }
   })
 
@@ -270,6 +279,25 @@ export function useGrillFlow(
       await refreshEvents()
     } catch {
       // Swallow: a lens failure (e.g. 501 when no LLM) must never break grill.
+    }
+  }, [artifactId, claim.id, claim.body, refreshEvents])
+
+  // --- Taste anchor (评品味): user-initiated, on-demand. Unlike scanLens it is
+  // NOT fired on grill start. It shows a loading state (it's a deliberate
+  // action the user waits on), but surfaces/swallows errors like scanLens so a
+  // taste failure (e.g. 501 no LLM, or simply zero anchors) never breaks grill.
+  const assessTaste = useCallback(async () => {
+    setError(null)
+    setLoading(true)
+    try {
+      await api.assessTaste(artifactId, claim.id, claim.body)
+      if (!mountedRef.current) return
+      await refreshEvents()
+    } catch (e) {
+      if (!mountedRef.current) return
+      setError(e instanceof Error ? e.message : "Failed to assess taste")
+    } finally {
+      if (mountedRef.current) setLoading(false)
     }
   }, [artifactId, claim.id, claim.body, refreshEvents])
 
@@ -477,6 +505,7 @@ export function useGrillFlow(
     continueGrill,
     stopGrill,
     scanLens,
+    assessTaste,
     refreshEvents,
   }
 }

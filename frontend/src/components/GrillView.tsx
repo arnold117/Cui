@@ -191,7 +191,20 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
           <span className="text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-700/50 text-amber-200 shrink-0 mt-0.5">
             {artifact.kind}
           </span>
-          <p className="text-sm text-zinc-200 leading-relaxed">{claim.body}</p>
+          <p className="text-sm text-zinc-200 leading-relaxed flex-1">{claim.body}</p>
+          {/* 评品味: explicit, on-demand taste-anchor. Surfaces a taste challenge
+              into the board (or nothing, when there's no grilled history/anchor). */}
+          <button
+            className="shrink-0 mt-0.5 px-3 py-1 rounded-full text-xs font-medium bg-violet-700/40 text-violet-200 border border-violet-600/40 hover:bg-violet-700/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+            onClick={flow.assessTaste}
+            disabled={flow.loading}
+            title="把这个 claim 锚在文献与你的历史上，给出品味定位"
+          >
+            {flow.loading && (
+              <span className="inline-block w-1.5 h-1.5 bg-violet-300 rounded-full animate-pulse" />
+            )}
+            ◆ 评品味
+          </button>
         </div>
         <EvidencePanel
           artifactId={artifactId}

@@ -113,3 +113,17 @@ export const scanContradictions = (
     claim_body: claimBody,
     include_soft: includeSoft,
   })
+
+// Lens taste anchor (品味锚). User-initiated, on-demand. Surfaces pending
+// `challenge` events with payload.kind === "taste". May return zero events
+// (no grilled history / no real anchor) or fail (e.g. 501 when no LLM) — a
+// taste failure must never break grill.
+export const assessTaste = (
+  artifactId: string,
+  claimId: string,
+  claimBody: string,
+) =>
+  request<{ events: Event[] }>("POST", `/lens/${artifactId}/assess-taste`, {
+    claim_id: claimId,
+    claim_body: claimBody,
+  })

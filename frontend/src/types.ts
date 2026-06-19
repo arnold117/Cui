@@ -74,6 +74,24 @@ export function isLensChallenge(event: Event): boolean {
   return event.type === "challenge" && event.payload.kind === "lens_contradiction"
 }
 
+// Payload shape carried by a `challenge` event surfaced by the Lens taste
+// anchor (品味锚). Distinguished by `kind === "taste"` — same challenge
+// lifecycle otherwise. tier is a RELATIVE rubric position (no numeric score);
+// anchors cite real papers / the user's own grilled past claims.
+export interface TasteChallengePayload {
+  kind: "taste"
+  tier: "replication" | "incremental" | "novel_but_tasteless" | "tasteful"
+  reasoning: string
+  anchored_papers: { title: string }[]
+  anchored_claims: { past_claim_id: string }[]
+  question: string
+  auto_generated: boolean
+}
+
+export function isTasteChallenge(event: Event): boolean {
+  return event.type === "challenge" && event.payload.kind === "taste"
+}
+
 export type ClaimStatus = "parked" | "grilling" | "survived" | "killed"
 
 export interface SidebarEntry {

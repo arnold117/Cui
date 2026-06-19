@@ -977,6 +977,75 @@ class TestLensScanContradictionsAPI:
 
 
 # ---------------------------------------------------------------------------
+# Lens (taste anchor / 品味锚) API tests
+# ---------------------------------------------------------------------------
+
+
+class TestLensAssessTasteAPI:
+    def test_assess_taste_without_llm_returns_501(self, client: TestClient):
+        """POST /lens/{id}/assess-taste without LLM configured -> 501."""
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+
+        resp = client.post(
+            f"/api/v1/lens/{artifact_id}/assess-taste",
+            json={"claim_id": claim_id, "claim_body": "test idea"},
+        )
+        assert resp.status_code == 501
+
+    def test_assess_taste_surfaces_taste_challenge(self, client: TestClient, monkeypatch):
+        """A survived past claim + fake taste LLM verdict -> one pending taste
+        CHALLENGE targeting the current claim, tier set, confirmed False."""
+        body = "anesthesia reduces postoperative pain"
+
+        # Past claim, fully grilled to survived (the history anchor / Q-G gate).
+        past = _grill_to_survived(client, body)
+        past_claim_id = past["claim"]["id"]
+
+        # No-network literature anchor: patch search_openalex at its lens call site.
+        async def _fake_openalex(query, max_results=5, mailto=None):
+            return [_fake_paper("W1", "Anesthesia and pain: a review")]
+
+        monkeypatch.setattr(
+            "anneal.services.lens_service.search_openalex", _fake_openalex
+        )
+
+        # Wire a fake LLM returning a taste verdict anchored to real anchors.
+        fake_llm = FakeLLMClient([
+            json.dumps({
+                "tier": "incremental",
+                "reasoning": "Relative to your survived claim, this is a small increment.",
+                "anchored_papers": [{"title": "Anesthesia and pain: a review"}],
+                "anchored_claims": [{"past_claim_id": past_claim_id}],
+                "question": "Where is the increment worth doing?",
+            }),
+        ])
+        _state["lens_service"]._llm = fake_llm
+
+        # Current claim being grilled (same library, different artifact).
+        current = _park(client, body=body)
+        cur_artifact_id = current["artifact"]["id"]
+        cur_claim_id = current["claim"]["id"]
+        _start_grill(client, cur_artifact_id)
+
+        resp = client.post(
+            f"/api/v1/lens/{cur_artifact_id}/assess-taste",
+            json={"claim_id": cur_claim_id, "claim_body": body},
+        )
+        assert resp.status_code == 200, resp.text
+        events = resp.json()["events"]
+        assert len(events) == 1
+        event = events[0]
+        assert event["type"] == "challenge"
+        assert event["confirmed"] is False
+        assert event["target_ref"] == cur_claim_id
+        assert event["payload"]["kind"] == "taste"
+        assert event["payload"]["tier"] == "incremental"
+
+
+# ---------------------------------------------------------------------------
 # Collect (literature search) API tests
 # ---------------------------------------------------------------------------
 
