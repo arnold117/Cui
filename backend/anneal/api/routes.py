@@ -544,6 +544,24 @@ def get_lens_feed_projection(
     return {"events": [e.model_dump(mode="json") for e in feed]}
 
 
+@router.get("/artifact/{artifact_id}/evidence")
+def get_confirmed_evidence(
+    artifact_id: str,
+    claim_id: str,
+    store: EventStore = Depends(get_event_store),
+):
+    """Confirmed grounding evidence for a claim (read-only).
+
+    Matches the /trajectory & /lens-feed style — never 404, just return a
+    possibly-empty list.
+    """
+    from anneal.domain.projections import confirmed_ground_evidence
+
+    events = store.get_events(artifact_id)
+    evidence = confirmed_ground_evidence(events, claim_id)
+    return {"events": [e.model_dump(mode="json") for e in evidence]}
+
+
 @router.get("/artifact/{artifact_id}/versions")
 def get_versions(
     artifact_id: str,

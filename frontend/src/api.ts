@@ -89,6 +89,9 @@ export const autoGround = (artifactId: string, claimId: string, claimBody: strin
 export const groundManual = (artifactId: string, claimId: string, materialId: string, supported: boolean, evidence = "", assessment = "") =>
   request<{ event: Event }>("POST", `/grounding/${artifactId}/ground`, { claim_id: claimId, material_id: materialId, supported, evidence, assessment })
 
+export const getEvidence = (artifactId: string, claimId: string) =>
+  request<{ events: Event[] }>("GET", `/artifact/${artifactId}/evidence?claim_id=${claimId}`)
+
 // Lens feed
 export const ingestLensFeed = (artifactId: string, libraryId: string) =>
   request<{ entries: unknown[] }>("POST", `/lens-feed/${artifactId}`, { library_id: libraryId })

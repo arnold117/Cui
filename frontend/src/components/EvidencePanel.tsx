@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { Material, Event } from "../types"
-import { collectMaterials, listMaterials, autoGround, confirmEvent } from "../api"
+import { collectMaterials, listMaterials, autoGround, confirmEvent, getEvidence } from "../api"
 
 interface Props {
   artifactId: string
@@ -27,6 +27,24 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+
+  // Already-confirmed grounding evidence (persisted across sessions).
+  const [confirmedEvidence, setConfirmedEvidence] = useState<Event[]>([])
+
+  const loadConfirmedEvidence = async () => {
+    try {
+      const { events } = await getEvidence(artifactId, claimId)
+      setConfirmedEvidence(events)
+    } catch {
+      // Read-only enrichment — a fetch failure shouldn't break the panel.
+    }
+  }
+
+  // Fetch confirmed evidence whenever the panel opens (or the claim changes).
+  useEffect(() => {
+    if (open) loadConfirmedEvidence()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, artifactId, claimId])
 
   // Per-material grounding state, keyed by material id.
   const [grounding, setGrounding] = useState<Record<string, boolean>>({})
@@ -72,6 +90,8 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
     try {
       await confirmEvent(artifactId, eventId)
       setConfirmed(c => ({ ...c, [materialId]: true }))
+      // Surface the freshly-confirmed evidence in the persisted list too.
+      await loadConfirmedEvidence()
       onGrounded?.()
     } catch (e) {
       setGroundErrors(errs => ({ ...errs, [materialId]: e instanceof Error ? e.message : "确认失败" }))
@@ -99,6 +119,58 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
 
       {open && (
         <div className="px-4 pb-4 space-y-3">
+          {/* Already-confirmed evidence (persisted) */}
+          {confirmedEvidence.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/80">
+                已确认证据
+              </p>
+              <ul className="space-y-2">
+                {confirmedEvidence.map(ev => {
+                  const supported = ev.payload.supported as boolean
+                  const title = (ev.payload.title as string) || "未命名文献"
+                  const evidence = ev.payload.evidence as string | undefined
+                  const assessment = ev.payload.assessment as string | undefined
+                  return (
+                    <li
+                      key={ev.id}
+                      className="border border-emerald-900/50 rounded-lg px-3 py-2.5 bg-emerald-950/20"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm text-zinc-200 leading-snug min-w-0">{title}</p>
+                        <span className="shrink-0 text-[10px] font-medium text-emerald-400 bg-emerald-900/40 px-2 py-0.5 rounded-full">
+                          已确认
+                        </span>
+                      </div>
+                      <div className="mt-1.5 space-y-1">
+                        <span
+                          className={
+                            "text-xs font-semibold " +
+                            (supported ? "text-emerald-400" : "text-red-400")
+                          }
+                        >
+                          {supported ? "✓ 支持" : "✗ 不支持"}
+                        </span>
+                        {Boolean(evidence) && (
+                          <p className="text-xs text-zinc-400 leading-relaxed">
+                            <span className="text-zinc-600">证据：</span>
+                            {evidence}
+                          </p>
+                        )}
+                        {Boolean(assessment) && (
+                          <p className="text-xs text-zinc-400 leading-relaxed">
+                            <span className="text-zinc-600">评估：</span>
+                            {assessment}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
           {/* Search bar */}
           <div className="flex gap-2">
             <input

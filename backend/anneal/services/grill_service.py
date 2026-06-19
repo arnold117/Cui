@@ -224,7 +224,13 @@ class GrillService:
         event = make_event(
             type=CHALLENGE, actor="system", confirmed=False,
             target_ref=claim_id,
-            payload={"question": question, "target_aspect": result.get("target_aspect", ""), "auto_generated": True},
+            payload={
+                "question": question,
+                "target_aspect": result.get("target_aspect", ""),
+                "auto_generated": True,
+                "evidence_count": len(evidence_events),
+                "grounded_material_ids": [e.payload.get("material_id") for e in evidence_events],
+            },
         )
         return self._event_service.append_event(artifact_id, event)
 
@@ -246,6 +252,13 @@ class GrillService:
         event = make_event(
             type=VERDICT, actor="system", confirmed=False,
             target_ref=claim_id,
-            payload={"outcome": outcome, "rationale": result.get("rationale", ""), "confidence": result.get("confidence", 0.0), "auto_generated": True},
+            payload={
+                "outcome": outcome,
+                "rationale": result.get("rationale", ""),
+                "confidence": result.get("confidence", 0.0),
+                "auto_generated": True,
+                "evidence_count": len(evidence_events),
+                "grounded_material_ids": [e.payload.get("material_id") for e in evidence_events],
+            },
         )
         return self._event_service.append_event(artifact_id, event)

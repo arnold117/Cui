@@ -653,13 +653,17 @@ class TestAutoChallengeEvidenceAware:
         llm = CapturingLLMClient([json.dumps({"question": "Q?", "target_aspect": "scope"})])
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
-        _seed_confirmed_ground(store, event_svc, supported=True, title="Landmark RCT")
+        ground_ev = _seed_confirmed_ground(store, event_svc, supported=True, title="Landmark RCT")
 
-        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
 
         assert "Literature evidence:" in llm.last_user
         assert "Landmark RCT" in llm.last_user
         assert "SUPPORTS" in llm.last_user
+
+        # Provenance recorded on the challenge event payload.
+        assert event.payload["evidence_count"] > 0
+        assert ground_ev.payload["material_id"] in event.payload["grounded_material_ids"]
 
     def test_pending_ground_not_in_prompt(self):
         """A PENDING (unconfirmed) ground event must NOT leak into the prompt."""
@@ -690,9 +694,12 @@ class TestAutoChallengeEvidenceAware:
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
 
-        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
 
         assert "Literature evidence:" not in llm.last_user
+        # Provenance recorded honestly even with no evidence.
+        assert event.payload["evidence_count"] == 0
+        assert event.payload["grounded_material_ids"] == []
 
 
 class TestAutoVerdictEvidenceAware:
@@ -706,13 +713,17 @@ class TestAutoVerdictEvidenceAware:
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
         svc.challenge(ARTIFACT, CLAIM_A, "Why?")
-        _seed_confirmed_ground(store, event_svc, supported=False, title="Refuting Study")
+        ground_ev = _seed_confirmed_ground(store, event_svc, supported=False, title="Refuting Study")
 
-        svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
 
         assert "Literature evidence:" in llm.last_user
         assert "Refuting Study" in llm.last_user
         assert "CONTRADICTS" in llm.last_user
+
+        # Provenance recorded on the verdict event payload.
+        assert event.payload["evidence_count"] > 0
+        assert ground_ev.payload["material_id"] in event.payload["grounded_material_ids"]
 
     def test_no_ground_evidence_no_block(self):
         """No confirmed ground evidence -> no evidence block in verdict prompt."""
@@ -725,6 +736,9 @@ class TestAutoVerdictEvidenceAware:
         _park(store)
         svc.challenge(ARTIFACT, CLAIM_A, "Why?")
 
-        svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
 
         assert "Literature evidence:" not in llm.last_user
+        # Provenance recorded honestly even with no evidence.
+        assert event.payload["evidence_count"] == 0
+        assert event.payload["grounded_material_ids"] == []

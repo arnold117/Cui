@@ -25,6 +25,14 @@ export default function GrillMessage({ event, onConfirm, onRetract, isPending, i
     )
   }
 
+  const evidenceCount =
+    typeof event.payload.evidence_count === "number" ? event.payload.evidence_count : 0
+  const evidenceBadge = evidenceCount > 0 && (
+    <span className="text-[10px] text-zinc-400 bg-zinc-800/80 border border-zinc-700/50 px-1.5 py-0.5 rounded-full">
+      📎 基于 {evidenceCount} 篇证据
+    </span>
+  )
+
   // challenge: left-aligned system bubble
   if (event.type === "challenge") {
     const question = (event.payload.question as string) ?? ""
@@ -32,7 +40,10 @@ export default function GrillMessage({ event, onConfirm, onRetract, isPending, i
       <div className="flex justify-start">
         <div className="max-w-[75%] space-y-2">
           <div className="bg-blue-950/60 border border-blue-800/40 rounded-xl rounded-tl-sm px-4 py-3">
-            <p className="text-xs text-blue-400 font-medium mb-1">Challenge</p>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs text-blue-400 font-medium">Challenge</p>
+              {evidenceBadge}
+            </div>
             <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{question}</p>
           </div>
           {isPending && !isLoading && (
@@ -104,6 +115,7 @@ export default function GrillMessage({ event, onConfirm, onRetract, isPending, i
                   confidence: {Math.round(confidence * 100)}%
                 </span>
               )}
+              {evidenceBadge}
             </div>
             <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{rationale}</p>
           </div>

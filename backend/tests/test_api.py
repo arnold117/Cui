@@ -1054,3 +1054,85 @@ class TestGroundingAPI:
         assert event["target_ref"] == claim_id
         assert event["payload"]["supported"] is True
         assert event["payload"]["auto_generated"] is True
+
+
+# ---------------------------------------------------------------------------
+# Confirmed-evidence read endpoint tests
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceEndpoint:
+    def test_returns_confirmed_evidence_for_claim(self, client: TestClient, monkeypatch):
+        """Park + collect + ground + confirm -> the evidence endpoint returns it."""
+        _patch_search(monkeypatch, [_fake_paper("W1", "Supporting paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+
+        ground = client.post(
+            f"/api/v1/grounding/{artifact_id}/ground",
+            json={
+                "claim_id": claim_id,
+                "material_id": material_id,
+                "supported": True,
+                "evidence": "Section 3.",
+                "assessment": "Supports.",
+            },
+        )
+        ground_event = ground.json()["event"]
+
+        # Before confirm: pending ground is NOT returned.
+        resp = client.get(
+            f"/api/v1/artifact/{artifact_id}/evidence",
+            params={"claim_id": claim_id},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["events"] == []
+
+        # Confirm, then it appears.
+        _confirm(client, artifact_id, ground_event["id"])
+        resp = client.get(
+            f"/api/v1/artifact/{artifact_id}/evidence",
+            params={"claim_id": claim_id},
+        )
+        assert resp.status_code == 200, resp.text
+        events = resp.json()["events"]
+        assert len(events) == 1
+        assert events[0]["type"] == "ground"
+        assert events[0]["target_ref"] == claim_id
+        assert events[0]["payload"]["material_id"] == material_id
+        assert events[0]["payload"]["title"] == "Supporting paper"
+
+    def test_confirmed_ground_for_different_claim_excluded(self, client: TestClient, monkeypatch):
+        """A confirmed ground for another claim is not returned for this claim."""
+        _patch_search(monkeypatch, [_fake_paper("W1", "Paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+
+        ground = client.post(
+            f"/api/v1/grounding/{artifact_id}/ground",
+            json={
+                "claim_id": "other-claim",
+                "material_id": material_id,
+                "supported": True,
+            },
+        )
+        _confirm(client, artifact_id, ground.json()["event"]["id"])
+
+        resp = client.get(
+            f"/api/v1/artifact/{artifact_id}/evidence",
+            params={"claim_id": claim_id},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["events"] == []
+
+    def test_unknown_artifact_returns_empty_not_404(self, client: TestClient):
+        resp = client.get(
+            "/api/v1/artifact/nope/evidence",
+            params={"claim_id": "claim-x"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["events"] == []
