@@ -19,6 +19,7 @@ from anneal.search.crossref import search_crossref
 from anneal.search.dedupe import dedupe
 from anneal.search.europe_pmc import search_europepmc
 from anneal.search.openalex import search_openalex
+from anneal.search.pubmed import search_pubmed
 from anneal.search.semantic_scholar import search_semantic_scholar
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ REGISTRY: dict[str, Adapter] = {
     "europepmc": search_europepmc,
     "semantic_scholar": search_semantic_scholar,
     "arxiv": search_arxiv,
+    "pubmed": search_pubmed,
 }
 
 DEFAULT_SOURCES: list[str] = [
@@ -40,6 +42,7 @@ DEFAULT_SOURCES: list[str] = [
     "europepmc",
     "semantic_scholar",
     "arxiv",
+    "pubmed",
 ]
 
 

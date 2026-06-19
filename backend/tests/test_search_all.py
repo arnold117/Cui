@@ -99,6 +99,19 @@ class TestSearchAll:
         _patch_registry(monkeypatch, {})
         assert await search_all("q", sources=["nonsense"]) == []
 
+    def test_pubmed_in_default_sources(self):
+        assert "pubmed" in multi.DEFAULT_SOURCES
+        assert "pubmed" in multi.REGISTRY
+
+    async def test_pubmed_adapter_participates(self, monkeypatch):
+        _patch_registry(monkeypatch, {
+            "openalex": _adapter([_paper("openalex", "W1")]),
+            "pubmed": _adapter([_paper("pubmed", "111")]),
+        })
+        out = await search_all("q", sources=["openalex", "pubmed"])
+        ids = {(p["source"], p["source_id"]) for p in out}
+        assert ids == {("openalex", "W1"), ("pubmed", "111")}
+
     async def test_mailto_and_max_forwarded(self, monkeypatch):
         captured = {}
 
