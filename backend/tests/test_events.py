@@ -97,7 +97,7 @@ class TestEventTypeConstants:
             assert isinstance(t, str)
 
     def test_all_event_types_count(self):
-        assert len(ALL_EVENT_TYPES) == 15
+        assert len(ALL_EVENT_TYPES) == 16
 
 
 class TestVerdictPayload:

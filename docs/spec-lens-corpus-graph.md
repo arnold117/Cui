@@ -79,9 +79,11 @@ GET /library/{library_id}/graph   （纯投影，即时算）
 
 ## 6. 备注（Tier 1 / Tier 2，分期后续）
 
-- **Tier 1（持久语义图）**：grill 一个 claim 时 LLM 算语义边并持久化（增量建图）。这是持久 Lens 存储进入点——届时单独拍 schema/存储/增量策略。无 embedding。
-  - **边集已被 L4 scoping 反推定死**（见 `docs/scope-l4-agenda-copilot.md`）：`contradicts`（②已有，Tier 1 让它持久+主动算）+ `builds-on/depends-on`（新）+ `shares-method/shares-gap`（新）。
-  - 还要：**跨 Project 可遍历**（claim 带 project 归属）、claim status 在图上、**可算 centrality（节点度数）**——全是 L4 威胁检测（severity × centrality）的底座。
-  - **staleness 是新增的 bug 面**（持久化代价）：claim 被 edit(substance)/retract、verdict 翻转 → 相关边要失效/重算。grill Tier 1 时重点拍这条。
+- **Tier 1（持久语义图）= LLM 算的语义边记成 `link` 事件**（grill Tier 1 收敛中）。
+  - **边集已被 L4 scoping 反推定死**（见 `docs/scope-l4-agenda-copilot.md`）：`contradicts`（②已有）+ `builds-on/depends-on`（新）+ `shares-method/shares-gap`（新）。跨 Project 可遍历、claim status 在图上、可算 centrality。**无 embedding。**
+  - **Q1 已决（2026-06-19）= 边 = 事件**：边记成 `link` 事件（source_claim/target_claim/edge_type/reason），追加到 source claim 的 artifact 流；`corpus_graph` 投影顺带读 link 事件。**持久化白嫖事件存储、零新表/迁移、staleness 靠 retract/supersede 事件**——不建独立边表（dual-write 一致性债 + 索引优势当前过早；真慢了再从 link 事件派生只读索引 read-model，不破纯粹性）。
+  - **Q2 已决（2026-06-19）= 懒算 + 出生 confirmed 可撤回**：边不在每次 grill 时算，而是**取图 / L4 扫议程时**对还没算过边的 claim 对**懒算一次**（复用 ② 词面粗筛框定候选对、不全配对），追加 `link` 事件；之后读缓存。link 事件**出生 confirmed=True、可 retract**（边是取证事实非定见，逐条确认摩擦太大；错边在图里看得见、撤掉即可）。
+  - **Q3 已决（2026-06-19）= staleness 零 bespoke 逻辑**：现有模型下 claim body 不可变（无编辑流）、status 是投影永远当前、verdict 翻转**不失效边**（killed 依赖正是 L4 威胁信号）。retract link 事件 / retract claim 悬空 drop 全走现有机制。**未来 caveat**：若加 claim-body 编辑流 → retract 该 claim 的 link 事件 + 重算。
+  - **Tier 1 实现要点**：新 `LINK` 事件类型（payload: source_claim_id/target_claim_id/edge_type/reason）；`corpus_graph` 投影扩展读 confirmed LINK 事件 → 新边；`LensService.compute_semantic_edges(library_id)`（async/LLM，懒触发、复用粗筛、compute-once 跳过已连对、append LINK）；`build_semantic_edges_prompt`；触发端点（取图前先 build）。corpus_graph **仍是纯读投影**（算边是独立 write-action，不污染投影纯度）。
 - **Tier 2（完整 GraphRAG）**：实体抽取 + 社区检测 + 摘要 + dense vector。核心架构大决定，按 LitScribe 旧账"先拉出方向问题，不闷头改"。
 - 守的铁律：作用域 Library；取证不定见（只收已确认关系）；Tier 0/1 不碰 embedding。

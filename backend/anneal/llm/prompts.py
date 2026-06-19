@@ -238,6 +238,96 @@ def build_taste_prompt(
     return system, user
 
 
+def build_semantic_edges_prompt(
+    claim: str,
+    candidates: list[tuple[str, str]],
+) -> tuple[str, str]:
+    """Judge typed semantic relationships from the CURRENT claim to candidates.
+
+    Lens 第三刀 / ③ 可查询语料 (Tier 1, 持久语义图). The reviewer decides, for
+    the CURRENT claim against each PROVIDED candidate claim, whether one of four
+    typed relationships holds. Edges are recorded as ``LINK`` events and read
+    back by the corpus_graph projection; they feed L4 threat detection (a killed
+    dependency = an exposed foundation; centrality = builds_on in-degree).
+
+    ``candidates``: ``(candidate_claim_body, candidate_claim_id)`` tuples — the
+    other grilled claims pre-filtered by lexical overlap. Each must be cited by
+    its EXACT provided id.
+
+    Edge vocabulary (the ONLY four legal types; ``contradicts``/``grounds`` are
+    handled elsewhere by ①/structure and are NOT in scope here):
+    - ``builds_on``: the current claim EXTENDS or relies on the candidate's
+      RESULT — it advances from where the candidate ended.
+    - ``depends_on``: the current claim's VALIDITY rests on the candidate still
+      holding — if the candidate were killed, the current claim is undermined.
+    - ``shares_method``: both use the SAME method / approach / technique.
+    - ``shares_gap``: both are blocked by the SAME unaddressed gap / open
+      problem.
+
+    ANTI-HALLUCINATION (mirrors the contradiction / taste prompts — the failure
+    mode is OVER-connecting): assert an edge ONLY to a SPECIFIC provided
+    candidate, cited by its exact id; NEVER invent a claim or an id. Skeptical
+    default — MOST claim pairs have NO typed edge; when nothing genuinely holds,
+    return an EMPTY list. Do NOT score or rank idea quality (取证不定见).
+    """
+    system = (
+        "You analyze a researcher's CURRENT claim against several of their OWN "
+        "past claims that they already grilled (each survived or was killed). "
+        "Your ONLY job is to identify, for EACH provided candidate, whether one "
+        "of four SPECIFIC typed relationships holds FROM the current claim TO "
+        "that candidate.\n\n"
+        "The four edge types (use ONLY these):\n"
+        "- \"builds_on\": the current claim EXTENDS or relies on the candidate's "
+        "RESULT — it advances from where the candidate ended.\n"
+        "- \"depends_on\": the current claim's VALIDITY rests on the candidate "
+        "still holding — if the candidate were false, the current claim would be "
+        "undermined.\n"
+        "- \"shares_method\": both claims use the SAME method, approach, or "
+        "technique.\n"
+        "- \"shares_gap\": both claims are blocked by the SAME unaddressed gap or "
+        "open problem.\n\n"
+        "ANTI-HALLUCINATION — THIS IS THE FAILURE MODE. Your default urge is to "
+        "connect everything; that is WRONG and corrodes the graph. Follow these "
+        "rules strictly:\n"
+        "1. SKEPTICAL DEFAULT: MOST pairs of claims have NO typed relationship. "
+        "Assert an edge ONLY when one of the four types GENUINELY and clearly "
+        "holds. When in doubt, emit NOTHING for that candidate.\n"
+        "2. CITE A REAL CANDIDATE: every edge MUST reference a candidate by its "
+        "EXACT provided target_claim_id. NEVER invent a claim or an id, and "
+        "NEVER reference a claim that was not provided.\n"
+        "3. ONE TYPE PER EDGE: pick the single best-fitting type; do not emit "
+        "multiple edges to the same candidate.\n"
+        "4. NO QUALITY JUDGMENT: do NOT score, rank, praise, or criticize either "
+        "claim. State only the structural relationship.\n\n"
+        "If NO candidate has a genuine typed relationship, return an empty "
+        "\"edges\" list.\n\n"
+        "Respond ONLY with valid JSON in this exact format:\n"
+        '{"edges": [{"target_claim_id": "<exact id of a provided candidate>", '
+        '"edge_type": "builds_on" | "depends_on" | "shares_method" | '
+        '"shares_gap", '
+        '"reason": "<one sentence: where the relationship factually holds>"}]}'
+    )
+
+    if candidates:
+        candidates_block = "\n\n".join(
+            f"- target_claim_id: {cand_id}\n  Claim: {cand_body}"
+            for cand_body, cand_id in candidates
+        )
+    else:
+        candidates_block = "(none)"
+
+    user = (
+        f"Current claim (being analyzed now): {claim}\n\n"
+        f"Candidate past claims (cite each by its exact target_claim_id):\n"
+        f"{candidates_block}\n\n"
+        "For each candidate, decide whether a builds_on / depends_on / "
+        "shares_method / shares_gap relationship genuinely holds from the "
+        "current claim to that candidate. Emit an edge ONLY when one clearly "
+        "does; otherwise leave it out. Return an empty list if none hold."
+    )
+    return system, user
+
+
 def build_verdict_prompt(
     claim: str, question: str, answer: str, evidence: str = ""
 ) -> tuple[str, str]:

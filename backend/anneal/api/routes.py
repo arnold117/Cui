@@ -537,6 +537,30 @@ def get_corpus_graph(
     return graph.model_dump(mode="json")
 
 
+@router.post("/library/{library_id}/build-edges")
+async def build_edges(
+    library_id: str,
+    lens_svc: LensService = Depends(get_lens_service),
+):
+    """Compute + persist LLM semantic edges over the Library's grilled claims.
+
+    Tier 1 write-action (③ 可查询语料): lazily computes typed semantic edges
+    (builds_on / depends_on / shares_method / shares_gap) once per pair and
+    records each as a confirmed, retractable ``LINK`` event. Idempotent —
+    already-linked pairs are skipped. The corpus graph then reads these back.
+    """
+    try:
+        events = await lens_svc.compute_semantic_edges(library_id)
+        return {
+            "created": len(events),
+            "events": [e.model_dump(mode="json") for e in events],
+        }
+    except LLMNotConfiguredError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except LLMResponseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Event (confirmation gate) endpoints
 # ---------------------------------------------------------------------------

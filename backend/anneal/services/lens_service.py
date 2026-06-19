@@ -28,7 +28,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from anneal.domain.events import CHALLENGE, GROUND, Event, make_event
+from anneal.domain.events import CHALLENGE, GROUND, LINK, Event, make_event
 from anneal.domain.projections import (
     _confirmed_event_ids,
     claim_status,
@@ -37,7 +37,11 @@ from anneal.domain.projections import (
 from anneal.lens.prefilter import prefilter_candidates
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError
-from anneal.llm.prompts import build_contradiction_prompt, build_taste_prompt
+from anneal.llm.prompts import (
+    build_contradiction_prompt,
+    build_semantic_edges_prompt,
+    build_taste_prompt,
+)
 from anneal.search.openalex import search_openalex
 from anneal.services.collect_service import _load_contact_email
 from anneal.services.event_service import EventService
@@ -49,6 +53,10 @@ _GRILLED_STATUSES = {"survived", "killed"}
 
 # The four taste rubric tiers (spec §2). Anything else = no verdict.
 _TASTE_TIERS = {"replication", "incremental", "novel_but_tasteless", "tasteful"}
+
+# The four LLM-computed semantic edge types (Tier 1). Anything else = dropped.
+# ``contradicts``/``grounds`` are NOT here — they are structural (① + GROUND).
+_SEMANTIC_EDGE_TYPES = {"builds_on", "depends_on", "shares_method", "shares_gap"}
 
 
 # ---------------------------------------------------------------------------
@@ -66,11 +74,23 @@ class GraphNode(BaseModel):
 
 
 class GraphEdge(BaseModel):
-    """A confirmed structural relationship between two nodes."""
+    """A confirmed relationship between two nodes.
+
+    ``contradicts``/``grounds`` are Tier 0 structural edges; ``builds_on`` /
+    ``depends_on`` / ``shares_method`` / ``shares_gap`` are Tier 1 LLM-computed
+    semantic edges read back from confirmed ``LINK`` events.
+    """
 
     source: str
     target: str
-    type: Literal["contradicts", "grounds"]
+    type: Literal[
+        "contradicts",
+        "grounds",
+        "builds_on",
+        "depends_on",
+        "shares_method",
+        "shares_gap",
+    ]
 
 
 class CorpusGraph(BaseModel):
@@ -261,29 +281,138 @@ class LensService:
         return [self._event_service.append_event(artifact_id, event)]
 
     # ------------------------------------------------------------------
+    # Semantic edges (Lens 第三刀 / ③ 可查询语料 — Tier 1, persistent graph)
+    # ------------------------------------------------------------------
+
+    async def compute_semantic_edges(self, library_id: str) -> list[Event]:
+        """Lazily compute LLM-typed semantic edges over the Library's grilled
+        claims and persist each as a ``LINK`` event (Tier 1, 持久语义图).
+
+        This is the WRITE-action half of ③: it is NOT part of the corpus_graph
+        projection (which stays a pure read of recorded LINK events). The
+        frontend calls this before fetching the graph.
+
+        Grilled-only: only claims with a confirmed survive/kill verdict
+        participate (PARK/open claims get NO semantic edges — 只吃 grilled
+        trajectory). Candidate pairs are bounded by the existing lexical
+        prefilter.
+
+        Compute-once: existing LINK pairs (directed ``(source, target)``) are
+        gathered up front; any candidate already linked FROM a given claim is
+        skipped, so re-running is idempotent and cheap.
+
+        Each returned edge is validated — ``edge_type`` must be one of the four
+        legal semantic types and ``target_claim_id`` must be a real provided
+        candidate id (hallucinated ids/types are dropped). A surviving edge is
+        appended as a ``LINK`` event on the source claim's artifact stream, born
+        ``confirmed=True`` (an edge is a 取证 fact, not a 定见) and retractable.
+        NEVER gates or modifies claim status.
+
+        Returns the list of created ``LINK`` events (may be empty). Raises
+        ``LLMNotConfiguredError`` if no LLM client is injected.
+        """
+        if self._llm is None:
+            raise LLMNotConfiguredError("LLM client not configured")
+
+        grilled = self._grilled_claims(library_id)
+        by_id = {c.id: c for c in grilled}
+
+        # Compute-once: existing directed (source, target) pairs that already
+        # carry ANY LINK across the whole Library — skip recomputing them.
+        existing_pairs: set[tuple[str, str]] = set()
+        scanned_artifacts: set[str] = set()
+        for claim in grilled:
+            artifact_id = claim.artifact_ids[0]
+            if artifact_id in scanned_artifacts:
+                continue
+            scanned_artifacts.add(artifact_id)
+            for e in self._store.get_events(artifact_id):
+                if e.type != LINK:
+                    continue
+                src = e.payload.get("source_claim_id")
+                tgt = e.payload.get("target_claim_id")
+                if src and tgt:
+                    existing_pairs.add((src, tgt))
+
+        created: list[Event] = []
+        for current in grilled:
+            others = [c for c in grilled if c.id != current.id]
+            cands = prefilter_candidates(current.body, others)
+            cands = [c for c in cands if (current.id, c.id) not in existing_pairs]
+            if not cands:
+                continue
+
+            cand_ids = {c.id for c in cands}
+            system, user = build_semantic_edges_prompt(
+                current.body, [(c.body, c.id) for c in cands]
+            )
+            result = self._llm.complete_json(system, user)
+
+            for edge in result.get("edges") or []:
+                if not isinstance(edge, dict):
+                    continue
+                target_claim_id = edge.get("target_claim_id")
+                edge_type = edge.get("edge_type")
+                # Drop hallucinated edges: unknown type or non-candidate target.
+                if edge_type not in _SEMANTIC_EDGE_TYPES:
+                    continue
+                if target_claim_id not in cand_ids or target_claim_id not in by_id:
+                    continue
+                pair = (current.id, target_claim_id)
+                if pair in existing_pairs:
+                    continue
+                existing_pairs.add(pair)
+                link = make_event(
+                    type=LINK,
+                    actor="system",
+                    confirmed=True,
+                    target_ref=current.id,
+                    payload={
+                        "source_claim_id": current.id,
+                        "target_claim_id": target_claim_id,
+                        "edge_type": edge_type,
+                        "reason": edge.get("reason", ""),
+                        "auto_generated": True,
+                    },
+                )
+                created.append(
+                    self._event_service.append_event(current.artifact_ids[0], link)
+                )
+
+        return created
+
+    # ------------------------------------------------------------------
     # Candidate enumeration
     # ------------------------------------------------------------------
 
-    def _grilled_candidates(
-        self, library_id: str, claim_id: str, artifact_id: str
-    ) -> list:
-        """Library claims with a confirmed survive/kill verdict.
+    def _grilled_claims(self, library_id: str) -> list:
+        """All Library claims with a confirmed survive/kill verdict.
 
-        Excludes the current claim and any claim belonging to the current
-        artifact. Claims with no parking artifact are skipped (cannot resolve a
-        status without an event stream).
+        The grilled trajectory — the only corpus the Lens eats (PARK/open
+        claims never qualify). Claims with no parking artifact are skipped
+        (cannot resolve a status without an event stream).
         """
         out = []
         for claim in self._repo.list_claims(library_id):
-            if claim.id == claim_id:
-                continue
             if not claim.artifact_ids:
-                continue
-            if artifact_id in claim.artifact_ids:
                 continue
             if self._claim_status_of(claim) in _GRILLED_STATUSES:
                 out.append(claim)
         return out
+
+    def _grilled_candidates(
+        self, library_id: str, claim_id: str, artifact_id: str
+    ) -> list:
+        """Grilled Library claims, excluding the current claim/artifact.
+
+        Builds on ``_grilled_claims`` and drops the current claim and any claim
+        belonging to the current artifact.
+        """
+        return [
+            claim
+            for claim in self._grilled_claims(library_id)
+            if claim.id != claim_id and artifact_id not in claim.artifact_ids
+        ]
 
     def _claim_status_of(self, claim) -> str:
         """Resolve a claim's status from its parking artifact's event stream.
@@ -393,6 +522,22 @@ class LensService:
                             id=material_id, type="material", label=label
                         )
                     _add_edge(source, material_id, "grounds")
+
+                elif e.type == LINK:
+                    # Tier 1 LLM-computed semantic edge (builds_on / depends_on
+                    # / shares_method / shares_gap). corpus_graph stays a PURE
+                    # READ projection — it does NOT compute these, only reads
+                    # recorded LINK events under the same confirmed-only +
+                    # retracted filter + drop-dangling + dedupe discipline.
+                    source = e.payload.get("source_claim_id")
+                    target = e.payload.get("target_claim_id")
+                    etype = e.payload.get("edge_type")
+                    if not source or not target or etype not in _SEMANTIC_EDGE_TYPES:
+                        continue
+                    # Drop dangling: both endpoints must be claim nodes in scope.
+                    if source not in claim_ids or target not in claim_ids:
+                        continue
+                    _add_edge(source, target, etype)
 
         sorted_nodes = sorted(nodes.values(), key=lambda n: (n.type, n.id))
         sorted_edges = sorted(edges, key=lambda x: (x.source, x.target, x.type))

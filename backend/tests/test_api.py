@@ -1045,6 +1045,49 @@ class TestLensAssessTasteAPI:
         assert event["payload"]["tier"] == "incremental"
 
 
+class TestBuildEdgesAPI:
+    def test_build_edges_without_llm_returns_501(self, client: TestClient):
+        """POST /library/{id}/build-edges without LLM configured -> 501."""
+        resp = client.post("/api/v1/library/lib-1/build-edges")
+        assert resp.status_code == 501
+
+    def test_build_edges_creates_link_events(self, client: TestClient):
+        """Two grilled claims + fake LLM builds_on -> {created, events} with a
+        LINK event, and the graph then shows a builds_on edge."""
+        body_a = "Transformer attention improves protein folding prediction"
+        body_b = "Transformer attention also improves protein structure prediction"
+
+        a = _grill_to_survived(client, body_a)
+        b = _grill_to_survived(client, body_b)
+        c_a = a["claim"]["id"]
+        c_b = b["claim"]["id"]
+
+        # Fake LLM: connect whichever claim is processed first to the other.
+        fake_llm = FakeLLMClient([
+            json.dumps({"edges": [{"target_claim_id": c_b,
+                                   "edge_type": "builds_on",
+                                   "reason": "extends folding result"}]}),
+            json.dumps({"edges": [{"target_claim_id": c_a,
+                                   "edge_type": "builds_on",
+                                   "reason": "extends folding result"}]}),
+        ])
+        _state["lens_service"]._llm = fake_llm
+
+        resp = client.post("/api/v1/library/lib-1/build-edges")
+        assert resp.status_code == 200, resp.text
+        payload = resp.json()
+        assert payload["created"] >= 1
+        assert len(payload["events"]) == payload["created"]
+        link = payload["events"][0]
+        assert link["type"] == "link"
+        assert link["confirmed"] is True
+        assert link["payload"]["edge_type"] == "builds_on"
+
+        graph = client.get("/api/v1/library/lib-1/graph").json()
+        builds = [e for e in graph["edges"] if e["type"] == "builds_on"]
+        assert len(builds) >= 1
+
+
 # ---------------------------------------------------------------------------
 # Collect (literature search) API tests
 # ---------------------------------------------------------------------------
