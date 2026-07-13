@@ -310,3 +310,98 @@ def test_empty_library(store, event_svc, repo, svc):
     graph = svc.corpus_graph("nonexistent-lib")
     assert graph.nodes == []
     assert graph.edges == []
+
+
+# ---------------------------------------------------------------------------
+# narrowed_from — deterministic lineage edge from boundary-kill verdicts
+# (spec-verdict-precedent §2: 划界死 successor → 语料图免费得确定性边, 非 LLM)
+# ---------------------------------------------------------------------------
+
+
+def _boundary_kill(store, event_svc, *, artifact_id, claim_id, successor_id,
+                   confirm=True):
+    """Park -> challenge -> kill(boundary, successor). Optionally confirm."""
+    store.append(
+        artifact_id,
+        make_event(type=PARK, actor="user", confirmed=True, target_ref=claim_id,
+                   payload={"kind": "idea"}),
+    )
+    store.append(
+        artifact_id,
+        make_event(type=CHALLENGE, actor="system", confirmed=True,
+                   target_ref=claim_id, payload={"question": "q"}),
+    )
+    verdict = make_event(
+        type=VERDICT, actor="system", confirmed=False, target_ref=claim_id,
+        payload={"outcome": "kill", "rationale": "over-broad",
+                 "death_cause": "boundary", "successor_claim_id": successor_id},
+    )
+    event_svc.append_event(artifact_id, verdict)
+    if confirm:
+        event_svc.confirm_event(artifact_id, verdict.id)
+    return verdict
+
+
+def test_boundary_kill_with_successor_makes_narrowed_from_edge(
+    store, event_svc, repo, svc
+):
+    _seed_claim(repo, claim_id="c-dead", artifact_id="a-dead", body="broad claim")
+    _seed_claim(repo, claim_id="c-narrow", artifact_id="a-narrow", body="narrow claim")
+    _boundary_kill(store, event_svc, artifact_id="a-dead", claim_id="c-dead",
+                   successor_id="c-narrow")
+    _grill_to_verdict(store, event_svc, artifact_id="a-narrow",
+                      claim_id="c-narrow", outcome="survived")
+
+    graph = svc.corpus_graph(LIB)
+
+    narrowed = [e for e in graph.edges if e.type == "narrowed_from"]
+    assert len(narrowed) == 1
+    # direction: successor —narrowed_from→ killed claim
+    assert narrowed[0].source == "c-narrow"
+    assert narrowed[0].target == "c-dead"
+
+
+def test_pending_boundary_kill_no_edge(store, event_svc, repo, svc):
+    """Unconfirmed verdicts produce no narrowed_from edge (Q-5 discipline)."""
+    _seed_claim(repo, claim_id="c-dead", artifact_id="a-dead", body="broad")
+    _seed_claim(repo, claim_id="c-narrow", artifact_id="a-narrow", body="narrow")
+    _boundary_kill(store, event_svc, artifact_id="a-dead", claim_id="c-dead",
+                   successor_id="c-narrow", confirm=False)
+
+    graph = svc.corpus_graph(LIB)
+    assert [e for e in graph.edges if e.type == "narrowed_from"] == []
+
+
+def test_retracted_boundary_kill_no_edge(store, event_svc, repo, svc):
+    _seed_claim(repo, claim_id="c-dead", artifact_id="a-dead", body="broad")
+    _seed_claim(repo, claim_id="c-narrow", artifact_id="a-narrow", body="narrow")
+    verdict = _boundary_kill(store, event_svc, artifact_id="a-dead",
+                             claim_id="c-dead", successor_id="c-narrow")
+    event_svc.retract_event("a-dead", verdict.id)
+
+    graph = svc.corpus_graph(LIB)
+    assert [e for e in graph.edges if e.type == "narrowed_from"] == []
+
+
+def test_dangling_successor_dropped(store, event_svc, repo, svc):
+    """A successor_claim_id pointing outside the Library produces no edge."""
+    _seed_claim(repo, claim_id="c-dead", artifact_id="a-dead", body="broad")
+    _boundary_kill(store, event_svc, artifact_id="a-dead", claim_id="c-dead",
+                   successor_id="c-ghost")
+
+    graph = svc.corpus_graph(LIB)
+    assert [e for e in graph.edges if e.type == "narrowed_from"] == []
+
+
+def test_legacy_kill_verdict_no_successor_no_edge_no_crash(
+    store, event_svc, repo, svc
+):
+    """Legacy kill verdicts (no triage fields) replay cleanly: no edge."""
+    _seed_claim(repo, claim_id="c-old", artifact_id="a-old", body="old claim")
+    _grill_to_verdict(store, event_svc, artifact_id="a-old", claim_id="c-old",
+                      outcome="killed")
+
+    graph = svc.corpus_graph(LIB)
+    assert [e for e in graph.edges if e.type == "narrowed_from"] == []
+    # the killed node itself still projects
+    assert any(n.id == "c-old" and n.status == "killed" for n in graph.nodes)

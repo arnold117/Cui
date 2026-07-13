@@ -18,7 +18,7 @@ from anneal.services.event_service import EventService
 from anneal.services.lens_service import LensService
 from anneal.store.event_store import InMemoryEventStore
 from anneal.store.repository import InMemoryRepository
-from tests.fakes import FakeLLMClient
+from tests.fakes import CapturingLLMClient, FakeLLMClient
 
 
 LIB = "lib-1"
@@ -69,11 +69,15 @@ def _seed_grilled_claim(
     body: str,
     outcome: str,
     library_id: str = LIB,
+    rationale: str = "r",
+    death_cause: str | None = None,
+    revival_condition: str | None = None,
 ) -> Claim:
     """Seed a fully-grilled claim whose claim_status is survived/killed.
 
     Park -> challenge -> verdict, then CONFIRM the verdict via EventService so
-    claim_status counts it.
+    claim_status counts it. Optional 死因分诊 fields land in the verdict
+    payload; the None default seeds a legacy-shaped verdict.
     """
     repo.create_artifact(Artifact(id=artifact_id, library_id=library_id, kind="idea", goal="g"))
     claim = Claim(id=claim_id, library_id=library_id, body=body, artifact_ids=[artifact_id])
@@ -88,9 +92,17 @@ def _seed_grilled_claim(
         make_event(type=CHALLENGE, actor="system", confirmed=True, target_ref=claim_id, payload={"question": "q"}),
     )
     from anneal.domain.events import VERDICT
+    payload: dict = {
+        "outcome": "survive" if outcome == "survived" else "kill",
+        "rationale": rationale,
+    }
+    if death_cause is not None:
+        payload["death_cause"] = death_cause
+    if revival_condition is not None:
+        payload["revival_condition"] = revival_condition
     verdict = make_event(
         type=VERDICT, actor="system", confirmed=False, target_ref=claim_id,
-        payload={"outcome": "survive" if outcome == "survived" else "kill", "rationale": "r"},
+        payload=payload,
     )
     event_svc.append_event(artifact_id, verdict)
     event_svc.confirm_event(artifact_id, verdict.id)
@@ -276,3 +288,73 @@ class TestScanContradictions:
         banned = {"score", "quality", "rating", "taste", "merit", "rank", "novelty"}
         for ev in events:
             assert banned.isdisjoint(ev.payload.keys())
+
+
+class TestScanContradictionsPrecedentInjection:
+    """判例注入 (spec-verdict-precedent §2 Q4): ② feeds the pairwise prompt the
+    past verdict's quadruple so the death cause can lower false positives."""
+
+    def test_quadruple_reaches_llm_prompt(self, store, event_svc, repo):
+        _register_current(repo)
+        _seed_grilled_claim(
+            store, event_svc, repo, claim_id="past-nw", artifact_id="art-past",
+            body="X causes Y is false", outcome="killed",
+            rationale="correct but a dead-end direction",
+            death_cause="not_worth",
+        )
+        llm = CapturingLLMClient([json.dumps(HIT)])
+        svc = LensService(store, event_svc, repo=repo, llm=llm)
+
+        svc.scan_contradictions(CUR_ARTIFACT, CUR_CLAIM, "X causes Y")
+
+        assert "Past verdict precedent" in llm.last_user
+        assert "not_worth" in llm.last_user
+        assert "correct but a dead-end direction" in llm.last_user
+        # the false-positive guidance rides on the system prompt
+        assert "not a logical contradiction" in llm.last_system.lower()
+
+    def test_rationale_truncated_in_prompt(self, store, event_svc, repo):
+        _register_current(repo)
+        _seed_grilled_claim(
+            store, event_svc, repo, claim_id="past-long", artifact_id="art-past",
+            body="X causes Y is false", outcome="killed",
+            rationale="R" * 400, death_cause="refuted",
+        )
+        llm = CapturingLLMClient([json.dumps(HIT)])
+        svc = LensService(store, event_svc, repo=repo, llm=llm)
+
+        svc.scan_contradictions(CUR_ARTIFACT, CUR_CLAIM, "X causes Y")
+
+        assert "R" * 300 + "…" in llm.last_user
+        assert "R" * 301 not in llm.last_user
+
+    def test_circumstantial_revival_reaches_prompt(self, store, event_svc, repo):
+        _register_current(repo)
+        _seed_grilled_claim(
+            store, event_svc, repo, claim_id="past-c", artifact_id="art-past",
+            body="X causes Y is false", outcome="killed",
+            rationale="cannot defend today",
+            death_cause="circumstantial",
+            revival_condition="Tier 1 proof insufficient + embedding accepted",
+        )
+        llm = CapturingLLMClient([json.dumps(HIT)])
+        svc = LensService(store, event_svc, repo=repo, llm=llm)
+
+        svc.scan_contradictions(CUR_ARTIFACT, CUR_CLAIM, "X causes Y")
+
+        assert "Tier 1 proof insufficient + embedding accepted" in llm.last_user
+
+    def test_legacy_verdict_replays_as_unclassified(self, store, event_svc, repo):
+        """Legacy replay never breaks; the prompt marks 死因未分类 honestly."""
+        _register_current(repo)
+        _seed_grilled_claim(
+            store, event_svc, repo, claim_id="past-legacy", artifact_id="art-past",
+            body="X causes Y is false", outcome="killed",
+        )
+        llm = CapturingLLMClient([json.dumps(HIT)])
+        svc = LensService(store, event_svc, repo=repo, llm=llm)
+
+        events = svc.scan_contradictions(CUR_ARTIFACT, CUR_CLAIM, "X causes Y")
+
+        assert len(events) == 1  # still surfaces — no crash on legacy shape
+        assert "unclassified" in llm.last_user

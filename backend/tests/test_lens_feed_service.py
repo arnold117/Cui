@@ -105,7 +105,7 @@ def _full_grill_kill(park_svc, grill_svc, event_svc, store, library_id=LIBRARY):
 
     challenge = grill_svc.challenge(artifact.id, claim.id, "Can you prove this?")
     answer = grill_svc.answer(artifact.id, claim.id, "I cannot find evidence")
-    verdict = grill_svc.verdict(artifact.id, claim.id, "kill", "Claim unsupported")
+    verdict = grill_svc.verdict(artifact.id, claim.id, "kill", "Claim unsupported", death_cause="refuted")
 
     # Confirm system events.
     event_svc.confirm_event(artifact.id, challenge.id)

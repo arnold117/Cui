@@ -1,9 +1,93 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from anneal.domain.events import Event
+
+# Deterministic rationale budget for precedent injection (spec Q4: 单条
+# rationale 截前 300 字加省略号 — no LLM summarization, no extra hop).
+RATIONALE_TRUNCATE_CHARS = 300
+
+
+def truncate_rationale(rationale: str, limit: int = RATIONALE_TRUNCATE_CHARS) -> str:
+    """Deterministically cap a verdict rationale for prompt injection.
+
+    Pure function: first ``limit`` characters plus an ellipsis when longer,
+    verbatim otherwise. 确定性优先 — never an LLM summary.
+    """
+    if len(rationale) <= limit:
+        return rationale
+    return rationale[:limit] + "…"
+
+
+class ClaimPrecedent(NamedTuple):
+    """A grilled past claim + the 判例四元组 its ruling verdict left behind.
+
+    ``outcome`` uses claim_status vocabulary ("survived"/"killed").
+    ``death_cause`` is None for survived claims AND for legacy kills recorded
+    before death-cause triage (rendered as "unclassified" — 死因未分类).
+    """
+
+    body: str
+    outcome: str
+    claim_id: str
+    death_cause: str | None = None
+    rationale: str = ""
+    revival_condition: str | None = None
+
+
+# One-line gloss per death cause, teaching the model what each kill MEANS
+# (the discriminating value: different deaths are entirely different anchors).
+_DEATH_CAUSE_GLOSS = {
+    "refuted": (
+        "refuted — factually wrong (truth-axis kill; includes duplicates of "
+        "already-killed ideas)"
+    ),
+    "not_worth": (
+        "not_worth — correct but judged NOT WORTH doing (worth-axis / taste kill)"
+    ),
+    "boundary": (
+        "boundary — the original formulation died but drew a boundary; a "
+        "narrowed successor claim lives on"
+    ),
+    "circumstantial": (
+        "circumstantial — not conclusively dead (could not be defended right "
+        "then); has a revival condition"
+    ),
+}
+
+
+def format_precedent_lines(
+    outcome: str,
+    death_cause: str | None,
+    rationale: str,
+    revival_condition: str | None,
+) -> list[str]:
+    """Render the 判例四元组 as bare prompt lines (callers indent/bullet).
+
+    - Death cause line for killed claims only; legacy kills (no recorded
+      cause) are marked "unclassified" — never pretend a cause exists.
+    - Rationale line when non-empty, deterministically truncated.
+    - Revival condition line only for circumstantial kills (spec Q4: 仅偶然死).
+    Empty output means there is no precedent to inject (e.g. a legacy survive
+    with an empty rationale) and callers keep their legacy prompt verbatim.
+    """
+    lines: list[str] = []
+    if outcome == "killed":
+        gloss = _DEATH_CAUSE_GLOSS.get(death_cause or "")
+        if gloss:
+            lines.append(f"Death cause: {gloss}")
+        else:
+            lines.append(
+                "Death cause: unclassified (legacy verdict — recorded before "
+                "death-cause triage)"
+            )
+    if rationale:
+        lines.append(f"Verdict rationale: {truncate_rationale(rationale)}")
+    if death_cause == "circumstantial" and revival_condition:
+        lines.append(f"Revival condition: {revival_condition}")
+    return lines
 
 
 def format_evidence_block(evidence_events: list[Event]) -> str:
@@ -82,7 +166,12 @@ def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) ->
 
 
 def build_contradiction_prompt(
-    current_claim: str, past_claim: str, past_outcome: str
+    current_claim: str,
+    past_claim: str,
+    past_outcome: str,
+    past_death_cause: str | None = None,
+    past_rationale: str = "",
+    past_revival_condition: str | None = None,
 ) -> tuple[str, str]:
     """Judge whether the CURRENT claim conflicts with the user's OWN PAST claim.
 
@@ -90,6 +179,15 @@ def build_contradiction_prompt(
     ``killed`` (``past_outcome``). The reviewer identifies the *factual*
     relationship between the two claims and, if they conflict, poses a single
     challenge question grounded in that conflict.
+
+    判例注入 (spec-verdict-precedent §2 Q4): the optional precedent fields
+    carry the past verdict's death cause, rationale (deterministically
+    truncated) and revival condition. When any of them yield content, a
+    "Past verdict precedent" block is appended to the user prompt and the
+    system prompt gains death-cause weighing guidance — its point is LOWERING
+    false positives: a past claim killed on taste (not_worth) plus a similar
+    current claim is NOT a hard contradiction. With no precedent content the
+    legacy 3-arg prompt is returned verbatim.
 
     RED LINE (spec §2): the reviewer must NOT score idea quality or give taste
     judgments — only identify the relationship and pose a question. The verdict
@@ -123,27 +221,65 @@ def build_contradiction_prompt(
         '"tension": "<where they factually conflict, no quality judgment>", '
         '"question": "<the challenge question to pose to the user>"}'
     )
-    user = (
-        f"Current claim (being grilled now): {current_claim}\n\n"
-        f"Past claim (the user already {past_outcome} this one): {past_claim}\n\n"
-        "Do these claims contradict, duplicate, or stand in tension? "
-        "Identify the factual relationship and, if so, the challenge question."
+    precedent_lines = format_precedent_lines(
+        past_outcome, past_death_cause, past_rationale, past_revival_condition
     )
+    if precedent_lines:
+        system += (
+            "\n\nWEIGH THE PAST VERDICT'S DEATH CAUSE before calling a "
+            "conflict — different deaths mean entirely different things:\n"
+            "- not_worth (taste kill): the user judged the past claim CORRECT "
+            "but not worth doing. Similarity of the current claim to it is "
+            'NOT a logical contradiction — do NOT emit "hard" from mere '
+            'similarity to a taste-killed claim; at most "duplicate" (same '
+            'assertion restated) or "soft" (pattern tension).\n'
+            "- circumstantial: the past claim was NOT conclusively wrong "
+            "(shelved with a revival condition). Do NOT treat that kill as an "
+            "established negative result contradicting the current claim.\n"
+            "- refuted: the past claim WAS factually wrong — a current claim "
+            "restating it duplicates an already-refuted idea; one asserting "
+            "its negation AGREES with the record (no conflict).\n"
+            "- boundary: only the over-broad original died; a narrowed "
+            "successor lives on. Weigh the conflict against the boundary "
+            "drawn, not the dead formulation alone.\n"
+            "- unclassified (legacy): no recorded cause — weigh the verdict "
+            "rationale text itself; do not guess a cause."
+        )
+        block = "\n".join(f"- {line}" for line in precedent_lines)
+        user = (
+            f"Current claim (being grilled now): {current_claim}\n\n"
+            f"Past claim (the user already {past_outcome} this one): {past_claim}\n\n"
+            f"Past verdict precedent:\n{block}\n\n"
+            "Do these claims contradict, duplicate, or stand in tension? "
+            "Weigh the death cause; identify the factual relationship and, "
+            "if so, the challenge question."
+        )
+    else:
+        user = (
+            f"Current claim (being grilled now): {current_claim}\n\n"
+            f"Past claim (the user already {past_outcome} this one): {past_claim}\n\n"
+            "Do these claims contradict, duplicate, or stand in tension? "
+            "Identify the factual relationship and, if so, the challenge question."
+        )
     return system, user
 
 
 def build_taste_prompt(
     claim: str,
     prior_art_papers: list[dict],
-    past_claims: list[tuple[str, str, str]],
+    past_claims: list[ClaimPrecedent],
 ) -> tuple[str, str]:
     """Position a CURRENT claim on the taste/worth axis (Lens 第二刀 / 品味锚).
 
     ``prior_art_papers``: neutral paper dicts (title/abstract/source_id) — the
     NOVELTY anchor. May be EMPTY (degraded: literature未对位).
-    ``past_claims``: ``(claim_body, past_outcome, claim_id)`` tuples — the user's
-    OWN grilled kill/survive record, the TASTE anchor. Guaranteed NON-empty
-    (history is the gate; the service won't call this without history).
+    ``past_claims``: ``ClaimPrecedent`` tuples — the user's OWN grilled
+    kill/survive record, the TASTE anchor, now carrying each ruling verdict's
+    判例四元组 (outcome + death cause + truncated rationale + revival
+    condition). Guaranteed NON-empty (history is the gate; the service won't
+    call this without history). A not_worth kill is the STRONGEST
+    revealed-taste signal and the system prompt says so explicitly; legacy
+    kills without a recorded cause render as "unclassified".
 
     Implements the four anti-sycophancy layers (spec §2 Q-C, the make-or-break):
     no-anchor-no-verdict, anchor-first, skeptical asymmetric bar, anti-praise.
@@ -197,6 +333,19 @@ def build_taste_prompt(
         "user's own history reveals it is not worth doing.\n"
         "- 'tasteful': novel AND worth doing, judged against the user's OWN "
         "revealed preferences — the highest bar, requires strong anchors.\n\n"
+        "DEATH-CAUSE PRECEDENTS — read each past claim's verdict precedent "
+        "(death cause + rationale) when provided:\n"
+        "- A past claim killed as not_worth is the STRONGEST revealed-taste "
+        "signal: the user explicitly judged that direction CORRECT but not "
+        "worth doing. If the current claim resembles a not_worth-killed past "
+        "claim, that history argues for 'novel_but_tasteless' (or "
+        "'incremental') and you MUST name that precedent as the anchor.\n"
+        "- A circumstantial kill is NOT a taste signal — the user shelved it "
+        "without judging worth; do not read taste into it.\n"
+        "- A boundary kill reveals taste FOR the narrowed successor "
+        "direction, not against the whole area.\n"
+        "- An unclassified death cause (legacy) means the kill predates "
+        "triage — use the rationale text; do not guess a cause.\n\n"
         "Respond ONLY with valid JSON in this exact format:\n"
         '{"tier": "replication" | "incremental" | "novel_but_tasteless" | '
         '"tasteful", '
@@ -220,11 +369,19 @@ def build_taste_prompt(
             "and note in reasoning that literature did not match.)"
         )
 
-    past_block = "\n\n".join(
-        f"- past_claim_id: {claim_id}\n  Outcome: the user {outcome} this\n"
-        f"  Claim: {body}"
-        for body, outcome, claim_id in past_claims
-    )
+    past_items: list[str] = []
+    for pc in past_claims:
+        item = (
+            f"- past_claim_id: {pc.claim_id}\n"
+            f"  Outcome: the user {pc.outcome} this\n"
+            f"  Claim: {pc.body}"
+        )
+        for line in format_precedent_lines(
+            pc.outcome, pc.death_cause, pc.rationale, pc.revival_condition
+        ):
+            item += f"\n  {line}"
+        past_items.append(item)
+    past_block = "\n\n".join(past_items)
 
     user = (
         f"Current claim (being grilled now): {claim}\n\n"
@@ -331,14 +488,38 @@ def build_semantic_edges_prompt(
 def build_verdict_prompt(
     claim: str, question: str, answer: str, evidence: str = ""
 ) -> tuple[str, str]:
+    """Draft a verdict proposal (auto_verdict). 死因分诊: a kill proposal must
+    triage the death cause (four-way enum) and a circumstantial kill must
+    state a revival condition. The proposal is machine-drafted, human-signed
+    — it still goes through the confirmed=False + CONFIRM gate."""
     system = (
         "You are a rigorous academic judge evaluating whether a claim survives "
         "a challenge. You must decide: does the answer adequately address the "
         "challenge question? Be strict but fair.\n\n"
+        'If the outcome is "kill", you must also triage the DEATH CAUSE — pick '
+        "exactly one:\n"
+        '- "refuted": the claim is factually wrong (truth-axis kill; includes '
+        "being a duplicate of an already-killed idea).\n"
+        '- "not_worth": the claim is correct but not worth pursuing '
+        "(worth-axis kill).\n"
+        '- "boundary": the original formulation died, but the death drew a '
+        "boundary — a narrowed version of the claim would survive.\n"
+        '- "circumstantial": the claim did not conclusively die on any axis '
+        "(it just could not be defended right now — missing material, "
+        'missing proof). A circumstantial kill MUST include a concrete, '
+        "checkable revival_condition under which the claim is worth "
+        "reopening; if you cannot state one, the cause is not_worth, not "
+        "circumstantial.\n\n"
         "Respond ONLY with valid JSON in this exact format:\n"
         '{"outcome": "survive" or "kill", '
         '"rationale": "<1-2 sentence justification>", '
-        '"confidence": <0.0 to 1.0>}'
+        '"confidence": <0.0 to 1.0>, '
+        '"death_cause": "refuted" | "not_worth" | "boundary" | '
+        '"circumstantial" | null, '
+        '"revival_condition": "<checkable condition>" | null}\n'
+        'death_cause MUST be null when outcome is "survive" and one of the '
+        'four causes when outcome is "kill". revival_condition MUST be null '
+        'unless death_cause is "circumstantial".'
     )
     user = (
         f"Claim: {claim}\n\n"

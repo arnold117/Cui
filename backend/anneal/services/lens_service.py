@@ -28,16 +28,19 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from anneal.domain.events import CHALLENGE, GROUND, LINK, Event, make_event
+from anneal.domain.events import CHALLENGE, GROUND, LINK, VERDICT, Event, make_event
 from anneal.domain.projections import (
+    VerdictPrecedent,
     _confirmed_event_ids,
     claim_status,
     retracted_event_ids,
+    verdict_precedent,
 )
 from anneal.lens.prefilter import prefilter_candidates
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError
 from anneal.llm.prompts import (
+    ClaimPrecedent,
     build_contradiction_prompt,
     build_semantic_edges_prompt,
     build_taste_prompt,
@@ -78,7 +81,9 @@ class GraphEdge(BaseModel):
 
     ``contradicts``/``grounds`` are Tier 0 structural edges; ``builds_on`` /
     ``depends_on`` / ``shares_method`` / ``shares_gap`` are Tier 1 LLM-computed
-    semantic edges read back from confirmed ``LINK`` events.
+    semantic edges read back from confirmed ``LINK`` events; ``narrowed_from``
+    is a deterministic (non-LLM) lineage edge read from boundary-kill verdict
+    payloads (``successor —narrowed_from→ killed claim``).
     """
 
     source: str
@@ -90,6 +95,7 @@ class GraphEdge(BaseModel):
         "depends_on",
         "shares_method",
         "shares_gap",
+        "narrowed_from",
     ]
 
 
@@ -150,8 +156,20 @@ class LensService:
             if past_outcome not in _GRILLED_STATUSES:
                 continue
 
+            # 判例注入: the ruling verdict's death cause + rationale +
+            # revival condition ride along so the reviewer can weigh HOW the
+            # past claim died (a taste kill + a similar current claim ≠ hard
+            # contradiction). Legacy verdicts inject as "unclassified".
+            precedent = self._precedent_of(past)
             system, user = build_contradiction_prompt(
-                claim_body, past.body, past_outcome
+                claim_body,
+                past.body,
+                past_outcome,
+                past_death_cause=precedent.death_cause if precedent else None,
+                past_rationale=precedent.rationale if precedent else "",
+                past_revival_condition=(
+                    precedent.revival_condition if precedent else None
+                ),
             )
             result = self._llm.complete_json(system, user)
 
@@ -227,9 +245,24 @@ class LensService:
             return []
 
         shortlist_ids = {past.id for past in shortlist}
-        past_claims: list[tuple[str, str, str]] = [
-            (past.body, self._claim_status_of(past), past.id) for past in shortlist
-        ]
+        # 判例注入: each history anchor carries its verdict's 四元组 (outcome +
+        # death cause + rationale + revival condition) — a not_worth kill is
+        # the strongest revealed-taste signal the prompt can cite.
+        past_claims: list[ClaimPrecedent] = []
+        for past in shortlist:
+            precedent = self._precedent_of(past)
+            past_claims.append(
+                ClaimPrecedent(
+                    body=past.body,
+                    outcome=self._claim_status_of(past),
+                    claim_id=past.id,
+                    death_cause=precedent.death_cause if precedent else None,
+                    rationale=precedent.rationale if precedent else "",
+                    revival_condition=(
+                        precedent.revival_condition if precedent else None
+                    ),
+                )
+            )
 
         # Literature anchor — OPTIONAL. May degrade to [] (history present).
         papers = await search_openalex(
@@ -424,6 +457,17 @@ class LensService:
         events = self._store.get_events(claim.artifact_ids[0])
         return claim_status(events, claim.id)
 
+    def _precedent_of(self, claim) -> VerdictPrecedent | None:
+        """判例 of the claim's ruling verdict (same stream as its status).
+
+        Pure read via ``verdict_precedent``; only confirmed, non-retracted
+        verdicts count, so the injected rationale is always human-signed.
+        None for claims without a ruling verdict; legacy verdicts yield a
+        precedent whose death_cause is None (投影语义: 未分类).
+        """
+        events = self._store.get_events(claim.artifact_ids[0])
+        return verdict_precedent(events, claim.id)
+
     # ------------------------------------------------------------------
     # Corpus graph (Lens 第三刀 / ③ 可查询语料 — Tier 0)
     # ------------------------------------------------------------------
@@ -447,6 +491,11 @@ class LensService:
           CHALLENGE → ``current_claim —contradicts→ past_claim``.
         - ``grounds``: a CONFIRMED, non-retracted GROUND → ``claim —grounds→
           material``.
+        - ``narrowed_from``: a CONFIRMED, non-retracted kill VERDICT whose
+          payload names a ``successor_claim_id`` (划界死 / boundary kill) →
+          ``successor —narrowed_from→ killed claim``. Deterministic source —
+          read straight off the verdict payload, never LLM-computed, and no
+          new LINK event type (zero new storage).
 
         Pending/unconfirmed/retracted contradictions and grounds produce NO
         edges. Edges whose endpoint node isn't in the graph (e.g. a
@@ -522,6 +571,22 @@ class LensService:
                             id=material_id, type="material", label=label
                         )
                     _add_edge(source, material_id, "grounds")
+
+                elif e.type == VERDICT:
+                    # 死因分诊: a boundary kill may name the narrowed claim
+                    # that lives on. Deterministic lineage edge — pure read of
+                    # the verdict payload (never LLM). Legacy verdicts have no
+                    # successor_claim_id and simply produce nothing.
+                    if e.payload.get("outcome") != "kill":
+                        continue
+                    successor = e.payload.get("successor_claim_id")
+                    dead = e.target_ref
+                    if not successor or dead is None:
+                        continue
+                    # Drop dangling: both endpoints must be claim nodes in scope.
+                    if successor not in claim_ids or dead not in claim_ids:
+                        continue
+                    _add_edge(successor, dead, "narrowed_from")
 
                 elif e.type == LINK:
                     # Tier 1 LLM-computed semantic edge (builds_on / depends_on

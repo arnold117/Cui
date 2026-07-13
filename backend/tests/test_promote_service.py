@@ -120,7 +120,7 @@ def _park_and_grill_kill(
     challenge = grill_svc.challenge(artifact.id, claim.id, "Prove this")
     _answer = grill_svc.answer(artifact.id, claim.id, "I cannot")
     verdict_evt = grill_svc.verdict(
-        artifact.id, claim.id, "kill", "No evidence",
+        artifact.id, claim.id, "kill", "No evidence", death_cause="refuted",
     )
 
     event_svc.confirm_event(artifact.id, challenge.id)
@@ -403,7 +403,7 @@ class TestGetDocExcludesKilledClaimEvents:
         c2 = grill_svc.challenge(artifact.id, killed_claim_id, "Prove this")
         grill_svc.answer(artifact.id, killed_claim_id, "Cannot")
         v2 = grill_svc.verdict(
-            artifact.id, killed_claim_id, "kill", "No evidence",
+            artifact.id, killed_claim_id, "kill", "No evidence", death_cause="refuted",
         )
         event_svc.confirm_event(artifact.id, c2.id)
         event_svc.confirm_event(artifact.id, v2.id)

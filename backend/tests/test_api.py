@@ -71,11 +71,27 @@ def _answer(client: TestClient, artifact_id: str, claim_id: str, response: str =
     return resp.json()
 
 
-def _verdict(client: TestClient, artifact_id: str, claim_id: str, outcome: str = "survive", rationale: str = "solid") -> dict:
-    resp = client.post(
-        f"/api/v1/grill/{artifact_id}/verdict",
-        json={"claim_id": claim_id, "outcome": outcome, "rationale": rationale},
-    )
+def _verdict(
+    client: TestClient,
+    artifact_id: str,
+    claim_id: str,
+    outcome: str = "survive",
+    rationale: str = "solid",
+    death_cause: str | None = None,
+    revival_condition: str | None = None,
+    successor_claim_id: str | None = None,
+) -> dict:
+    body: dict = {"claim_id": claim_id, "outcome": outcome, "rationale": rationale}
+    # 死因分诊: kill needs a cause — default to refuted so legacy call sites keep working.
+    if outcome == "kill" and death_cause is None:
+        death_cause = "refuted"
+    if death_cause is not None:
+        body["death_cause"] = death_cause
+    if revival_condition is not None:
+        body["revival_condition"] = revival_condition
+    if successor_claim_id is not None:
+        body["successor_claim_id"] = successor_claim_id
+    resp = client.post(f"/api/v1/grill/{artifact_id}/verdict", json=body)
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -1400,3 +1416,70 @@ class TestCorpusGraph:
         assert node["type"] == "claim"
         assert node["status"] == "survived"
         assert node["label"] == data["claim"]["body"]
+
+
+# ---------------------------------------------------------------------------
+# 死因分诊 via API (spec-verdict-precedent §2 / §4)
+# ---------------------------------------------------------------------------
+
+
+class TestVerdictDeathTriageAPI:
+    def _grilled(self, client: TestClient) -> tuple[str, str]:
+        data = _park(client, body="triage me")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        return artifact_id, claim_id
+
+    def test_kill_without_death_cause_returns_400(self, client: TestClient):
+        artifact_id, claim_id = self._grilled(client)
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/verdict",
+            json={"claim_id": claim_id, "outcome": "kill", "rationale": "wrong"},
+        )
+        assert resp.status_code == 400
+        assert "death_cause" in resp.json()["detail"]
+
+    def test_survive_with_death_cause_returns_400(self, client: TestClient):
+        artifact_id, claim_id = self._grilled(client)
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/verdict",
+            json={"claim_id": claim_id, "outcome": "survive", "rationale": "ok",
+                  "death_cause": "refuted"},
+        )
+        assert resp.status_code == 400
+
+    def test_circumstantial_without_revival_returns_400(self, client: TestClient):
+        artifact_id, claim_id = self._grilled(client)
+        resp = client.post(
+            f"/api/v1/grill/{artifact_id}/verdict",
+            json={"claim_id": claim_id, "outcome": "kill", "rationale": "shelved",
+                  "death_cause": "circumstantial"},
+        )
+        assert resp.status_code == 400
+        assert "revival_condition" in resp.json()["detail"]
+
+    def test_full_triage_roundtrips_in_payload(self, client: TestClient):
+        artifact_id, claim_id = self._grilled(client)
+        result = _verdict(
+            client, artifact_id, claim_id, "kill", "over-broad",
+            death_cause="boundary", successor_claim_id="c-narrow",
+        )
+        payload = result["event"]["payload"]
+        assert payload["death_cause"] == "boundary"
+        assert payload["successor_claim_id"] == "c-narrow"
+
+    def test_circumstantial_roundtrips_revival(self, client: TestClient):
+        artifact_id, claim_id = self._grilled(client)
+        result = _verdict(
+            client, artifact_id, claim_id, "kill", "cannot defend today",
+            death_cause="circumstantial",
+            revival_condition="Tier 1 proof insufficient + embedding accepted",
+        )
+        payload = result["event"]["payload"]
+        assert payload["death_cause"] == "circumstantial"
+        assert (
+            payload["revival_condition"]
+            == "Tier 1 proof insufficient + embedding accepted"
+        )

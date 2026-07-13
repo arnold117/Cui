@@ -11,7 +11,7 @@ Dependency: EventStore -> EventService -> GrillService.
 
 from __future__ import annotations
 
-from anneal.domain.constants import SUPPORTED_ARTIFACT_KINDS
+from anneal.domain.constants import DEATH_CAUSES, SUPPORTED_ARTIFACT_KINDS
 from anneal.domain.events import (
     ANSWER,
     CHALLENGE,
@@ -168,6 +168,56 @@ class GrillService:
         )
         return self._event_service.append_event(artifact_id, event)
 
+    @staticmethod
+    def _validate_death_triage(
+        outcome: str,
+        death_cause: str | None,
+        revival_condition: str | None,
+        successor_claim_id: str | None,
+    ) -> None:
+        """Enforce 死因分诊 on NEW verdicts (spec docs/spec-verdict-precedent.md §2).
+
+        kill is not a boolean: every new kill must carry exactly one death
+        cause; a circumstantial kill must carry a revival condition (想不出
+        复活条件 = 该选品味死 — the structure forces the distinction, not
+        goodwill); revival_condition/successor_claim_id are only legal with
+        their respective causes; survive carries no triage at all. Legacy
+        events already in the store are untouched (validation is write-side).
+        """
+        if outcome == "survive":
+            if death_cause is not None:
+                raise ValueError("Survive verdict must not carry a death_cause")
+            if revival_condition:
+                raise ValueError("Survive verdict must not carry a revival_condition")
+            if successor_claim_id:
+                raise ValueError("Survive verdict must not carry a successor_claim_id")
+            return
+        # outcome == "kill"
+        if death_cause is None:
+            raise ValueError(
+                "Kill verdict requires a death_cause; "
+                f"one of {sorted(DEATH_CAUSES)}"
+            )
+        if death_cause not in DEATH_CAUSES:
+            raise ValueError(
+                f"Unknown death_cause {death_cause!r}; "
+                f"must be one of {sorted(DEATH_CAUSES)}"
+            )
+        if death_cause == "circumstantial":
+            if not (revival_condition and revival_condition.strip()):
+                raise ValueError(
+                    "A circumstantial kill requires a revival_condition — "
+                    "if none can be stated, the death_cause is not_worth"
+                )
+        elif revival_condition:
+            raise ValueError(
+                "revival_condition is only valid with death_cause='circumstantial'"
+            )
+        if death_cause != "boundary" and successor_claim_id:
+            raise ValueError(
+                "successor_claim_id is only valid with death_cause='boundary'"
+            )
+
     def verdict(
         self,
         artifact_id: str,
@@ -175,6 +225,9 @@ class GrillService:
         outcome: str,
         rationale: str,
         challenge_id: str | None = None,
+        death_cause: str | None = None,
+        revival_condition: str | None = None,
+        successor_claim_id: str | None = None,
     ) -> Event:
         """Judge verdict on a claim. Appends VERDICT event.
 
@@ -182,6 +235,12 @@ class GrillService:
         actor="system", confirmed=False (system judgment needs user confirmation).
         target_ref=claim_id.
         Killed ideas permanently remain in trajectory.
+
+        死因分诊: a kill MUST carry ``death_cause`` (one of DEATH_CAUSES); a
+        circumstantial kill MUST carry ``revival_condition``; a boundary kill
+        MAY name ``successor_claim_id`` (the narrowed claim that lives on —
+        the corpus graph projects it into a deterministic ``narrowed_from``
+        edge). survive carries none of these. See ``_validate_death_triage``.
 
         ``challenge_id`` is optional and additive: when provided it is recorded
         in the payload so the verdict can be paired to the specific challenge it
@@ -194,9 +253,18 @@ class GrillService:
             raise ValueError(
                 f"Verdict outcome must be 'survive' or 'kill', got {outcome!r}"
             )
+        self._validate_death_triage(
+            outcome, death_cause, revival_condition, successor_claim_id
+        )
         payload: dict = {"outcome": outcome, "rationale": rationale}
         if challenge_id is not None:
             payload["challenge_id"] = challenge_id
+        if death_cause is not None:
+            payload["death_cause"] = death_cause
+        if revival_condition is not None:
+            payload["revival_condition"] = revival_condition
+        if successor_claim_id is not None:
+            payload["successor_claim_id"] = successor_claim_id
         event = make_event(
             type=VERDICT,
             actor="system",
@@ -268,6 +336,13 @@ class GrillService:
     ) -> Event:
         """LLM-generated verdict. confirmed=False per spec §2.6.
 
+        死因分诊: on a kill the LLM must also propose a ``death_cause`` (and a
+        ``revival_condition`` when circumstantial). 机器起草人签名 — the
+        proposal still goes through the confirmed=False + human CONFIRM gate,
+        where the user can amend it. Invalid enum values raise
+        ``LLMResponseError`` (existing pattern); stray triage fields on a
+        survive proposal are dropped as noise rather than failing the call.
+
         ``challenge_id`` is optional and additive — when provided it is recorded
         in the payload so the verdict pairs to the specific challenge it resolves
         (see ``answer``/``verdict``). Omitting it keeps legacy behavior intact.
@@ -285,6 +360,23 @@ class GrillService:
         outcome = result.get("outcome", "")
         if outcome not in ("survive", "kill"):
             raise LLMResponseError(f"LLM returned invalid verdict outcome: {outcome!r}")
+        death_cause = result.get("death_cause") or None
+        revival_condition = result.get("revival_condition") or None
+        if outcome == "survive":
+            death_cause = None
+            revival_condition = None
+        else:
+            if death_cause not in DEATH_CAUSES:
+                raise LLMResponseError(
+                    f"LLM returned invalid death_cause: {death_cause!r}"
+                )
+            if death_cause == "circumstantial":
+                if not revival_condition:
+                    raise LLMResponseError(
+                        "LLM proposed a circumstantial kill without a revival_condition"
+                    )
+            else:
+                revival_condition = None
         payload: dict = {
             "outcome": outcome,
             "rationale": result.get("rationale", ""),
@@ -293,6 +385,10 @@ class GrillService:
             "evidence_count": len(evidence_events),
             "grounded_material_ids": [e.payload.get("material_id") for e in evidence_events],
         }
+        if death_cause is not None:
+            payload["death_cause"] = death_cause
+        if revival_condition is not None:
+            payload["revival_condition"] = revival_condition
         if challenge_id is not None:
             payload["challenge_id"] = challenge_id
         event = make_event(

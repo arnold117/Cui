@@ -32,6 +32,7 @@ from anneal.domain.projections import (
     pending_events,
     retracted_event_ids,
     snapshot_projection,
+    verdict_precedent,
 )
 
 
@@ -944,3 +945,94 @@ class TestConfirmedGroundEvidence:
         g1 = _ground(1, confirmed=True)
         result = confirmed_ground_evidence([g2, g1], CLAIM_A)
         assert result == [g1, g2]
+
+
+# ===========================================================================
+# verdict_precedent — 判例 read side (spec-verdict-precedent §2)
+# ===========================================================================
+
+
+class TestVerdictPrecedent:
+    def test_no_verdict_returns_none(self):
+        events = [
+            make_event(type=PARK, actor="user", confirmed=True, target_ref=CLAIM_A),
+        ]
+        assert verdict_precedent(events, CLAIM_A) is None
+
+    def test_unconfirmed_verdict_returns_none(self):
+        """Only confirmed verdicts count — the trust chain reuses the gate."""
+        events = [_verdict("kill", confirmed=False)]
+        assert verdict_precedent(events, CLAIM_A) is None
+
+    def test_legacy_verdict_yields_unclassified_precedent(self):
+        """Legacy payload (no triage fields) replays without breaking:
+        death_cause None = 投影语义「未分类」."""
+        v = _verdict("kill", confirmed=True)
+        p = verdict_precedent([v], CLAIM_A)
+        assert p is not None
+        assert p.outcome == "kill"
+        assert p.death_cause is None
+        assert p.rationale == ""
+        assert p.revival_condition is None
+        assert p.successor_claim_id is None
+
+    def test_full_triage_payload_read_back(self):
+        v = make_event(
+            type=VERDICT, actor="system", confirmed=True, target_ref=CLAIM_A,
+            payload={
+                "outcome": "kill",
+                "rationale": "over-broad",
+                "death_cause": "boundary",
+                "successor_claim_id": "claim-narrow",
+            },
+        )
+        p = verdict_precedent([v], CLAIM_A)
+        assert p.death_cause == "boundary"
+        assert p.rationale == "over-broad"
+        assert p.successor_claim_id == "claim-narrow"
+
+    def test_circumstantial_revival_read_back(self):
+        v = make_event(
+            type=VERDICT, actor="system", confirmed=True, target_ref=CLAIM_A,
+            payload={
+                "outcome": "kill",
+                "rationale": "shelved",
+                "death_cause": "circumstantial",
+                "revival_condition": "dataset D goes public",
+            },
+        )
+        p = verdict_precedent([v], CLAIM_A)
+        assert p.revival_condition == "dataset D goes public"
+
+    def test_retracted_verdict_folded_back(self):
+        v = _verdict("kill", confirmed=True)
+        events = [v, _retract(v.id)]
+        assert verdict_precedent(events, CLAIM_A) is None
+
+    def test_last_confirmed_verdict_wins(self):
+        t0 = datetime(2026, 1, 1)
+        v1 = Event(
+            type=VERDICT, actor="system", confirmed=True, target_ref=CLAIM_A,
+            ts=t0, payload={"outcome": "kill", "rationale": "first",
+                            "death_cause": "refuted"},
+        )
+        v2 = Event(
+            type=VERDICT, actor="system", confirmed=True, target_ref=CLAIM_A,
+            ts=t0 + timedelta(minutes=1),
+            payload={"outcome": "kill", "rationale": "second",
+                     "death_cause": "not_worth"},
+        )
+        p = verdict_precedent([v2, v1], CLAIM_A)  # unsorted input on purpose
+        assert p.rationale == "second"
+        assert p.death_cause == "not_worth"
+
+    def test_confirm_event_counts_as_confirmed(self):
+        v = _verdict("survive", confirmed=False)
+        events = [v, _confirm(v.id)]
+        p = verdict_precedent(events, CLAIM_A)
+        assert p is not None
+        assert p.outcome == "survive"
+
+    def test_other_claims_verdicts_ignored(self):
+        v = _verdict("kill", claim_id=CLAIM_B, confirmed=True)
+        assert verdict_precedent([v], CLAIM_A) is None

@@ -235,7 +235,7 @@ class TestVerdict:
         """verdict(outcome='kill') creates a VERDICT event."""
         _park(store)
         svc.challenge(ARTIFACT, CLAIM_A, "Why?")
-        event = svc.verdict(ARTIFACT, CLAIM_A, "kill", "No supporting evidence")
+        event = svc.verdict(ARTIFACT, CLAIM_A, "kill", "No supporting evidence", death_cause="refuted")
 
         assert event.type == VERDICT
         assert event.payload["outcome"] == "kill"
@@ -372,7 +372,7 @@ class TestFullCycleKill:
 
         challenge = svc.challenge(ARTIFACT, CLAIM_A, "Can you prove this?")
         answer = svc.answer(ARTIFACT, CLAIM_A, "I cannot find evidence")
-        verdict = svc.verdict(ARTIFACT, CLAIM_A, "kill", "Claim unsupported")
+        verdict = svc.verdict(ARTIFACT, CLAIM_A, "kill", "Claim unsupported", death_cause="refuted")
 
         # Confirm system events.
         event_svc.confirm_event(ARTIFACT, challenge.id)
@@ -399,7 +399,7 @@ class TestFullCycleKill:
 
         challenge = svc.challenge(ARTIFACT, CLAIM_A, "Prove it")
         answer = svc.answer(ARTIFACT, CLAIM_A, "Cannot")
-        verdict = svc.verdict(ARTIFACT, CLAIM_A, "kill", "No evidence")
+        verdict = svc.verdict(ARTIFACT, CLAIM_A, "kill", "No evidence", death_cause="refuted")
 
         # Confirm system events so they appear in lens feed.
         event_svc.confirm_event(ARTIFACT, challenge.id)
@@ -614,7 +614,7 @@ class TestAutoVerdict:
         """auto_verdict kill has confirmed=False."""
         store = InMemoryEventStore()
         event_svc = EventService(store)
-        llm = FakeLLMClient([json.dumps({"outcome": "kill", "rationale": "No evidence", "confidence": 0.9})])
+        llm = FakeLLMClient([json.dumps({"outcome": "kill", "rationale": "No evidence", "confidence": 0.9, "death_cause": "refuted"})])
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
         svc.challenge(ARTIFACT, CLAIM_A, "Prove it")
@@ -765,7 +765,7 @@ class TestAutoVerdictEvidenceAware:
         store = InMemoryEventStore()
         event_svc = EventService(store)
         llm = CapturingLLMClient(
-            [json.dumps({"outcome": "kill", "rationale": "r", "confidence": 0.9})]
+            [json.dumps({"outcome": "kill", "rationale": "r", "confidence": 0.9, "death_cause": "refuted"})]
         )
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
@@ -799,3 +799,205 @@ class TestAutoVerdictEvidenceAware:
         # Provenance recorded honestly even with no evidence.
         assert event.payload["evidence_count"] == 0
         assert event.payload["grounded_material_ids"] == []
+
+
+# ===========================================================================
+# 死因分诊 (death-cause triage) — spec docs/spec-verdict-precedent.md §2
+# ===========================================================================
+
+
+class TestVerdictDeathTriage:
+    def _grill(self, svc, store):
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Why?")
+
+    def test_kill_without_death_cause_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="death_cause"):
+            svc.verdict(ARTIFACT, CLAIM_A, "kill", "wrong")
+
+    def test_kill_with_unknown_death_cause_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="death_cause"):
+            svc.verdict(ARTIFACT, CLAIM_A, "kill", "wrong", death_cause="tragic")
+
+    @pytest.mark.parametrize("cause", ["refuted", "not_worth", "boundary"])
+    def test_terminal_causes_accepted(self, svc, store, cause):
+        self._grill(svc, store)
+        event = svc.verdict(ARTIFACT, CLAIM_A, "kill", "r", death_cause=cause)
+        assert event.payload["death_cause"] == cause
+        assert "revival_condition" not in event.payload
+        assert "successor_claim_id" not in event.payload
+
+    def test_circumstantial_without_revival_condition_rejected(self, svc, store):
+        """想不出复活条件 = 该选品味死 — the structure forces it."""
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="revival_condition"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "kill", "r", death_cause="circumstantial"
+            )
+
+    def test_circumstantial_with_blank_revival_condition_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="revival_condition"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "kill", "r",
+                death_cause="circumstantial", revival_condition="   ",
+            )
+
+    def test_circumstantial_with_revival_condition_accepted(self, svc, store):
+        self._grill(svc, store)
+        event = svc.verdict(
+            ARTIFACT, CLAIM_A, "kill", "cannot defend today",
+            death_cause="circumstantial",
+            revival_condition="Tier 1 proof insufficient AND embedding accepted",
+        )
+        assert event.payload["death_cause"] == "circumstantial"
+        assert (
+            event.payload["revival_condition"]
+            == "Tier 1 proof insufficient AND embedding accepted"
+        )
+
+    def test_revival_condition_on_non_circumstantial_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="circumstantial"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "kill", "r",
+                death_cause="refuted", revival_condition="if pigs fly",
+            )
+
+    def test_boundary_with_successor_accepted(self, svc, store):
+        self._grill(svc, store)
+        event = svc.verdict(
+            ARTIFACT, CLAIM_A, "kill", "over-broad",
+            death_cause="boundary", successor_claim_id="claim-narrow",
+        )
+        assert event.payload["death_cause"] == "boundary"
+        assert event.payload["successor_claim_id"] == "claim-narrow"
+
+    def test_boundary_without_successor_accepted(self, svc, store):
+        """successor_claim_id is OPTIONAL for boundary kills."""
+        self._grill(svc, store)
+        event = svc.verdict(
+            ARTIFACT, CLAIM_A, "kill", "over-broad", death_cause="boundary"
+        )
+        assert "successor_claim_id" not in event.payload
+
+    @pytest.mark.parametrize("cause", ["refuted", "not_worth"])
+    def test_successor_on_non_boundary_rejected(self, svc, store, cause):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="boundary"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "kill", "r",
+                death_cause=cause, successor_claim_id="claim-narrow",
+            )
+
+    def test_survive_with_death_cause_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="death_cause"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "survive", "ok", death_cause="refuted"
+            )
+
+    def test_survive_with_revival_condition_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="revival_condition"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "survive", "ok", revival_condition="later"
+            )
+
+    def test_survive_with_successor_rejected(self, svc, store):
+        self._grill(svc, store)
+        with pytest.raises(ValueError, match="successor_claim_id"):
+            svc.verdict(
+                ARTIFACT, CLAIM_A, "survive", "ok", successor_claim_id="c2"
+            )
+
+    def test_plain_survive_untouched(self, svc, store):
+        """survive without triage fields keeps the legacy payload shape."""
+        self._grill(svc, store)
+        event = svc.verdict(ARTIFACT, CLAIM_A, "survive", "ok")
+        for key in ("death_cause", "revival_condition", "successor_claim_id"):
+            assert key not in event.payload
+
+    def test_bypass_untouched(self, svc, store):
+        """bypass (debt survive) never carries triage fields."""
+        self._grill(svc, store)
+        event = svc.bypass(ARTIFACT, CLAIM_A)
+        assert event.payload["outcome"] == "survive"
+        for key in ("death_cause", "revival_condition", "successor_claim_id"):
+            assert key not in event.payload
+
+
+class TestAutoVerdictDeathTriage:
+    def _svc(self, responses):
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = FakeLLMClient([json.dumps(r) for r in responses])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Prove it")
+        return svc
+
+    def test_kill_with_proposed_cause_recorded(self):
+        svc = self._svc([
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9,
+             "death_cause": "not_worth", "revival_condition": None}
+        ])
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+        assert event.payload["death_cause"] == "not_worth"
+        assert "revival_condition" not in event.payload
+        assert event.confirmed is False  # still the human CONFIRM gate
+
+    def test_kill_missing_death_cause_raises(self):
+        svc = self._svc([
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9}
+        ])
+        with pytest.raises(LLMResponseError, match="death_cause"):
+            svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+    def test_kill_invalid_death_cause_raises(self):
+        svc = self._svc([
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9,
+             "death_cause": "tragic"}
+        ])
+        with pytest.raises(LLMResponseError, match="death_cause"):
+            svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+    def test_circumstantial_without_revival_raises(self):
+        svc = self._svc([
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9,
+             "death_cause": "circumstantial", "revival_condition": None}
+        ])
+        with pytest.raises(LLMResponseError, match="revival_condition"):
+            svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+    def test_circumstantial_with_revival_recorded(self):
+        svc = self._svc([
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9,
+             "death_cause": "circumstantial",
+             "revival_condition": "dataset D becomes public"}
+        ])
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+        assert event.payload["death_cause"] == "circumstantial"
+        assert event.payload["revival_condition"] == "dataset D becomes public"
+
+    def test_survive_drops_stray_triage_noise(self):
+        """LLM noise on a survive proposal is dropped, not fatal."""
+        svc = self._svc([
+            {"outcome": "survive", "rationale": "r", "confidence": 0.8,
+             "death_cause": "refuted", "revival_condition": "nonsense"}
+        ])
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "Because Z")
+        assert event.payload["outcome"] == "survive"
+        for key in ("death_cause", "revival_condition"):
+            assert key not in event.payload
+
+    def test_non_circumstantial_drops_stray_revival(self):
+        svc = self._svc([
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9,
+             "death_cause": "refuted", "revival_condition": "stray"}
+        ])
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+        assert event.payload["death_cause"] == "refuted"
+        assert "revival_condition" not in event.payload

@@ -196,7 +196,8 @@ class TestAcceptanceCriteria:
             artifact.id, claim.id, "I assumed plane-wave was enough"
         )
         verdict_evt = svc.grill_svc.verdict(
-            artifact.id, claim.id, "kill", "Plane-wave alone insufficient for depth"
+            artifact.id, claim.id, "kill", "Plane-wave alone insufficient for depth",
+            death_cause="refuted",
         )
 
         # Confirm system events.
@@ -276,7 +277,8 @@ class TestAcceptanceCriteria:
             artifact.id, killed_claim_id, "Only relative changes"
         )
         v2 = svc.grill_svc.verdict(
-            artifact.id, killed_claim_id, "kill", "Cannot measure absolute pressure"
+            artifact.id, killed_claim_id, "kill", "Cannot measure absolute pressure",
+            death_cause="refuted",
         )
         svc.event_svc.confirm_event(artifact.id, c2.id)
         svc.event_svc.confirm_event(artifact.id, v2.id)
@@ -351,7 +353,7 @@ class TestAcceptanceCriteria:
         svc.grill_svc.start_grill(art_k.id, art_k.kind)
         c_k = svc.grill_svc.challenge(art_k.id, claim_k.id, "Any support?")
         svc.grill_svc.answer(art_k.id, claim_k.id, "None found")
-        v_k = svc.grill_svc.verdict(art_k.id, claim_k.id, "kill", "No evidence")
+        v_k = svc.grill_svc.verdict(art_k.id, claim_k.id, "kill", "No evidence", death_cause="refuted")
         svc.event_svc.confirm_event(art_k.id, c_k.id)
         svc.event_svc.confirm_event(art_k.id, v_k.id)
 

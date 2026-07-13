@@ -271,6 +271,56 @@ def claim_status(events: list[Event], claim_id: str) -> str:
     return "open"
 
 
+class VerdictPrecedent(BaseModel):
+    """The 判例 a claim's ruling verdict left behind (死因分诊 read side).
+
+    ``outcome`` uses the raw verdict payload vocabulary ("survive"/"kill").
+    ``death_cause`` is None for survive verdicts AND for legacy kill verdicts
+    recorded before death-cause triage — projection semantics: unclassified
+    (死因未分类). Legacy events never break; every field is read with .get.
+    """
+
+    outcome: str
+    death_cause: str | None = None
+    rationale: str = ""
+    revival_condition: str | None = None
+    successor_claim_id: str | None = None
+
+
+def verdict_precedent(events: list[Event], claim_id: str) -> VerdictPrecedent | None:
+    """Precedent of the claim's ruling verdict, or None without one.
+
+    Selection rule mirrors ``claim_status``: the LAST non-retracted CONFIRMED
+    verdict targeting ``claim_id`` wins (unconfirmed drafts and retracted
+    verdicts never count — the confirm gate is the trust chain, so an injected
+    rationale is always human-written or human-signed).
+    """
+    # Defensive sort (Fix 7).
+    events = sorted(events, key=lambda e: e.ts)
+    retracted = retracted_event_ids(events)
+    confirmed = _confirmed_event_ids(events)
+
+    ruling: Event | None = None
+    for e in events:
+        if e.type != VERDICT or e.target_ref != claim_id:
+            continue
+        if e.id in retracted:
+            continue
+        if e.confirmed or e.id in confirmed:
+            ruling = e
+
+    if ruling is None:
+        return None
+    p = ruling.payload
+    return VerdictPrecedent(
+        outcome=p.get("outcome", ""),
+        death_cause=p.get("death_cause"),
+        rationale=p.get("rationale", "") or "",
+        revival_condition=p.get("revival_condition"),
+        successor_claim_id=p.get("successor_claim_id"),
+    )
+
+
 def has_unresolved_debt(events: list[Event]) -> bool:
     """True if any event has debt=True and no subsequent CONFIRM event targets it."""
     # Defensive sort (Fix 7).

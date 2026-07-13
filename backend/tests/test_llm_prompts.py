@@ -3,6 +3,7 @@ from anneal.llm.prompts import (
     build_challenge_prompt,
     build_verdict_prompt,
     format_evidence_block,
+    truncate_rationale,
 )
 
 
@@ -54,14 +55,37 @@ def _challenge_baseline(claim: str, context: str) -> tuple[str, str]:
 
 
 def _verdict_baseline(claim: str, question: str, answer: str) -> tuple[str, str]:
+    # Includes the 死因分诊 (death-cause triage) instructions — the baseline
+    # tracks the CURRENT no-evidence prompt so the evidence param alone never
+    # mutates the base text.
     system = (
         "You are a rigorous academic judge evaluating whether a claim survives "
         "a challenge. You must decide: does the answer adequately address the "
         "challenge question? Be strict but fair.\n\n"
+        'If the outcome is "kill", you must also triage the DEATH CAUSE — pick '
+        "exactly one:\n"
+        '- "refuted": the claim is factually wrong (truth-axis kill; includes '
+        "being a duplicate of an already-killed idea).\n"
+        '- "not_worth": the claim is correct but not worth pursuing '
+        "(worth-axis kill).\n"
+        '- "boundary": the original formulation died, but the death drew a '
+        "boundary — a narrowed version of the claim would survive.\n"
+        '- "circumstantial": the claim did not conclusively die on any axis '
+        "(it just could not be defended right now — missing material, "
+        'missing proof). A circumstantial kill MUST include a concrete, '
+        "checkable revival_condition under which the claim is worth "
+        "reopening; if you cannot state one, the cause is not_worth, not "
+        "circumstantial.\n\n"
         "Respond ONLY with valid JSON in this exact format:\n"
         '{"outcome": "survive" or "kill", '
         '"rationale": "<1-2 sentence justification>", '
-        '"confidence": <0.0 to 1.0>}'
+        '"confidence": <0.0 to 1.0>, '
+        '"death_cause": "refuted" | "not_worth" | "boundary" | '
+        '"circumstantial" | null, '
+        '"revival_condition": "<checkable condition>" | null}\n'
+        'death_cause MUST be null when outcome is "survive" and one of the '
+        'four causes when outcome is "kill". revival_condition MUST be null '
+        'unless death_cause is "circumstantial".'
     )
     user = (
         f"Claim: {claim}\n\n"
@@ -153,3 +177,53 @@ class TestBuildVerdictPrompt:
     def test_verdict_prompt_system_contains_json_instruction(self):
         system, user = build_verdict_prompt("c", "q", "a")
         assert "JSON" in system
+
+
+class TestTruncateRationale:
+    """Deterministic 300-char cap for precedent injection (spec Q4)."""
+
+    def test_short_rationale_verbatim(self):
+        assert truncate_rationale("short") == "short"
+
+    def test_exactly_limit_verbatim(self):
+        text = "x" * 300
+        assert truncate_rationale(text) == text
+
+    def test_over_limit_truncated_with_ellipsis(self):
+        text = "a" * 301
+        out = truncate_rationale(text)
+        assert out == "a" * 300 + "…"
+        assert len(out) == 301
+
+    def test_empty_string(self):
+        assert truncate_rationale("") == ""
+
+    def test_custom_limit(self):
+        assert truncate_rationale("abcdef", limit=3) == "abc…"
+
+    def test_deterministic(self):
+        text = "b" * 999
+        assert truncate_rationale(text) == truncate_rationale(text)
+
+
+class TestVerdictPromptDeathTriage:
+    def test_system_describes_all_four_causes(self):
+        system, _ = build_verdict_prompt("c", "q", "a")
+        for cause in ("refuted", "not_worth", "boundary", "circumstantial"):
+            assert cause in system
+
+    def test_json_schema_carries_triage_keys(self):
+        system, _ = build_verdict_prompt("c", "q", "a")
+        assert '"death_cause"' in system
+        assert '"revival_condition"' in system
+
+    def test_null_rules_stated(self):
+        """death_cause null on survive / required on kill; revival only circumstantial."""
+        system, _ = build_verdict_prompt("c", "q", "a")
+        assert 'null when outcome is "survive"' in system
+        assert 'unless death_cause is "circumstantial"' in system
+
+    def test_no_revival_no_circumstantial_rule(self):
+        """The escape valve is spelled out: no statable revival = not_worth."""
+        system, _ = build_verdict_prompt("c", "q", "a")
+        assert "cannot state one" in system

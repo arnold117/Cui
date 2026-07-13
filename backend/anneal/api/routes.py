@@ -74,6 +74,12 @@ class VerdictRequest(BaseModel):
     outcome: str
     rationale: str = ""
     challenge_id: str | None = None
+    # 死因分诊 — required for kill (one of DEATH_CAUSES); revival_condition
+    # required when death_cause="circumstantial"; successor_claim_id only
+    # valid with death_cause="boundary". Enforced at the service layer.
+    death_cause: str | None = None
+    revival_condition: str | None = None
+    successor_claim_id: str | None = None
 
 
 class BypassRequest(BaseModel):
@@ -282,6 +288,9 @@ def grill_verdict(
     try:
         event = grill_svc.verdict(
             artifact_id, req.claim_id, req.outcome, req.rationale, req.challenge_id,
+            death_cause=req.death_cause,
+            revival_condition=req.revival_condition,
+            successor_claim_id=req.successor_claim_id,
         )
     except (ValueError, DebtBlockError, UngrilledError, KilledClaimError, ParkIsolationViolation) as exc:
         raise _handle_domain_error(exc)
