@@ -11,7 +11,7 @@
 
 ## 核心对象
 
-- **Claim** — 拷问与落定的最小单位。属 Library 层的**漂浮节点**，可被多个 Artifact 引用。`status`（open/survived/killed/parked）是从事件算出的**投影**，不存。
+- **Claim** — 拷问与落定的最小单位。属 Library 层的**漂浮节点**，可被多个 Artifact 引用。`status`（open/survived/killed/parked）是从事件算出的**投影**，不存。淬火语义：有非 retract 的 challenge 且无裁决 = **open（在火上）**；仅 PARK = parked（密封休眠）；裁决定生死。
 - **Artifact** — 写作产物（脊柱对象），kind 是开放集：idea/review/paper/revision…。其 `events[]` 事件流 = 唯一真相。
 - **Trajectory（轨迹）** — 一条 Artifact 上的全部事件流：challenge/answer/verdict/ground… 幸存者与阵亡者都录。
 - **Grilled trajectory（拷问过的轨迹）** — 经过 GRILL 闸门的 trajectory。**Lens 只吃这个，永不吃 PARK**（防投毒）。
