@@ -2,7 +2,7 @@
 
 > 状态：草案 v0.1（2026-06-19，待 grill）
 > 路线位置：P2 · Lens = 价值梯子 L3 的第二刀（① 品味锚）。第一刀 ② 跨想法矛盾检测已完成。
-> 来源：LitScribe grill 已把 taste 模型啃透（`project_idea_mvp_spec.md` IdeaDoc schema 的 `taste` 字段 + 三层分级 + 红线）。本 spec 不重 grill 方向，把它落成 Anneal 原生第一刀。
+> 来源：LitScribe grill 已把 taste 模型啃透（`project_idea_mvp_spec.md` IdeaDoc schema 的 `taste` 字段 + 三层分级 + 红线）。本 spec 不重 grill 方向，把它落成 Cui 原生第一刀。
 > **第一刀范围（Arnold 拍）= 两锚合一**：相对文献（prior_art）+ 相对用户自己的 grilled 历史，一起给定位。
 
 ---

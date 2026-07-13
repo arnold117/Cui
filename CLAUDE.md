@@ -1,4 +1,4 @@
-# Anneal (淬)
+# Cui (淬)
 
 AI-native writing engine. Grills ideas, accumulates trajectories, forges drafts from verified claims.
 

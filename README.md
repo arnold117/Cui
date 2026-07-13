@@ -1,4 +1,4 @@
-# 淬 · Anneal
+# 淬 · Cui
 
 An AI-native writing engine that **grills your ideas before they become drafts**.
 
@@ -6,7 +6,7 @@ Not a retrieval tool. Not a summarizer. A thinking engine that treats every aban
 
 ## What makes this different
 
-| What others do | What Anneal does |
+| What others do | What Cui does |
 |---|---|
 | Document-centric: input PDF, output summary | **Thought-centric**: ideas are first-class, documents are artifacts |
 | Stateless: every session starts from zero | **Trajectory**: dead ideas, grilled arguments, pivots — all accumulate |

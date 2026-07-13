@@ -8,7 +8,7 @@ from anneal.api.routes import router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Anneal", lifespan=lifespan)
+    app = FastAPI(title="Cui", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://localhost:3000"],

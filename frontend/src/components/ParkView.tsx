@@ -40,7 +40,7 @@ export default function ParkView({ onRefresh, onSelect }: Props) {
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="w-full max-w-lg space-y-4">
         <div className="space-y-2">
-          <h2 className="text-xl font-medium text-zinc-100">淬 · Anneal — 拷问你的想法</h2>
+          <h2 className="text-xl font-medium text-zinc-100">淬 · Cui — 拷问你的想法</h2>
           <p className="text-sm text-zinc-400 leading-relaxed">
             把你的 claim 写下来，系统会用对抗性拷问帮你找到弱点。
           </p>

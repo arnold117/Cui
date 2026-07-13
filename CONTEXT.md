@@ -1,4 +1,4 @@
-# Anneal — 领域术语表 (Glossary)
+# Cui — 领域术语表 (Glossary)
 
 > 只放术语定义，不放实现细节。实现决策见 `docs/spec-*.md` 与 `docs/adr/`。
 > 产品方向/铁律见用户记忆 `project_direction.md`（灵魂文档）。

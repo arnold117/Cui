@@ -66,7 +66,7 @@ export default function Sidebar({ selectedId, onSelect, refreshKey, showGraph, o
     <aside className="w-70 shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">
       {/* Header + new button */}
       <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
-        <span className="text-sm font-medium text-zinc-300 tracking-wide">淬 Anneal</span>
+        <span className="text-sm font-medium text-zinc-300 tracking-wide">淬 Cui</span>
         <button
           className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 text-lg"
           onClick={() => onSelect(null)}

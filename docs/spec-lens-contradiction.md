@@ -16,7 +16,7 @@
 ## 1. 为什么是这一刀（依赖顺序，不是偏好）
 
 1. **L2 已牢，前置解锁**。grill 记录定的顺序「L2 打牢再 L3」已满足：脊柱在、grilled trajectory 在产出、证据对辩闭环通。
-2. **三候选里 ② 落地最实**。靠现有事件流 + `claim_status` 投影就能拿到旧结论；矛盾判定可 cherry-pick LitScribe 的 contradiction 纯逻辑，接 Anneal 自己的 LLM client。
+2. **三候选里 ② 落地最实**。靠现有事件流 + `claim_status` 投影就能拿到旧结论；矛盾判定可 cherry-pick LitScribe 的 contradiction 纯逻辑，接 Cui 自己的 LLM client。
 3. **它是「读出」的最小垂直切片**。喂入点（`lens_feed_projection`）早有，缺的是「读出 → 影响当下 grill」。② 用最少的料证明这条回路通，且**不碰 taste 红线**（① 品味锚才碰）。
 
 排除的错误起点：
@@ -60,7 +60,7 @@
    │       或经 list_artifacts(library_id) → 各 artifact 的 claims 派生】
    │
    ├─ 矛盾判定：对每个候选旧 claim P，LLM 判 C⟷P 是否矛盾/张力
-   │     cherry-pick contradiction 纯逻辑 + Anneal LLM client
+   │     cherry-pick contradiction 纯逻辑 + Cui LLM client
    │     返回 {contradicts: bool, tension: str}
    │     （词面/主题词粗筛 shortlist top-K → 只对 shortlist 跑 LLM；Q-B 已决）
    │
@@ -116,7 +116,7 @@
 ## 7. 实现备注（非 grill 岔口，落地时知道即可）
 
 - **`repository` 缺 `list_claims(library_id)`** —— 现仅有 `list_artifacts` + `get_claim`。枚举 Library 旧 claim 需补此方法（InMemory + Postgres），或经 `list_artifacts → 各 claim` 派生。候选检索的前提。
-- **矛盾判定逻辑** —— cherry-pick LitScribe `litscribe/tools/contradictions.py` 的纯逻辑，接 Anneal 自己的 LLM client（不引 langchain），新增 `build_contradiction_prompt`。
+- **矛盾判定逻辑** —— cherry-pick LitScribe `litscribe/tools/contradictions.py` 的纯逻辑，接 Cui 自己的 LLM client（不引 langchain），新增 `build_contradiction_prompt`。
 - **软张力开关** —— 默认关。第一刀做成简单的 request 参数 / 设置项即可（`include_soft: bool=false`），不单列 UI。
 - **词面粗筛** —— 提取当下 claim 与候选 claim 的主题词（名词/实体）做 overlap shortlist；纯函数、可测。
 - **前端徽章** —— GrillMessage 按 `payload.kind=="lens_contradiction"` 渲染「⟲ 来自你的轨迹」+ past_outcome 措辞，复用证据徽章那套。
