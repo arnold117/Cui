@@ -1,20 +1,11 @@
 import { useState, useEffect } from "react"
 import type { DocVersion } from "../types"
 import * as api from "../api"
+import { formatTimestamp } from "../utils"
 import EventCard from "./EventCard"
 
 interface Props {
   artifactId: string
-}
-
-function formatTimestamp(ts: string): string {
-  const d = new Date(ts)
-  return d.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
 }
 
 export default function VersionsView({ artifactId }: Props) {

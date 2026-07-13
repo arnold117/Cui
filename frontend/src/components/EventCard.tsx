@@ -1,8 +1,17 @@
-import type { Event } from "../types"
-import { DEATH_CAUSE_BADGE_CLASSES, DEATH_CAUSE_LABELS } from "../utils"
+import { useEffect, useState } from "react"
+import type { Claim, Event } from "../types"
+import {
+  DEATH_CAUSE_BADGE_CLASSES,
+  DEATH_CAUSE_LABELS,
+  formatTimestamp,
+} from "../utils"
+import { getClaim } from "../api"
 
 interface Props {
   event: Event
+  /** Navigate to another artifact (e.g. the boundary successor's parking
+   * artifact). Optional — without it the successor chip renders unlinked. */
+  onOpenArtifact?: (artifactId: string) => void
 }
 
 const TYPE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -13,16 +22,6 @@ const TYPE_STYLES: Record<string, { bg: string; text: string; label: string }> =
   park: { bg: "bg-zinc-600/50", text: "text-zinc-300", label: "Park" },
   confirm: { bg: "bg-emerald-700/50", text: "text-emerald-200", label: "Confirm" },
   retract: { bg: "bg-red-700/50", text: "text-red-200", label: "Retract" },
-}
-
-function formatTimestamp(ts: string): string {
-  const d = new Date(ts)
-  return d.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
 }
 
 function extractContent(event: Event): string {
@@ -37,7 +36,58 @@ function extractContent(event: Event): string {
   return JSON.stringify(p)
 }
 
-export default function EventCard({ event }: Props) {
+// 收窄链接 (boundary kill lineage): the verdict payload names the narrowed
+// successor claim that lives on. Resolve its body lazily (GET /claim/{id})
+// and link to its parking artifact (claim.artifact_ids[0]) when a navigation
+// callback is provided — 阵亡想法的死亡记录第一眼就该看到往哪收窄了.
+function SuccessorChip({
+  successorClaimId,
+  onOpenArtifact,
+}: {
+  successorClaimId: string
+  onOpenArtifact?: (artifactId: string) => void
+}) {
+  const [successor, setSuccessor] = useState<Claim | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getClaim(successorClaimId)
+      .then(({ claim }) => {
+        if (!cancelled) setSuccessor(claim)
+      })
+      .catch(() => {
+        // Unresolvable successor — render nothing rather than a dead chip.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [successorClaimId])
+
+  if (!successor) return null
+
+  const body =
+    successor.body.length > 40 ? successor.body.slice(0, 39) + "…" : successor.body
+  const targetArtifactId = successor.artifact_ids[0]
+  const clickable = Boolean(onOpenArtifact && targetArtifactId)
+
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={() => {
+        if (clickable) onOpenArtifact!(targetArtifactId)
+      }}
+      title={successor.body}
+      className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border bg-sky-950/40 border-sky-700/40 text-sky-200 ${
+        clickable ? "hover:bg-sky-900/50 hover:border-sky-500/50 cursor-pointer" : "cursor-default"
+      }`}
+    >
+      收窄 → {body}
+    </button>
+  )
+}
+
+export default function EventCard({ event, onOpenArtifact }: Props) {
   const style = TYPE_STYLES[event.type] ?? {
     bg: "bg-zinc-600/50",
     text: "text-zinc-300",
@@ -64,6 +114,10 @@ export default function EventCard({ event }: Props) {
   const revivalCondition =
     deathCause === "circumstantial"
       ? (event.payload.revival_condition as string | undefined)
+      : undefined
+  const successorClaimId =
+    deathCause === "boundary"
+      ? (event.payload.successor_claim_id as string | undefined)
       : undefined
 
   return (
@@ -111,6 +165,12 @@ export default function EventCard({ event }: Props) {
         <p className="text-xs text-zinc-400 leading-relaxed">
           复活条件: {revivalCondition}
         </p>
+      )}
+      {successorClaimId && (
+        <SuccessorChip
+          successorClaimId={successorClaimId}
+          onOpenArtifact={onOpenArtifact}
+        />
       )}
     </div>
   )

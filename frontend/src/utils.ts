@@ -24,6 +24,39 @@ export const DEATH_CAUSE_HINTS: Record<string, string> = {
   circumstantial: "哪根轴都没死透：必附复活条件",
 }
 
+// ---------------------------------------------------------------------------
+// Timestamps. Backend `ts` is naive UTC (datetime.utcnow) serialized WITHOUT a
+// timezone suffix ("2026-07-13T06:19:59.123456"). `new Date(...)` would parse
+// that as LOCAL time and display raw UTC — so we append "Z" when no timezone
+// designator is present, then render in the browser's local timezone.
+// Timestamps that already carry a designator (Z or ±hh:mm) are parsed as-is.
+// ---------------------------------------------------------------------------
+
+export function parseBackendTs(ts: string): Date {
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(ts)
+  return new Date(hasTimezone ? ts : ts + "Z")
+}
+
+/** "Jul 13, 14:19" — date + time, local timezone, 24-hour clock. */
+export function formatTimestamp(ts: string): string {
+  return parseBackendTs(ts).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+}
+
+/** "14:19" — time only, local timezone, 24-hour clock. */
+export function formatTime(ts: string): string {
+  return parseBackendTs(ts).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+}
+
 export function deriveClaimStatus(events: Event[]): ClaimStatus {
   const retracted = new Set<string>()
   for (const e of events) {

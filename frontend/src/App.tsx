@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import Sidebar from "./components/Sidebar"
 import ParkView from "./components/ParkView"
 import GrillView from "./components/GrillView"
@@ -26,6 +26,10 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadingArtifact, setLoadingArtifact] = useState(false)
   const [docTab, setDocTab] = useState<DocTab>("doc")
+  // Which artifact the status-based default tab has been applied for — the
+  // default is applied once per selection (killed → 轨迹), so a refresh never
+  // yanks a manually chosen tab.
+  const defaultTabAppliedFor = useRef<string | null>(null)
 
   const handleRefresh = useCallback(() => {
     setRefreshKey(k => k + 1)
@@ -35,6 +39,7 @@ function App() {
     setShowGraph(false)
     setSelectedArtifactId(id)
     setDocTab("doc")
+    defaultTabAppliedFor.current = null
   }, [])
 
   const handleShowGraph = useCallback(() => {
@@ -64,7 +69,16 @@ function App() {
         if (cancelled) return
 
         setArtifact(art)
-        setStatus(deriveClaimStatus(events))
+        const derived = deriveClaimStatus(events)
+        setStatus(derived)
+
+        // 阵亡想法进门第一眼是死亡记录: a killed artifact defaults to the
+        // 轨迹 tab (死因徽章/理由), not the empty DOC. Applied once per
+        // selection — DOC/版本 stay manually reachable.
+        if (defaultTabAppliedFor.current !== selectedArtifactId) {
+          defaultTabAppliedFor.current = selectedArtifactId
+          setDocTab(derived === "killed" ? "trajectory" : "doc")
+        }
 
         // Find the claim from artifact's park event or from the artifact itself
         // The park event should have a claim, or we fetch from the first claim reference
@@ -198,7 +212,7 @@ function App() {
         {docTab === "doc" ? (
           <DocView artifactId={artifact.id} libraryId={artifact.library_id} />
         ) : docTab === "trajectory" ? (
-          <TrajectoryView artifactId={artifact.id} />
+          <TrajectoryView artifactId={artifact.id} onOpenArtifact={handleSelect} />
         ) : (
           <VersionsView artifactId={artifact.id} />
         )}

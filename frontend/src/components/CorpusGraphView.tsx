@@ -13,15 +13,19 @@ interface Positioned extends GraphNode {
 
 // --- styling helpers -------------------------------------------------------
 
+// 淬火隐喻, aligned with the sidebar dots: open = 在火上拷问中 (amber),
+// parked = 密封休眠 (zinc/grey). claim_status projects a grilled-but-unruled
+// claim as "open", so 拷问中 nodes genuinely render amber.
 const CLAIM_FILL: Record<string, string> = {
   survived: "#10b981", // emerald-500
   killed: "#ef4444", // red-500
-  parked: "#f59e0b", // amber-500
-  open: "#71717a", // zinc-500
+  parked: "#71717a", // zinc-500 — sealed, dormant
+  open: "#f59e0b", // amber-500 — on the fire, being grilled
 }
 
 function claimFill(status: string | null): string {
-  return (status && CLAIM_FILL[status]) || CLAIM_FILL.open
+  // Unknown/missing status falls back to neutral grey, never a hot color.
+  return (status && CLAIM_FILL[status]) || CLAIM_FILL.parked
 }
 
 const MATERIAL_FILL = "#1e3a5f" // muted blue

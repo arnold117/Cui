@@ -5,9 +5,12 @@ import EventCard from "./EventCard"
 
 interface Props {
   artifactId: string
+  /** Navigate to another artifact — lets boundary verdict cards link to the
+   * narrowed successor claim's artifact (收窄 → 后继). */
+  onOpenArtifact?: (artifactId: string) => void
 }
 
-export default function TrajectoryView({ artifactId }: Props) {
+export default function TrajectoryView({ artifactId, onOpenArtifact }: Props) {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +65,7 @@ export default function TrajectoryView({ artifactId }: Props) {
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
       {events.map(event => (
-        <EventCard key={event.id} event={event} />
+        <EventCard key={event.id} event={event} onOpenArtifact={onOpenArtifact} />
       ))}
     </div>
   )

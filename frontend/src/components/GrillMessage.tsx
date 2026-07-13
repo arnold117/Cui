@@ -5,6 +5,8 @@ import {
   DEATH_CAUSE_BADGE_CLASSES,
   DEATH_CAUSE_HINTS,
   DEATH_CAUSE_LABELS,
+  deriveClaimStatus,
+  formatTime,
 } from "../utils"
 import { getClaim, getTrajectory, listArtifacts } from "../api"
 
@@ -20,11 +22,6 @@ interface Props {
   libraryId?: string
   /** The claim being grilled — excluded from successor candidates. */
   currentClaimId?: string
-}
-
-function formatTime(ts: string): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
 function DeathCauseBadge({ cause }: { cause: string }) {
@@ -43,7 +40,9 @@ function DeathCauseBadge({ cause }: { cause: string }) {
 // ---------------------------------------------------------------------------
 // Boundary successor picker — OPTIONAL link to the narrowed claim that lives
 // on. Candidates = the library's other claims, fetched lazily the way the
-// sidebar does (artifact list → park event → claim).
+// sidebar does (artifact list → park event → claim). 「收窄后活下来的那条」
+// can be neither already killed nor the claim being grilled itself — both are
+// excluded from the candidate list.
 // ---------------------------------------------------------------------------
 function SuccessorSelect({
   libraryId,
@@ -71,6 +70,8 @@ function SuccessorSelect({
             const parkEvent = events.find(e => e.type === "park")
             const claimId = parkEvent?.target_ref
             if (!claimId || claimId === currentClaimId) continue
+            // A dead claim cannot be the narrowed survivor.
+            if (deriveClaimStatus(events) === "killed") continue
             const { claim } = await getClaim(claimId)
             found.push({ id: claim.id, body: claim.body })
           } catch {
