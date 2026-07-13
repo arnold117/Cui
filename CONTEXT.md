@@ -47,6 +47,13 @@
 - **Lens 只锚不判** — Lens 摆出新颖事实 + 你的历史事实，把「值不值得」抛回给你；绝不下「这没品味」的定见。学并反射**你的**品味，不输出客观品味。
 - **彩虹屁（sycophancy）** — LLM 默认迎合共识/夸赞 = 品味的反面。做砸比不做更糟，腐蚀 grounded 信任。反制 = 无锚不出 verdict + 锚先于档 + 怀疑默认。
 
+## 证据三态（grounding 术语）
+
+- **grounding 三态** — 每份材料对 claim 的判定：`supports`（支持）/ `contradicts`（反证：摘要**真正涉及**且削弱，拿不准是否涉及一律 silent）/ `silent`（查无：文献不涉及此 claim）。**查无是一等输出，不是失败**；解析失败是异常，永不静默冒充判定。
+- **undermines 边** — 语料图上 material→claim 的反证边，由 confirmed contradicts 产出（确定性来源）；grounds 边只从 supports 产生；silent 不产边。
+- **文献反证挑战（evidence_contradiction）** — 确认一条 contradicts ground 的瞬间，在确认闸处结构性浮出的 pending CHALLENGE（确定性模板、零 LLM）——确认的反证必上板，不靠自觉。取证不定见：只问不判。
+- **未分态（legacy not_supported）** — 三态之前的旧 `supported=false`：不猜它是 silent 还是 contradicts，如实标注，不产边、不反哺。
+
 ## 死因分诊（判例增强术语）
 
 - **死因分诊（death-cause triage）** — kill verdict 附带的「怎么死的」分类。kill 不是布尔：不同死法对 Lens 是完全不同的锚。
