@@ -377,6 +377,66 @@ export default function GrillMessage({ event, onConfirm, onRetract, isPending, i
     )
   }
 
+  // evidence_contradiction (负证据反哺): counter-evidence the user CONFIRMED
+  // now challenges the claim. Adversarial red presentation — this is the
+  // literature striking the claim, not a neutral question. Same challenge
+  // lifecycle otherwise (answer → verdict → confirm flows through unchanged).
+  if (event.type === "challenge" && event.payload.kind === "evidence_contradiction") {
+    const question = (event.payload.question as string) ?? ""
+    const title = (event.payload.title as string) ?? ""
+    const source = (event.payload.source as string) ?? ""
+    const evidence = (event.payload.evidence as string) ?? ""
+    const assessment = (event.payload.assessment as string) ?? ""
+
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[75%] space-y-2">
+          <div className="rounded-xl rounded-tl-sm px-4 py-3 border bg-red-950/40 border-red-700/50">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="text-[10px] font-semibold text-red-200 bg-red-800/60 border border-red-700/50 px-1.5 py-0.5 rounded-full">
+                ⚡ 文献反证
+              </span>
+              {(title || source) && (
+                <span className="text-[10px] text-red-300/80">
+                  {[source, title].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </div>
+            {evidence && (
+              <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap mb-1.5">
+                <span className="text-red-400/80">证据：</span>
+                {evidence}
+              </p>
+            )}
+            {assessment && (
+              <p className="text-xs text-zinc-500 leading-relaxed whitespace-pre-wrap mb-1.5">
+                {assessment}
+              </p>
+            )}
+            <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{question}</p>
+          </div>
+          {isPending && !isLoading && (
+            <div className="flex gap-2 pl-1">
+              <button
+                className="text-xs px-3 py-1 rounded-md bg-emerald-700/60 text-emerald-200 hover:bg-emerald-700/80 transition-colors"
+                onClick={() => onConfirm?.(event.id)}
+              >
+                确认
+              </button>
+              <button
+                className="text-xs px-3 py-1 rounded-md bg-red-700/60 text-red-200 hover:bg-red-700/80 transition-colors"
+                onClick={() => onRetract?.(event.id)}
+              >
+                撤回
+              </button>
+            </div>
+          )}
+          <p className="text-[10px] text-zinc-600 pl-1">{formatTime(event.ts)}</p>
+        </div>
+      </div>
+    )
+  }
+
   // challenge: left-aligned system bubble
   if (event.type === "challenge") {
     const question = (event.payload.question as string) ?? ""

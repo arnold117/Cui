@@ -224,11 +224,15 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
             ◆ 评品味
           </button>
         </div>
+        {/* onGrounded refreshes the board: confirming a contradicts ground
+            surfaces a pending evidence_contradiction challenge (负证据反哺)
+            that must appear immediately. */}
         <EvidencePanel
           artifactId={artifactId}
           libraryId={artifact.library_id}
           claimId={claim.id}
           claimBody={claim.body}
+          onGrounded={flow.refreshEvents}
         />
       </div>
 

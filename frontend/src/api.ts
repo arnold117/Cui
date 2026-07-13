@@ -1,4 +1,4 @@
-import type { Artifact, Claim, CorpusGraph, DocVersion, Event, Material, VerdictTriage } from "./types"
+import type { Artifact, Claim, CorpusGraph, DocVersion, Event, GroundVerdict, Material, VerdictTriage } from "./types"
 
 const BASE = "/api/v1"
 
@@ -122,8 +122,9 @@ export const listMaterials = (artifactId: string) =>
 export const autoGround = (artifactId: string, claimId: string, claimBody: string, materialId: string) =>
   request<{ event: Event }>("POST", `/grounding/${artifactId}/auto-ground`, { claim_id: claimId, claim_body: claimBody, material_id: materialId })
 
-export const groundManual = (artifactId: string, claimId: string, materialId: string, supported: boolean, evidence = "", assessment = "") =>
-  request<{ event: Event }>("POST", `/grounding/${artifactId}/ground`, { claim_id: claimId, material_id: materialId, supported, evidence, assessment })
+// Manual grounding with the three-state verdict (supports/contradicts/silent).
+export const groundManual = (artifactId: string, claimId: string, materialId: string, verdict: GroundVerdict, evidence = "", assessment = "") =>
+  request<{ event: Event }>("POST", `/grounding/${artifactId}/ground`, { claim_id: claimId, material_id: materialId, verdict, evidence, assessment })
 
 export const getEvidence = (artifactId: string, claimId: string) =>
   request<{ events: Event[] }>("GET", `/artifact/${artifactId}/evidence?claim_id=${claimId}`)

@@ -92,6 +92,44 @@ export function isTasteChallenge(event: Event): boolean {
   return event.type === "challenge" && event.payload.kind === "taste"
 }
 
+// GROUND 判定三态 — how a paper bears on a claim. 「文献没谈」和「文献打」是
+// 两个完全不同的状态; silent (查无) is a legitimate first-class output.
+export type GroundVerdict = "supports" | "contradicts" | "silent"
+
+// Read-side stance: the three states plus the legacy 未分态. Old GROUND
+// events carry only `supported: bool` — True reads as supports, False reads
+// as "not_supported" (silent-or-contradicts was never recorded; NEVER
+// guessed — rendered as-is).
+export type GroundStance = GroundVerdict | "not_supported"
+
+export function groundStance(payload: Record<string, unknown>): GroundStance | null {
+  const v = payload.verdict
+  if (v === "supports" || v === "contradicts" || v === "silent") return v
+  if ("supported" in payload) return payload.supported ? "supports" : "not_supported"
+  return null
+}
+
+// Payload shape carried by a `challenge` event surfaced by 负证据反哺:
+// confirming a `contradicts` GROUND pushes the counter-evidence onto the
+// challenge board. Distinguished by `kind === "evidence_contradiction"` —
+// same challenge lifecycle otherwise. Deterministic (zero LLM); carries the
+// material reference + evidence excerpt straight off the ground event.
+export interface EvidenceContradictionPayload {
+  kind: "evidence_contradiction"
+  question: string
+  material_id: string
+  title: string
+  source: string
+  evidence: string
+  assessment: string
+  ground_event_id: string
+  auto_generated: boolean
+}
+
+export function isEvidenceContradictionChallenge(event: Event): boolean {
+  return event.type === "challenge" && event.payload.kind === "evidence_contradiction"
+}
+
 // 死因分诊 (death-cause triage) — how a killed claim died. Kill is not a
 // boolean: every NEW kill verdict carries exactly one cause; legacy verdicts
 // carry none and render as 未分类. circumstantial is the only non-terminal
@@ -128,6 +166,7 @@ export interface GraphEdge {
   type:
     | "contradicts"
     | "grounds"
+    | "undermines"
     | "builds_on"
     | "depends_on"
     | "shares_method"

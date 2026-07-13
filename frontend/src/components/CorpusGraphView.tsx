@@ -27,10 +27,13 @@ function claimFill(status: string | null): string {
 const MATERIAL_FILL = "#1e3a5f" // muted blue
 const MATERIAL_STROKE = "#60a5fa" // blue-400
 
-// Per-edge-type visual style. Five semantic groups, each visually distinct but
+// Per-edge-type visual style. Six semantic groups, each visually distinct but
 // kept within the zinc-950 dark idiom:
-//   contradicts            — red dashed (tension)
-//   grounds                — zinc solid (evidence)
+//   contradicts            — red dashed (claim↔claim tension)
+//   grounds                — zinc solid (supporting evidence)
+//   undermines             — rose solid, DIRECTIONAL (counter-evidence:
+//                            material → claim; 对抗色 — the literature
+//                            strikes the claim)
 //   builds_on/depends_on   — emerald/teal solid, DIRECTIONAL (arrowhead)
 //   shares_method/shares_gap — violet/indigo dotted (similarity, undirected)
 //   narrowed_from          — amber dash-dot, DIRECTIONAL (划界死 lineage:
@@ -45,6 +48,7 @@ interface EdgeStyle {
 const EDGE_STYLE: Record<GraphEdge["type"], EdgeStyle> = {
   contradicts: { color: "#f87171", width: 2, dash: "5 4" }, // red-400
   grounds: { color: "#52525b", width: 1.5 }, // zinc-600
+  undermines: { color: "#fb7185", width: 2, directed: true }, // rose-400
   builds_on: { color: "#34d399", width: 1.8, directed: true }, // emerald-400
   depends_on: { color: "#2dd4bf", width: 1.8, directed: true }, // teal-400
   shares_method: { color: "#a78bfa", width: 1.6, dash: "2 4" }, // violet-400
@@ -54,6 +58,7 @@ const EDGE_STYLE: Record<GraphEdge["type"], EdgeStyle> = {
 
 // Unique color used per directed type for its own arrowhead marker.
 const DIRECTED_MARKER: Partial<Record<GraphEdge["type"], string>> = {
+  undermines: EDGE_STYLE.undermines.color,
   builds_on: EDGE_STYLE.builds_on.color,
   depends_on: EDGE_STYLE.depends_on.color,
   narrowed_from: EDGE_STYLE.narrowed_from.color,
@@ -99,12 +104,15 @@ function layout(graph: CorpusGraph): Positioned[] {
     })
   })
 
-  // Map material -> a claim it grounds (first match), to anchor it nearby.
+  // Map material -> a claim it relates to (first match), to anchor it nearby.
+  // Both grounds (supporting) and undermines (counter-evidence) anchor: a
+  // refuting paper belongs visually next to the claim it strikes.
   const groundedBy = new Map<string, string>()
   for (const e of graph.edges) {
-    if (e.type !== "grounds") continue
-    // grounds edge: material grounds claim (orientation-agnostic — pick the
-    // endpoint that is a material vs claim).
+    if (e.type !== "grounds" && e.type !== "undermines") continue
+    // material↔claim edge (orientation-agnostic — pick the endpoint that is
+    // a material vs claim; grounds runs claim→material, undermines runs
+    // material→claim).
     const sourceIsMaterial = materials.some(m => m.id === e.source)
     const matId = sourceIsMaterial ? e.source : e.target
     const claimId = sourceIsMaterial ? e.target : e.source
@@ -276,6 +284,7 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
           </span>
           <LegendEdge style={EDGE_STYLE.contradicts} label="矛盾 contradicts" />
           <LegendEdge style={EDGE_STYLE.grounds} label="取证 grounds" />
+          <LegendEdge style={EDGE_STYLE.undermines} label="反证 undermines" />
           <LegendEdge style={EDGE_STYLE.builds_on} label="承接 builds_on·depends_on" />
           <LegendEdge style={EDGE_STYLE.shares_method} label="相似 shares_method·shares_gap" />
           <LegendEdge style={EDGE_STYLE.narrowed_from} label="收窄 narrowed_from" />

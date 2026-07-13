@@ -1,6 +1,37 @@
 import { useEffect, useState } from "react"
-import type { Material, Event } from "../types"
+import type { Material, Event, GroundStance } from "../types"
+import { groundStance } from "../types"
 import { collectMaterials, listMaterials, autoGround, confirmEvent, getEvidence } from "../api"
+
+// 溯源徽章四态渲染 (决策 5): supports 正面, contradicts 醒目对抗色, silent
+// 中性 (它是「查无」不是坏消息), legacy 未分态如实渲染 (不猜 silent 还是
+// contradicts).
+const STANCE_BADGE: Record<GroundStance, { label: string; className: string }> = {
+  supports: {
+    label: "✓ 支持",
+    className: "text-emerald-400",
+  },
+  contradicts: {
+    label: "⚡ 相抵触",
+    className:
+      "text-red-300 bg-red-900/50 border border-red-700/60 px-1.5 py-0.5 rounded-full",
+  },
+  silent: {
+    label: "○ 未涉及",
+    className: "text-zinc-400",
+  },
+  not_supported: {
+    label: "✗ 不支持（未分态·旧判定）",
+    className: "text-zinc-500",
+  },
+}
+
+function StanceBadge({ payload }: { payload: Record<string, unknown> }) {
+  const stance = groundStance(payload)
+  if (!stance) return null
+  const s = STANCE_BADGE[stance]
+  return <span className={`text-xs font-semibold ${s.className}`}>{s.label}</span>
+}
 
 interface Props {
   artifactId: string
@@ -127,14 +158,22 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
               </p>
               <ul className="space-y-2">
                 {confirmedEvidence.map(ev => {
-                  const supported = ev.payload.supported as boolean
+                  const stance = groundStance(ev.payload)
                   const title = (ev.payload.title as string) || "未命名文献"
                   const evidence = ev.payload.evidence as string | undefined
                   const assessment = ev.payload.assessment as string | undefined
+                  // Container tint follows the stance: supports emerald,
+                  // contradicts adversarial red, silent/legacy neutral.
+                  const containerClass =
+                    stance === "contradicts"
+                      ? "border-red-900/60 bg-red-950/20"
+                      : stance === "supports"
+                        ? "border-emerald-900/50 bg-emerald-950/20"
+                        : "border-zinc-800 bg-zinc-900/40"
                   return (
                     <li
                       key={ev.id}
-                      className="border border-emerald-900/50 rounded-lg px-3 py-2.5 bg-emerald-950/20"
+                      className={`border rounded-lg px-3 py-2.5 ${containerClass}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm text-zinc-200 leading-snug min-w-0">{title}</p>
@@ -143,14 +182,7 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
                         </span>
                       </div>
                       <div className="mt-1.5 space-y-1">
-                        <span
-                          className={
-                            "text-xs font-semibold " +
-                            (supported ? "text-emerald-400" : "text-red-400")
-                          }
-                        >
-                          {supported ? "✓ 支持" : "✗ 不支持"}
-                        </span>
+                        <StanceBadge payload={ev.payload} />
                         {Boolean(evidence) && (
                           <p className="text-xs text-zinc-400 leading-relaxed">
                             <span className="text-zinc-600">证据：</span>
@@ -199,7 +231,9 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
 
           {!searched && materials.length === 0 && (
             <p className="text-xs text-zinc-600 leading-relaxed">
-              搜索文献后，可以让 AI 判定每篇文献是否支持当前 claim，再由你确认。
+              搜索文献后，可以让 AI 判定每篇文献支持、抵触、还是未涉及当前
+              claim（查无也是一等结论），再由你确认。确认的反证会自动浮出一条
+              待回应的挑战。
             </p>
           )}
 
@@ -211,7 +245,6 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
                 const isGrounding = grounding[material.id]
                 const isConfirmed = confirmed[material.id]
                 const gErr = groundErrors[material.id]
-                const supported = event ? (event.payload.supported as boolean) : null
                 return (
                   <li
                     key={material.id}
@@ -241,14 +274,7 @@ export default function EvidencePanel({ artifactId, libraryId, claimId, claimBod
                     {event && (
                       <div className="mt-2 border-t border-zinc-800 pt-2 space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <span
-                            className={
-                              "text-xs font-semibold " +
-                              (supported ? "text-emerald-400" : "text-red-400")
-                            }
-                          >
-                            {supported ? "✓ 支持" : "✗ 不支持"}
-                          </span>
+                          <StanceBadge payload={event.payload} />
                           {!isConfirmed && (
                             <span className="text-xs text-amber-500/80">待确认</span>
                           )}

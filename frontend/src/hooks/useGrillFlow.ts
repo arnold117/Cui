@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import type { Event, Claim, VerdictTriage } from "../types"
-import { isLensChallenge, isTasteChallenge } from "../types"
+import {
+  isEvidenceContradictionChallenge,
+  isLensChallenge,
+  isTasteChallenge,
+} from "../types"
 import * as api from "../api"
 
 // ---------------------------------------------------------------------------
@@ -27,7 +31,9 @@ export interface ChallengeView {
   state: ChallengeState
   answerEvent?: Event
   verdictEvent?: Event
-  source: "grill" | "lens"
+  // "lens" = Lens-surfaced (contradiction/taste); "evidence" = 负证据反哺
+  // (confirmed contradicts ground). Neither counts as a grill round.
+  source: "grill" | "lens" | "evidence"
 }
 
 export type ClaimState = "idle" | "grilling" | "all_resolved"
@@ -190,9 +196,11 @@ export function deriveChallenges(events: Event[], claimId: string): ChallengeVie
       verdictEvent,
       // Lens-surfaced challenges — cross-idea contradictions AND taste-anchor
       // verdicts — are surfaced tensions, not grill rounds; both map to "lens"
-      // so countRounds excludes them.
-      source:
-        isLensChallenge(challenge) || isTasteChallenge(challenge)
+      // so countRounds excludes them. Evidence-contradiction challenges
+      // (负证据反哺) are surfaced counter-evidence — likewise not rounds.
+      source: isEvidenceContradictionChallenge(challenge)
+        ? "evidence"
+        : isLensChallenge(challenge) || isTasteChallenge(challenge)
           ? "lens"
           : "grill",
     }
