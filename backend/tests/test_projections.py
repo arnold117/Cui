@@ -26,6 +26,7 @@ from anneal.domain.projections import (
     claim_status,
     confirmed_ground_evidence,
     doc_projection,
+    ground_stance,
     has_unresolved_debt,
     is_parked,
     lens_feed_projection,
@@ -945,6 +946,38 @@ class TestConfirmedGroundEvidence:
         g1 = _ground(1, confirmed=True)
         result = confirmed_ground_evidence([g2, g1], CLAIM_A)
         assert result == [g1, g2]
+
+
+# ===========================================================================
+# ground_stance — GROUND payload 三态 read side (legacy-compatible)
+# ===========================================================================
+
+
+class TestGroundStance:
+    @pytest.mark.parametrize("verdict", ["supports", "contradicts", "silent"])
+    def test_three_state_verdict_read_back(self, verdict):
+        assert ground_stance({"verdict": verdict}) == verdict
+
+    def test_legacy_true_reads_as_supports(self):
+        assert ground_stance({"supported": True}) == "supports"
+
+    def test_legacy_false_reads_as_not_supported_never_guessed(self):
+        """legacy False is 未分态 — NOT silent, NOT contradicts. 不猜."""
+        stance = ground_stance({"supported": False})
+        assert stance == "not_supported"
+        assert stance not in ("silent", "contradicts")
+
+    def test_verdict_wins_over_stray_legacy_field(self):
+        """A new-style verdict is authoritative even if a legacy bool rides
+        along (foreign/merged payloads)."""
+        assert ground_stance({"verdict": "silent", "supported": True}) == "silent"
+
+    def test_neither_field_returns_none(self):
+        assert ground_stance({}) is None
+
+    def test_off_enum_verdict_without_legacy_returns_none(self):
+        """Read side never raises on weird legacy data; it just yields None."""
+        assert ground_stance({"verdict": "maybe"}) is None
 
 
 # ===========================================================================

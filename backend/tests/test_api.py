@@ -1224,7 +1224,7 @@ class TestGroundingAPI:
             json={
                 "claim_id": claim_id,
                 "material_id": material_id,
-                "supported": True,
+                "verdict": "supports",
                 "evidence": "Section 3 shows X.",
                 "assessment": "Directly supports.",
             },
@@ -1235,7 +1235,8 @@ class TestGroundingAPI:
         assert event["confirmed"] is False
         assert event["target_ref"] == claim_id
         assert event["payload"]["material_id"] == material_id
-        assert event["payload"]["supported"] is True
+        assert event["payload"]["verdict"] == "supports"
+        assert "supported" not in event["payload"]
         assert event["payload"]["evidence"] == "Section 3 shows X."
         assert event["payload"]["title"] == "Grounding paper"
 
@@ -1250,9 +1251,62 @@ class TestGroundingAPI:
         claim_id = data["claim"]["id"]
         resp = client.post(
             f"/api/v1/grounding/{artifact_id}/ground",
-            json={"claim_id": claim_id, "material_id": "missing", "supported": True},
+            json={"claim_id": claim_id, "material_id": "missing", "verdict": "supports"},
         )
         assert resp.status_code == 400
+
+    def test_ground_off_enum_verdict_returns_400(self, client: TestClient, monkeypatch):
+        _patch_search(monkeypatch, [_fake_paper("W1", "Paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+        resp = client.post(
+            f"/api/v1/grounding/{artifact_id}/ground",
+            json={"claim_id": claim_id, "material_id": material_id, "verdict": "maybe"},
+        )
+        assert resp.status_code == 400
+
+    def test_confirmed_contradicts_ground_surfaces_pending_challenge(
+        self, client: TestClient, monkeypatch
+    ):
+        """负证据反哺 end-to-end: ground(contradicts) → confirm → a pending
+        evidence_contradiction CHALLENGE appears on the claim's board."""
+        _patch_search(monkeypatch, [_fake_paper("W1", "Refuting paper")])
+        data = _park(client)
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        material_id = _collect_one(client, artifact_id)
+
+        ground = client.post(
+            f"/api/v1/grounding/{artifact_id}/ground",
+            json={
+                "claim_id": claim_id,
+                "material_id": material_id,
+                "verdict": "contradicts",
+                "evidence": "Null result at scale.",
+            },
+        )
+        assert ground.status_code == 200, ground.text
+        _confirm(client, artifact_id, ground.json()["event"]["id"])
+
+        pending = client.get(f"/api/v1/events/{artifact_id}/pending")
+        assert pending.status_code == 200
+        surfaced = [
+            e
+            for e in pending.json()["events"]
+            if e["type"] == "challenge"
+            and e["payload"].get("kind") == "evidence_contradiction"
+        ]
+        assert len(surfaced) == 1
+        ch = surfaced[0]
+        assert ch["actor"] == "system"
+        assert ch["confirmed"] is False
+        assert ch["target_ref"] == claim_id
+        assert ch["payload"]["material_id"] == material_id
+        assert ch["payload"]["title"] == "Refuting paper"
+        assert ch["payload"]["evidence"] == "Null result at scale."
+        assert ch["payload"]["ground_event_id"] == ground.json()["event"]["id"]
 
     def test_auto_ground_without_llm_returns_501(self, client: TestClient, monkeypatch):
         _patch_search(monkeypatch, [_fake_paper("W1", "Paper")])
@@ -1282,7 +1336,7 @@ class TestGroundingAPI:
 
         fake_llm = FakeLLMClient([
             json.dumps({
-                "supported": True,
+                "verdict": "supports",
                 "evidence": "Abstract states the result.",
                 "assessment": "Supports the claim.",
             }),
@@ -1302,7 +1356,8 @@ class TestGroundingAPI:
         assert event["type"] == "ground"
         assert event["confirmed"] is False
         assert event["target_ref"] == claim_id
-        assert event["payload"]["supported"] is True
+        assert event["payload"]["verdict"] == "supports"
+        assert "supported" not in event["payload"]
         assert event["payload"]["auto_generated"] is True
 
 
@@ -1325,7 +1380,7 @@ class TestEvidenceEndpoint:
             json={
                 "claim_id": claim_id,
                 "material_id": material_id,
-                "supported": True,
+                "verdict": "supports",
                 "evidence": "Section 3.",
                 "assessment": "Supports.",
             },
@@ -1367,7 +1422,7 @@ class TestEvidenceEndpoint:
             json={
                 "claim_id": "other-claim",
                 "material_id": material_id,
-                "supported": True,
+                "verdict": "supports",
             },
         )
         _confirm(client, artifact_id, ground.json()["event"]["id"])

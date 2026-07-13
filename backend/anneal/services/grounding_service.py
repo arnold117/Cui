@@ -2,9 +2,18 @@
 
 Stage 2 of the literature-search slice. The user has already collected papers
 (Stage 1: ``Material(kind="paper")`` + ``collect_material`` events). Grounding
-judges whether a specific collected paper SUPPORTS a specific claim, and emits a
-PENDING ``ground`` event that the user later confirms through the existing
-confirm gate. Once confirmed, grounded evidence feeds the Lens.
+judges how a specific collected paper bears on a specific claim — a three-state
+``verdict`` (supports / contradicts / silent, see ``GROUND_VERDICTS``): 「文献
+没谈这个 claim」和「文献打这个 claim」是两个完全不同的状态, and 查无 (silent)
+is a legitimate first-class output, not a failure. The service emits a PENDING
+``ground`` event that the user later confirms through the existing confirm
+gate. Once confirmed, grounded evidence feeds the Lens — and a confirmed
+``contradicts`` ground additionally surfaces a pending ``evidence_contradiction``
+CHALLENGE at the confirm gate (see ``EventService.confirm_event`` — 负证据是
+一等公民, 取证不定见).
+
+Legacy events carry only ``supported: bool``; new events write only
+``verdict``. Read-side compatibility lives in ``ground_stance``.
 
 Mirrors ``GrillService``'s shape: constructor ``(store, event_service, llm)``;
 a ``_assert_artifact_was_parked`` guard; a manual method (no LLM) and an
@@ -18,6 +27,7 @@ the collected Material.
 
 from __future__ import annotations
 
+from anneal.domain.constants import GROUND_VERDICTS
 from anneal.domain.events import GROUND, PARK, Event, make_event
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
@@ -55,28 +65,27 @@ class GroundingService:
         return events
 
     @staticmethod
-    def _coerce_supported(result: dict) -> bool:
-        """Coerce a 'boolean-ish' supported value to bool.
+    def _coerce_verdict(result: dict) -> str:
+        """Coerce the LLM's three-state grounding verdict.
 
-        Accepts real bools and common string spellings. Raises
-        LLMResponseError if the key is missing or not usable — we never
-        silently default a missing judgment to False.
+        Accepts only the three legal states (supports / contradicts /
+        silent), case-insensitively for string sloppiness. Raises
+        LLMResponseError if the key is missing or the value is off-enum —
+        we never silently default a missing judgment, and we never map an
+        unusable answer onto any state (fail-loud, 绝不静默默认).
         """
-        if "supported" not in result:
+        if "verdict" not in result:
             raise LLMResponseError(
-                f"LLM result lacks a 'supported' key: {result!r}"
+                f"LLM result lacks a 'verdict' key: {result!r}"
             )
-        value = result["supported"]
-        if isinstance(value, bool):
-            return value
+        value = result["verdict"]
         if isinstance(value, str):
             lowered = value.strip().lower()
-            if lowered in ("true", "yes", "1"):
-                return True
-            if lowered in ("false", "no", "0"):
-                return False
+            if lowered in GROUND_VERDICTS:
+                return lowered
         raise LLMResponseError(
-            f"LLM returned an unusable 'supported' value: {value!r}"
+            f"LLM returned an unusable grounding 'verdict' value: {value!r}; "
+            f"must be one of {sorted(GROUND_VERDICTS)}"
         )
 
     def _get_material(self, material_id: str):
@@ -94,15 +103,23 @@ class GroundingService:
         artifact_id: str,
         claim_id: str,
         material_id: str,
-        supported: bool,
+        verdict: str,
         evidence: str = "",
         assessment: str = "",
     ) -> Event:
         """Manual grounding — explicit user-supplied judgment (no LLM).
 
-        Emits a PENDING (confirmed=False) GROUND event targeting the claim.
-        The user confirms it through the existing confirm gate.
+        ``verdict`` must be one of ``GROUND_VERDICTS`` (supports /
+        contradicts / silent) — new events write ONLY the three-state
+        ``verdict`` field, never the legacy ``supported`` bool. Emits a
+        PENDING (confirmed=False) GROUND event targeting the claim. The user
+        confirms it through the existing confirm gate.
         """
+        if verdict not in GROUND_VERDICTS:
+            raise ValueError(
+                f"Unknown grounding verdict {verdict!r}; "
+                f"must be one of {sorted(GROUND_VERDICTS)}"
+            )
         material = self._get_material(material_id)
         self._assert_artifact_was_parked(artifact_id)
         event = make_event(
@@ -112,7 +129,7 @@ class GroundingService:
             target_ref=claim_id,
             payload={
                 "material_id": material_id,
-                "supported": supported,
+                "verdict": verdict,
                 "evidence": evidence,
                 "assessment": assessment,
                 "source": material.provenance.get("source", ""),
@@ -141,7 +158,7 @@ class GroundingService:
             material.payload.get("abstract", ""),
         )
         result = self._llm.complete_json(system, user)
-        supported = self._coerce_supported(result)
+        verdict = self._coerce_verdict(result)
         event = make_event(
             type=GROUND,
             # LLM-generated suggestion (user confirms via the gate) — mirrors
@@ -151,7 +168,7 @@ class GroundingService:
             target_ref=claim_id,
             payload={
                 "material_id": material_id,
-                "supported": supported,
+                "verdict": verdict,
                 "evidence": result.get("evidence", ""),
                 "assessment": result.get("assessment", ""),
                 "source": material.provenance.get("source", ""),

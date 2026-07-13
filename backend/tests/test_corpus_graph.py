@@ -109,10 +109,17 @@ def _lens_contradiction(actor_artifact, store, event_svc, *, current_claim,
     return ev
 
 
-def _ground(store, event_svc, *, artifact_id, claim_id, material_id, confirm=True):
+def _ground(store, event_svc, *, artifact_id, claim_id, material_id, confirm=True,
+            verdict="supports", legacy_supported=None):
+    """Append a GROUND event. Default = new-style three-state verdict; pass
+    ``legacy_supported`` (bool) to emit a legacy binary payload instead."""
+    if legacy_supported is not None:
+        payload = {"material_id": material_id, "supported": legacy_supported}
+    else:
+        payload = {"material_id": material_id, "verdict": verdict}
     ev = make_event(
         type=GROUND, actor="user", confirmed=False, target_ref=claim_id,
-        payload={"material_id": material_id, "supported": True},
+        payload=payload,
     )
     event_svc.append_event(artifact_id, ev)
     if confirm:
@@ -169,6 +176,108 @@ def test_confirmed_ground_makes_material_node_and_edge(store, event_svc, repo, s
     assert len(graph.edges) == 1
     edge = graph.edges[0]
     assert (edge.source, edge.target, edge.type) == ("c1", "m1", "grounds")
+
+
+def test_confirmed_contradicts_ground_makes_undermines_edge(
+    store, event_svc, repo, svc
+):
+    """决策 4: confirmed contradicts GROUND → material —undermines→ claim.
+    Deterministic counter-evidence edge, pure read, zero new storage."""
+    _seed_claim(repo, claim_id="c1", artifact_id="a1", body="Claim one")
+    _grill_to_verdict(store, event_svc, artifact_id="a1", claim_id="c1",
+                      outcome="survived")
+    repo.create_material(
+        Material(id="m1", library_id=LIB, kind="paper",
+                 payload={"title": "Refuting Paper"})
+    )
+    _ground(store, event_svc, artifact_id="a1", claim_id="c1", material_id="m1",
+            confirm=True, verdict="contradicts")
+
+    graph = svc.corpus_graph(LIB)
+
+    by_id = {n.id: n for n in graph.nodes}
+    assert by_id["m1"].type == "material"
+    assert len(graph.edges) == 1
+    edge = graph.edges[0]
+    # Direction: the material strikes the claim.
+    assert (edge.source, edge.target, edge.type) == ("m1", "c1", "undermines")
+
+
+def test_silent_ground_no_edge_no_material_node(store, event_svc, repo, svc):
+    """silent (查无) relates nothing — no edge, and no dangling material node."""
+    _seed_claim(repo, claim_id="c1", artifact_id="a1", body="Claim one")
+    _grill_to_verdict(store, event_svc, artifact_id="a1", claim_id="c1",
+                      outcome="survived")
+    repo.create_material(
+        Material(id="m1", library_id=LIB, kind="paper",
+                 payload={"title": "Unrelated Paper"})
+    )
+    _ground(store, event_svc, artifact_id="a1", claim_id="c1", material_id="m1",
+            confirm=True, verdict="silent")
+
+    graph = svc.corpus_graph(LIB)
+
+    assert all(n.id != "m1" for n in graph.nodes)
+    assert graph.edges == []
+
+
+def test_legacy_supported_true_still_grounds(store, event_svc, repo, svc):
+    """Legacy `supported: True` reads as supports → grounds edge intact."""
+    _seed_claim(repo, claim_id="c1", artifact_id="a1", body="Claim one")
+    _grill_to_verdict(store, event_svc, artifact_id="a1", claim_id="c1",
+                      outcome="survived")
+    repo.create_material(
+        Material(id="m1", library_id=LIB, kind="paper",
+                 payload={"title": "Old Paper"})
+    )
+    _ground(store, event_svc, artifact_id="a1", claim_id="c1", material_id="m1",
+            confirm=True, legacy_supported=True)
+
+    graph = svc.corpus_graph(LIB)
+    assert len(graph.edges) == 1
+    edge = graph.edges[0]
+    assert (edge.source, edge.target, edge.type) == ("c1", "m1", "grounds")
+
+
+def test_legacy_supported_false_no_edge(store, event_svc, repo, svc):
+    """Legacy `supported: False` is 未分态 — NEVER guessed into either camp:
+    no grounds edge, no undermines edge."""
+    _seed_claim(repo, claim_id="c1", artifact_id="a1", body="Claim one")
+    _grill_to_verdict(store, event_svc, artifact_id="a1", claim_id="c1",
+                      outcome="survived")
+    repo.create_material(
+        Material(id="m1", library_id=LIB, kind="paper",
+                 payload={"title": "Old Unsupportive Paper"})
+    )
+    _ground(store, event_svc, artifact_id="a1", claim_id="c1", material_id="m1",
+            confirm=True, legacy_supported=False)
+
+    graph = svc.corpus_graph(LIB)
+    assert graph.edges == []
+    assert all(n.id != "m1" for n in graph.nodes)
+
+
+def test_evidence_contradiction_challenge_is_not_a_claim_edge(
+    store, event_svc, repo, svc
+):
+    """The 反哺 evidence_contradiction CHALLENGE must NOT masquerade as a
+    claim↔claim contradicts edge (that projection is ② lens_contradiction
+    only); the ground event itself already carries the undermines edge."""
+    _seed_claim(repo, claim_id="c1", artifact_id="a1", body="Claim one")
+    _grill_to_verdict(store, event_svc, artifact_id="a1", claim_id="c1",
+                      outcome="survived")
+    repo.create_material(
+        Material(id="m1", library_id=LIB, kind="paper",
+                 payload={"title": "Refuting Paper"})
+    )
+    # Confirming the contradicts ground auto-surfaces the pending
+    # evidence_contradiction challenge (负证据反哺 at the confirm gate).
+    _ground(store, event_svc, artifact_id="a1", claim_id="c1", material_id="m1",
+            confirm=True, verdict="contradicts")
+
+    graph = svc.corpus_graph(LIB)
+
+    assert [e.type for e in graph.edges] == ["undermines"]
 
 
 def test_pending_contradiction_no_edge(store, event_svc, repo, svc):

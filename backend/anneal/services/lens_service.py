@@ -33,6 +33,7 @@ from anneal.domain.projections import (
     VerdictPrecedent,
     _confirmed_event_ids,
     claim_status,
+    ground_stance,
     retracted_event_ids,
     verdict_precedent,
 )
@@ -79,11 +80,15 @@ class GraphNode(BaseModel):
 class GraphEdge(BaseModel):
     """A confirmed relationship between two nodes.
 
-    ``contradicts``/``grounds`` are Tier 0 structural edges; ``builds_on`` /
-    ``depends_on`` / ``shares_method`` / ``shares_gap`` are Tier 1 LLM-computed
-    semantic edges read back from confirmed ``LINK`` events; ``narrowed_from``
-    is a deterministic (non-LLM) lineage edge read from boundary-kill verdict
-    payloads (``successor —narrowed_from→ killed claim``).
+    ``contradicts``/``grounds``/``undermines`` are Tier 0 structural edges
+    (``grounds``: supporting evidence, ``claim —grounds→ material``;
+    ``undermines``: counter-evidence from a confirmed contradicts GROUND,
+    ``material —undermines→ claim`` — deterministic, pure read, zero new
+    storage); ``builds_on`` / ``depends_on`` / ``shares_method`` /
+    ``shares_gap`` are Tier 1 LLM-computed semantic edges read back from
+    confirmed ``LINK`` events; ``narrowed_from`` is a deterministic (non-LLM)
+    lineage edge read from boundary-kill verdict payloads
+    (``successor —narrowed_from→ killed claim``).
     """
 
     source: str
@@ -91,6 +96,7 @@ class GraphEdge(BaseModel):
     type: Literal[
         "contradicts",
         "grounds",
+        "undermines",
         "builds_on",
         "depends_on",
         "shares_method",
@@ -489,8 +495,15 @@ class LensService:
         Edges (取证不定见 / Q-5 — CONFIRMED relations only):
         - ``contradicts``: a CONFIRMED, non-retracted ② ``lens_contradiction``
           CHALLENGE → ``current_claim —contradicts→ past_claim``.
-        - ``grounds``: a CONFIRMED, non-retracted GROUND → ``claim —grounds→
-          material``.
+        - ``grounds``: a CONFIRMED, non-retracted GROUND whose stance is
+          ``supports`` (three-state ``verdict`` OR legacy ``supported: True``)
+          → ``claim —grounds→ material``.
+        - ``undermines``: a CONFIRMED, non-retracted GROUND whose verdict is
+          ``contradicts`` → ``material —undermines→ claim``. Deterministic
+          counter-evidence edge — pure read of the ground payload, zero new
+          storage. ``silent`` grounds produce NO edge (查无 relates nothing),
+          and legacy ``supported: False`` (未分态) produces NO edge either —
+          we never guess it into either camp.
         - ``narrowed_from``: a CONFIRMED, non-retracted kill VERDICT whose
           payload names a ``successor_claim_id`` (划界死 / boundary kill) →
           ``successor —narrowed_from→ killed claim``. Deterministic source —
@@ -553,11 +566,18 @@ class LensService:
                     _add_edge(source, target, "contradicts")
 
                 elif e.type == GROUND:
-                    source = e.target_ref
-                    material_id = e.payload.get("material_id")
-                    if source is None or not material_id:
+                    # Three-state stance decides the edge (决策 4):
+                    #   supports (+legacy True) → claim —grounds→ material
+                    #   contradicts            → material —undermines→ claim
+                    #   silent / legacy False (未分态) / unknown → NO edge
+                    stance = ground_stance(e.payload)
+                    if stance not in ("supports", "contradicts"):
                         continue
-                    if source not in claim_ids:
+                    claim_id = e.target_ref
+                    material_id = e.payload.get("material_id")
+                    if claim_id is None or not material_id:
+                        continue
+                    if claim_id not in claim_ids:
                         continue
                     # Ensure a material node exists (skip if unresolvable).
                     if material_id not in nodes:
@@ -570,7 +590,10 @@ class LensService:
                         nodes[material_id] = GraphNode(
                             id=material_id, type="material", label=label
                         )
-                    _add_edge(source, material_id, "grounds")
+                    if stance == "supports":
+                        _add_edge(claim_id, material_id, "grounds")
+                    else:
+                        _add_edge(material_id, claim_id, "undermines")
 
                 elif e.type == VERDICT:
                     # 死因分诊: a boundary kill may name the narrowed claim

@@ -130,7 +130,10 @@ class CollectRequest(BaseModel):
 class GroundRequest(BaseModel):
     claim_id: str
     material_id: str
-    supported: bool
+    # Three-state grounding verdict: "supports" | "contradicts" | "silent"
+    # (查无是一等输出). Validated at the service layer; new GROUND events
+    # write only `verdict` — the legacy `supported` bool is read-side only.
+    verdict: str
     evidence: str = ""
     assessment: str = ""
 
@@ -456,7 +459,7 @@ def ground(
             artifact_id,
             req.claim_id,
             req.material_id,
-            req.supported,
+            req.verdict,
             req.evidence,
             req.assessment,
         )

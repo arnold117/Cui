@@ -90,20 +90,40 @@ def format_precedent_lines(
     return lines
 
 
+# Prompt labels per ground stance. silent has NO label on purpose — 查无
+# evidence bears nothing on the claim and never enters the block.
+_STANCE_LABELS = {
+    "supports": "SUPPORTS",
+    "contradicts": "CONTRADICTS",
+    # Legacy 未分态: the paper did not support the claim, but whether it was
+    # silent or contradicting was never recorded — labeled honestly, never
+    # upgraded to CONTRADICTS.
+    "not_supported": "NOT_SUPPORTED",
+}
+
+
 def format_evidence_block(evidence_events: list[Event]) -> str:
     """Render confirmed GROUND events into a compact, LLM-readable block.
 
     One item per line:
       ``- [SUPPORTS] {source}:{title} — {evidence} ({assessment})``
-    when ``payload["supported"]`` is truthy, ``[CONTRADICTS]`` otherwise.
-    Empty evidence/assessment segments are omitted gracefully. An empty input
-    list yields "" (callers treat "" as "no evidence" and keep the legacy
-    prompt verbatim).
+    with the label resolved from the payload's three-state ``verdict``
+    (``ground_stance``): supports → ``[SUPPORTS]``, contradicts →
+    ``[CONTRADICTS]`` (explicitly counter-evidence), legacy ``supported:
+    False`` → ``[NOT_SUPPORTED]`` (未分态 — never guessed into contradicts).
+    ``silent`` grounds are SKIPPED — 查无 bears nothing on the claim, so it
+    never enters the evidence block. Empty evidence/assessment segments are
+    omitted gracefully. An empty input list yields "" (callers treat "" as
+    "no evidence" and keep the legacy prompt verbatim).
     """
+    from anneal.domain.projections import ground_stance
+
     lines: list[str] = []
     for e in evidence_events:
         p = e.payload
-        stance = "SUPPORTS" if p.get("supported") else "CONTRADICTS"
+        stance = _STANCE_LABELS.get(ground_stance(p) or "")
+        if stance is None:
+            continue  # silent (查无) or malformed — nothing to weigh
         source = p.get("source", "")
         title = p.get("title", "")
         head = ":".join(part for part in (source, title) if part) or "(untitled)"
@@ -134,7 +154,11 @@ def build_challenge_prompt(claim: str, context: str, evidence: str = "") -> tupl
             "\n\nGround your challenge in the provided literature evidence where "
             "relevant: use CONTRADICTS papers to attack the claim directly, and "
             "for SUPPORTS papers, probe whether their scope and methodology "
-            "actually cover the claim's generalization."
+            "actually cover the claim's generalization. NOT_SUPPORTED entries "
+            "are legacy judgments recorded before three-state grounding: the "
+            "paper did not support the claim, but whether it was silent or "
+            "contradicting was never recorded — do NOT treat them as "
+            "refutations."
         )
         user = (
             f"Claim: {claim}\n\nContext: {context}\n\n"
@@ -145,13 +169,35 @@ def build_challenge_prompt(claim: str, context: str, evidence: str = "") -> tupl
 
 
 def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) -> tuple[str, str]:
+    """Three-state grounding judgment (supports / contradicts / silent).
+
+    A binary supported-or-not collapses two entirely different states: "the
+    literature does not discuss this claim" and "the literature strikes this
+    claim". The verdict is a three-way enum with a SKEPTICAL default:
+    contradicts requires the abstract to GENUINELY bear on the claim — the
+    model must never slide from "does not support" into "contradicts"; when
+    unsure whether the abstract bears on the claim at all, the verdict is
+    silent. silent is a legitimate first-class finding (查无), not a failure.
+    """
     system = (
-        "You are a rigorous evidence assessor. Your job is to judge whether a "
-        "research paper SUPPORTS a given claim, based solely on the paper's "
-        "title and abstract. Do not invent evidence not present in the abstract. "
-        "If the abstract does not bear on the claim, the claim is not supported.\n\n"
+        "You are a rigorous evidence assessor. Your job is to judge how a "
+        "research paper bears on a given claim, based solely on the paper's "
+        "title and abstract. Do not invent evidence not present in the "
+        "abstract.\n\n"
+        "Pick exactly one verdict:\n"
+        '- "supports": the abstract positively supports the claim.\n'
+        '- "contradicts": the abstract GENUINELY addresses the claim AND '
+        "weakens or refutes it. This requires the abstract to actually bear "
+        "on the claim — do NOT slide from \"does not support\" into "
+        '"contradicts". Absence of support is NOT contradiction.\n'
+        '- "silent": the abstract does not bear on the claim. This is a '
+        "legitimate, first-class finding — reporting that the literature is "
+        "silent is just as valuable as reporting support. Never stretch an "
+        "unrelated abstract into a verdict.\n\n"
+        "SKEPTICAL DEFAULT: if you are unsure whether the abstract bears on "
+        'the claim at all, the verdict is "silent", never "contradicts".\n\n'
         "Respond ONLY with valid JSON in this exact format:\n"
-        '{"supported": true or false, '
+        '{"verdict": "supports" | "contradicts" | "silent", '
         '"evidence": "<short quote or paraphrase from the abstract that bears on '
         'the claim, or empty string if none>", '
         '"assessment": "<one-sentence rationale>"}'
@@ -160,7 +206,8 @@ def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) ->
         f"Claim: {claim}\n\n"
         f"Paper title: {paper_title}\n\n"
         f"Paper abstract: {paper_abstract}\n\n"
-        "Does this paper support the claim?"
+        "Does this paper support the claim, contradict it, or is it silent "
+        "on it?"
     )
     return system, user
 
@@ -531,7 +578,11 @@ def build_verdict_prompt(
         system += (
             "\n\nAlso weigh whether the answer is consistent with the provided "
             "literature evidence: an answer contradicted by the cited literature "
-            "weighs toward kill, while one backed by it weighs toward survive."
+            "weighs toward kill, while one backed by it weighs toward survive. "
+            "NOT_SUPPORTED entries are legacy judgments recorded before "
+            "three-state grounding: the paper did not support the claim, but "
+            "whether it was silent or contradicting was never recorded — do "
+            "NOT weigh them as refutations."
         )
         user = (
             f"Claim: {claim}\n\n"

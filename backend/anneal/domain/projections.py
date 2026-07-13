@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from anneal.domain.constants import GROUND_NOT_SUPPORTED, GROUND_VERDICTS
 from anneal.domain.events import (
     ANSWER,
     CHALLENGE,
@@ -97,6 +98,27 @@ def _killed_claim_ids(events: list[Event]) -> set[str]:
         ):
             last_verdict[e.target_ref] = e.payload.get("outcome", "")
     return {cid for cid, outcome in last_verdict.items() if outcome == "kill"}
+
+
+def ground_stance(payload: dict) -> str | None:
+    """Resolve a GROUND payload's stance toward its claim (pure read).
+
+    Returns one of:
+    - ``"supports"`` / ``"contradicts"`` / ``"silent"`` — new three-state
+      events (``payload["verdict"]``), plus legacy ``supported: True`` which
+      reads as supports.
+    - ``"not_supported"`` — legacy ``supported: False`` (未分态). Whether the
+      paper was silent or contradicting was never recorded; we NEVER guess —
+      projections/UI render the unclassified state as-is.
+    - ``None`` — the payload carries neither field (malformed/foreign); the
+      caller decides how to skip it. Read side never raises on legacy data.
+    """
+    verdict = payload.get("verdict")
+    if verdict in GROUND_VERDICTS:
+        return verdict
+    if "supported" in payload:
+        return "supports" if payload["supported"] else GROUND_NOT_SUPPORTED
+    return None
 
 
 def confirmed_ground_evidence(events: list[Event], claim_id: str) -> list[Event]:

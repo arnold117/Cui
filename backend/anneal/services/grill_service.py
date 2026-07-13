@@ -22,6 +22,7 @@ from anneal.domain.events import (
 )
 from anneal.domain.projections import (
     confirmed_ground_evidence,
+    ground_stance,
     has_grill_events,
     is_parked,
 )
@@ -297,14 +298,33 @@ class GrillService:
     # Auto-grill (LLM-powered)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _bearing_evidence(evidence_events: list[Event]) -> list[Event]:
+        """Confirmed grounds that actually BEAR on the claim.
+
+        ``silent`` grounds (查无) relate nothing and never enter the evidence
+        block, so they are excluded here too — ``evidence_count`` /
+        ``grounded_material_ids`` provenance must describe exactly what the
+        LLM saw. supports / contradicts / legacy 未分态 (not_supported) all
+        bear and stay in.
+        """
+        return [
+            e
+            for e in evidence_events
+            if ground_stance(e.payload)
+            in ("supports", "contradicts", "not_supported")
+        ]
+
     def auto_challenge(self, artifact_id: str, claim_id: str, claim_body: str, context: str = "") -> Event:
         """LLM-generated challenge. confirmed=False per spec §2.6."""
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
         from anneal.llm.prompts import build_challenge_prompt, format_evidence_block
         self._assert_artifact_was_parked(artifact_id)
-        evidence_events = confirmed_ground_evidence(
-            self._store.get_events(artifact_id), claim_id
+        evidence_events = self._bearing_evidence(
+            confirmed_ground_evidence(
+                self._store.get_events(artifact_id), claim_id
+            )
         )
         evidence = format_evidence_block(evidence_events)
         system, user = build_challenge_prompt(claim_body, context, evidence)
@@ -351,8 +371,10 @@ class GrillService:
             raise LLMNotConfiguredError("LLM client not configured")
         from anneal.llm.prompts import build_verdict_prompt, format_evidence_block
         self._assert_has_challenge(artifact_id)
-        evidence_events = confirmed_ground_evidence(
-            self._store.get_events(artifact_id), claim_id
+        evidence_events = self._bearing_evidence(
+            confirmed_ground_evidence(
+                self._store.get_events(artifact_id), claim_id
+            )
         )
         evidence = format_evidence_block(evidence_events)
         system, user = build_verdict_prompt(claim_body, question, answer, evidence)

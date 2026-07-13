@@ -1,13 +1,22 @@
 from anneal.domain.events import GROUND, make_event
 from anneal.llm.prompts import (
     build_challenge_prompt,
+    build_grounding_prompt,
     build_verdict_prompt,
     format_evidence_block,
     truncate_rationale,
 )
 
 
-def _ground(supported: bool, **payload):
+def _ground(verdict: str, **payload):
+    """A new-style GROUND event carrying the three-state verdict."""
+    base = {"verdict": verdict, "source": "arxiv", "title": "Paper X"}
+    base.update(payload)
+    return make_event(type=GROUND, actor="system", target_ref="claim-a", payload=base)
+
+
+def _legacy_ground(supported: bool, **payload):
+    """A legacy GROUND event carrying only the binary `supported` bool."""
     base = {"supported": supported, "source": "arxiv", "title": "Paper X"}
     base.update(payload)
     return make_event(type=GROUND, actor="system", target_ref="claim-a", payload=base)
@@ -18,23 +27,80 @@ class TestFormatEvidenceBlock:
         assert format_evidence_block([]) == ""
 
     def test_supports_formatting(self):
-        g = _ground(True, evidence="RCT showed effect", assessment="direct support")
+        g = _ground("supports", evidence="RCT showed effect", assessment="direct support")
         block = format_evidence_block([g])
         assert block == "- [SUPPORTS] arxiv:Paper X — RCT showed effect (direct support)"
 
     def test_contradicts_formatting(self):
-        g = _ground(False, evidence="null result", assessment="contradicts")
+        """contradicts evidence is explicitly labeled counter-evidence."""
+        g = _ground("contradicts", evidence="null result", assessment="contradicts")
         block = format_evidence_block([g])
         assert block == "- [CONTRADICTS] arxiv:Paper X — null result (contradicts)"
 
+    def test_silent_excluded_from_block(self):
+        """查无 bears nothing on the claim — silent never enters the block."""
+        g = _ground("silent", assessment="unrelated field")
+        assert format_evidence_block([g]) == ""
+
+    def test_legacy_true_reads_as_supports(self):
+        g = _legacy_ground(True, evidence="RCT showed effect")
+        block = format_evidence_block([g])
+        assert block == "- [SUPPORTS] arxiv:Paper X — RCT showed effect"
+
+    def test_legacy_false_labeled_not_supported_never_contradicts(self):
+        """Legacy False is 未分态 — rendered honestly, NEVER upgraded to
+        CONTRADICTS (silent-or-contradicts was never recorded)."""
+        g = _legacy_ground(False, evidence="null result")
+        block = format_evidence_block([g])
+        assert block == "- [NOT_SUPPORTED] arxiv:Paper X — null result"
+        assert "CONTRADICTS" not in block
+
     def test_omits_empty_evidence_and_assessment(self):
-        g = _ground(True, evidence="", assessment="")
+        g = _ground("supports", evidence="", assessment="")
         block = format_evidence_block([g])
         assert block == "- [SUPPORTS] arxiv:Paper X"
 
-    def test_one_line_per_item(self):
-        block = format_evidence_block([_ground(True), _ground(False)])
-        assert len(block.splitlines()) == 2
+    def test_one_line_per_bearing_item(self):
+        block = format_evidence_block(
+            [_ground("supports"), _ground("contradicts"), _ground("silent")]
+        )
+        assert len(block.splitlines()) == 2  # silent contributes no line
+
+
+class TestBuildGroundingPrompt:
+    def test_returns_tuple_of_strings(self):
+        system, user = build_grounding_prompt("c", "t", "abs")
+        assert isinstance(system, str)
+        assert isinstance(user, str)
+
+    def test_user_contains_claim_title_abstract(self):
+        system, user = build_grounding_prompt("X improves Y", "Paper T", "Abstract A")
+        assert "X improves Y" in user
+        assert "Paper T" in user
+        assert "Abstract A" in user
+
+    def test_json_schema_is_three_state_verdict(self):
+        system, _ = build_grounding_prompt("c", "t", "a")
+        assert '"verdict"' in system
+        assert '"supports"' in system
+        assert '"contradicts"' in system
+        assert '"silent"' in system
+        # The binary schema is gone — no boolean supported key remains.
+        assert '"supported"' not in system
+
+    def test_skeptical_default_stated(self):
+        """拿不准 bear on 与否 → silent, never contradicts — spelled out."""
+        system, _ = build_grounding_prompt("c", "t", "a")
+        assert "SKEPTICAL DEFAULT" in system
+        assert "Absence of support is NOT contradiction." in system
+
+    def test_silent_is_first_class_not_failure(self):
+        system, _ = build_grounding_prompt("c", "t", "a")
+        assert "first-class" in system
+
+    def test_json_instruction_present(self):
+        system, _ = build_grounding_prompt("c", "t", "a")
+        assert "JSON" in system
 
 
 # Pre-change reference output — these MUST stay byte-identical when evidence="".
@@ -129,6 +195,12 @@ class TestChallengeWithEvidence:
         system, _ = build_challenge_prompt("claim", "ctx", "- [SUPPORTS] a:b")
         assert '"target_aspect"' in system
 
+    def test_legacy_not_supported_guidance_present(self):
+        """The model is told NOT to treat legacy 未分态 entries as refutations."""
+        system, _ = build_challenge_prompt("claim", "ctx", "- [NOT_SUPPORTED] a:b")
+        assert "NOT_SUPPORTED" in system
+        assert "do NOT treat them as refutations" in system
+
 
 class TestVerdictWithEvidence:
     def test_user_contains_evidence_and_label(self):
@@ -144,6 +216,11 @@ class TestVerdictWithEvidence:
     def test_json_schema_unchanged(self):
         system, _ = build_verdict_prompt("c", "q", "a", "- [SUPPORTS] a:b")
         assert '"outcome"' in system
+
+    def test_legacy_not_supported_guidance_present(self):
+        system, _ = build_verdict_prompt("c", "q", "a", "- [NOT_SUPPORTED] a:b")
+        assert "NOT_SUPPORTED" in system
+        assert "NOT weigh them as refutations" in system
 
 
 class TestBuildChallengePrompt:

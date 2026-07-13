@@ -673,7 +673,7 @@ from tests.fakes import CapturingLLMClient
 
 
 def _seed_confirmed_ground(
-    store, event_svc, supported: bool, title: str = "Landmark RCT"
+    store, event_svc, verdict: str, title: str = "Landmark RCT"
 ):
     """Realistically seed a CONFIRMED ground event for CLAIM_A on ARTIFACT.
 
@@ -694,9 +694,9 @@ def _seed_confirmed_ground(
         ARTIFACT,
         CLAIM_A,
         material.id,
-        supported=supported,
+        verdict=verdict,
         evidence="effect size 0.8",
-        assessment="strong" if supported else "refutes",
+        assessment="strong" if verdict == "supports" else "refutes",
     )
     event_svc.confirm_event(ARTIFACT, ground_ev.id)
     return ground_ev
@@ -710,7 +710,7 @@ class TestAutoChallengeEvidenceAware:
         llm = CapturingLLMClient([json.dumps({"question": "Q?", "target_aspect": "scope"})])
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
-        ground_ev = _seed_confirmed_ground(store, event_svc, supported=True, title="Landmark RCT")
+        ground_ev = _seed_confirmed_ground(store, event_svc, verdict="supports", title="Landmark RCT")
 
         event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
 
@@ -721,6 +721,23 @@ class TestAutoChallengeEvidenceAware:
         # Provenance recorded on the challenge event payload.
         assert event.payload["evidence_count"] > 0
         assert ground_ev.payload["material_id"] in event.payload["grounded_material_ids"]
+
+    def test_silent_ground_excluded_from_prompt_and_provenance(self):
+        """A confirmed SILENT ground (查无) bears nothing on the claim — it
+        never enters the evidence block and never inflates evidence_count."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient([json.dumps({"question": "Q?", "target_aspect": "scope"})])
+        svc = GrillService(store, event_svc, llm=llm)
+        _park(store)
+        _seed_confirmed_ground(store, event_svc, verdict="silent", title="Unrelated Survey")
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "Literature evidence:" not in llm.last_user
+        assert "Unrelated Survey" not in llm.last_user
+        assert event.payload["evidence_count"] == 0
+        assert event.payload["grounded_material_ids"] == []
 
     def test_pending_ground_not_in_prompt(self):
         """A PENDING (unconfirmed) ground event must NOT leak into the prompt."""
@@ -735,7 +752,7 @@ class TestAutoChallengeEvidenceAware:
                             provenance={"source": "arxiv"}, payload={"title": "Unconfirmed"})
         repo.create_material(material)
         GroundingService(store, event_svc, repo).ground(
-            ARTIFACT, CLAIM_A, material.id, supported=True
+            ARTIFACT, CLAIM_A, material.id, verdict="supports"
         )
 
         svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
@@ -770,7 +787,7 @@ class TestAutoVerdictEvidenceAware:
         svc = GrillService(store, event_svc, llm=llm)
         _park(store)
         svc.challenge(ARTIFACT, CLAIM_A, "Why?")
-        ground_ev = _seed_confirmed_ground(store, event_svc, supported=False, title="Refuting Study")
+        ground_ev = _seed_confirmed_ground(store, event_svc, verdict="contradicts", title="Refuting Study")
 
         event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Why?", "Because")
 
