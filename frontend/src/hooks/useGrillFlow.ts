@@ -64,7 +64,7 @@ export interface GrillFlowActions {
    * payload the draft is retracted and re-issued with the user's triage
    * before signing (events are immutable — 机器起草人改判 = retract + 新
    * verdict + confirm). */
-  confirmVerdict: (verdictId: string, triage?: VerdictTriage) => void
+  confirmVerdict: (verdictId: string, triage?: VerdictTriage) => Promise<void>
   retractVerdict: (verdictId: string) => void
   continueGrill: () => void
   stopGrill: () => void

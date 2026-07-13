@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import type { Claim, Artifact, VerdictTriage } from "../types"
 import { useGrillFlow } from "../hooks/useGrillFlow"
 import type { ChallengeView } from "../hooks/useGrillFlow"
@@ -133,14 +133,18 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
     }
   }, [flow.events, flow.claimState])
 
-  // Refresh sidebar when a verdict gets confirmed (resolved count rises) or the
-  // claim rolls up to all_resolved — keeps the sidebar status in sync.
-  const resolvedCount = flow.challenges.filter(c => c.state === "resolved").length
-  useEffect(() => {
-    if (resolvedCount > 0) {
+  // Sidebar sync: refresh AFTER the confirm action itself completes — never
+  // from an effect watching derived state. The old resolvedCount effect fired
+  // on mount for any board with pre-existing resolved challenges; onRefresh
+  // remounts this view, the effect re-fired after refetch, and the cycle
+  // self-excited into an infinite refresh loop (~1200 req/s, 跳来跳去).
+  const handleConfirmVerdict = useCallback(
+    async (verdictId: string, triage?: VerdictTriage) => {
+      await flow.confirmVerdict(verdictId, triage)
       onRefresh()
-    }
-  }, [resolvedCount, onRefresh])
+    },
+    [flow.confirmVerdict, onRefresh],
+  )
 
   const handlePromote = async () => {
     setPromoting(true)
@@ -276,7 +280,7 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
               cv={cv}
               loading={flow.loading}
               onSubmitAnswer={flow.submitAnswer}
-              onConfirm={flow.confirmVerdict}
+              onConfirm={handleConfirmVerdict}
               onRetract={flow.retractVerdict}
               libraryId={artifact.library_id}
               claimId={claim.id}
