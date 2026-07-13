@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react"
-import type { Claim, Artifact } from "../types"
+import type { Claim, Artifact, VerdictTriage } from "../types"
 import { useGrillFlow } from "../hooks/useGrillFlow"
 import type { ChallengeView } from "../hooks/useGrillFlow"
 import { promote } from "../api"
+import { DEATH_CAUSE_LABELS } from "../utils"
 import GrillMessage from "./GrillMessage"
 import EvidencePanel from "./EvidencePanel"
 
@@ -28,12 +29,16 @@ function ChallengeCard({
   onSubmitAnswer,
   onConfirm,
   onRetract,
+  libraryId,
+  claimId,
 }: {
   cv: ChallengeView
   loading: boolean
   onSubmitAnswer: (challengeId: string, text: string) => void
-  onConfirm: (verdictId: string) => void
+  onConfirm: (verdictId: string, triage?: VerdictTriage) => void
   onRetract: (verdictId: string) => void
+  libraryId: string
+  claimId: string
 }) {
   const [answerText, setAnswerText] = useState("")
 
@@ -61,7 +66,9 @@ function ChallengeCard({
         <GrillMessage event={cv.answerEvent} isPending={false} isLoading={loading} />
       )}
 
-      {/* The verdict, if any. confirm/retract show only while awaiting_decision. */}
+      {/* The verdict, if any. confirm/retract show only while awaiting_decision.
+          A pending KILL hosts the 死因分诊 panel (needs library for the
+          boundary successor picker). */}
       {cv.verdictEvent && (
         <GrillMessage
           event={cv.verdictEvent}
@@ -69,6 +76,8 @@ function ChallengeCard({
           isLoading={loading}
           onConfirm={onConfirm}
           onRetract={onRetract}
+          libraryId={libraryId}
+          currentClaimId={claimId}
         />
       )}
 
@@ -148,7 +157,7 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
 
   // The last confirmed verdict outcome decides survive-vs-kill messaging when
   // the claim rolls up to all_resolved (mirrors the old done/confirmed_kill).
-  const { lastVerdictOutcome, lastVerdictRationale } = (() => {
+  const { lastVerdictOutcome, lastVerdictRationale, lastVerdictDeathCause, lastVerdictRevival } = (() => {
     const retracted = new Set<string>()
     for (const e of flow.events) {
       if (e.type === "retract" && e.target_ref) retracted.add(e.target_ref)
@@ -161,6 +170,8 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
     }
     let outcome: string | null = null
     let rationale: string | null = null
+    let deathCause: string | null = null
+    let revival: string | null = null
     for (const e of flow.events) {
       if (
         e.type === "verdict" &&
@@ -169,9 +180,16 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
       ) {
         outcome = e.payload.outcome as string
         rationale = (e.payload.rationale as string) ?? null
+        deathCause = (e.payload.death_cause as string) ?? null
+        revival = (e.payload.revival_condition as string) ?? null
       }
     }
-    return { lastVerdictOutcome: outcome, lastVerdictRationale: rationale }
+    return {
+      lastVerdictOutcome: outcome,
+      lastVerdictRationale: rationale,
+      lastVerdictDeathCause: deathCause,
+      lastVerdictRevival: revival,
+    }
   })()
 
   const isKilled = lastVerdictOutcome === "kill"
@@ -256,6 +274,8 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
               onSubmitAnswer={flow.submitAnswer}
               onConfirm={flow.confirmVerdict}
               onRetract={flow.retractVerdict}
+              libraryId={artifact.library_id}
+              claimId={claim.id}
             />
           ))}
 
@@ -354,10 +374,20 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
               <div className="bg-red-950/40 border border-red-700/50 rounded-lg px-4 py-4">
                 <p className="text-sm font-medium text-red-400 mb-2">
                   ❌ Claim 未通过拷问
+                  {lastVerdictDeathCause && (
+                    <span className="ml-2 text-xs font-normal text-red-300/80">
+                      {DEATH_CAUSE_LABELS[lastVerdictDeathCause] ?? lastVerdictDeathCause}
+                    </span>
+                  )}
                 </p>
                 {lastVerdictRationale && (
                   <p className="text-sm text-zinc-400 leading-relaxed mb-3">
                     AI 判定: {lastVerdictRationale}
+                  </p>
+                )}
+                {lastVerdictRevival && (
+                  <p className="text-xs text-zinc-400 leading-relaxed mb-3">
+                    复活条件: {lastVerdictRevival}
                   </p>
                 )}
                 <p className="text-xs text-zinc-500 leading-relaxed">

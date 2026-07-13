@@ -27,12 +27,14 @@ function claimFill(status: string | null): string {
 const MATERIAL_FILL = "#1e3a5f" // muted blue
 const MATERIAL_STROKE = "#60a5fa" // blue-400
 
-// Per-edge-type visual style. Four semantic groups, each visually distinct but
+// Per-edge-type visual style. Five semantic groups, each visually distinct but
 // kept within the zinc-950 dark idiom:
 //   contradicts            — red dashed (tension)
 //   grounds                — zinc solid (evidence)
 //   builds_on/depends_on   — emerald/teal solid, DIRECTIONAL (arrowhead)
 //   shares_method/shares_gap — violet/indigo dotted (similarity, undirected)
+//   narrowed_from          — amber dash-dot, DIRECTIONAL (划界死 lineage:
+//                            successor → killed claim; deterministic, non-LLM)
 interface EdgeStyle {
   color: string
   width: number
@@ -47,12 +49,14 @@ const EDGE_STYLE: Record<GraphEdge["type"], EdgeStyle> = {
   depends_on: { color: "#2dd4bf", width: 1.8, directed: true }, // teal-400
   shares_method: { color: "#a78bfa", width: 1.6, dash: "2 4" }, // violet-400
   shares_gap: { color: "#818cf8", width: 1.6, dash: "2 4" }, // indigo-400
+  narrowed_from: { color: "#fbbf24", width: 1.8, dash: "8 3 2 3", directed: true }, // amber-400
 }
 
 // Unique color used per directed type for its own arrowhead marker.
 const DIRECTED_MARKER: Partial<Record<GraphEdge["type"], string>> = {
   builds_on: EDGE_STYLE.builds_on.color,
   depends_on: EDGE_STYLE.depends_on.color,
+  narrowed_from: EDGE_STYLE.narrowed_from.color,
 }
 
 function truncate(s: string, n = 28): string {
@@ -274,6 +278,7 @@ export default function CorpusGraphView({ libraryId = "default" }: Props) {
           <LegendEdge style={EDGE_STYLE.grounds} label="取证 grounds" />
           <LegendEdge style={EDGE_STYLE.builds_on} label="承接 builds_on·depends_on" />
           <LegendEdge style={EDGE_STYLE.shares_method} label="相似 shares_method·shares_gap" />
+          <LegendEdge style={EDGE_STYLE.narrowed_from} label="收窄 narrowed_from" />
         </div>
         <button
           type="button"

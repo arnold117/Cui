@@ -1,4 +1,5 @@
 import type { Event } from "../types"
+import { DEATH_CAUSE_BADGE_CLASSES, DEATH_CAUSE_LABELS } from "../utils"
 
 interface Props {
   event: Event
@@ -54,6 +55,17 @@ export default function EventCard({ event }: Props) {
 
   const confidence = isVerdict ? (event.payload.confidence as number | undefined) : undefined
 
+  // 死因分诊 badge — kill verdicts only; legacy kills carry no cause and show
+  // no badge (投影语义: 未分类, never invented).
+  const deathCause =
+    isVerdict && outcome === "kill"
+      ? (event.payload.death_cause as string | undefined)
+      : undefined
+  const revivalCondition =
+    deathCause === "circumstantial"
+      ? (event.payload.revival_condition as string | undefined)
+      : undefined
+
   return (
     <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-4 py-3 space-y-2">
       <div className="flex items-center gap-2">
@@ -75,6 +87,16 @@ export default function EventCard({ event }: Props) {
             {outcome.toUpperCase()}
           </span>
         )}
+        {deathCause && (
+          <span
+            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
+              DEATH_CAUSE_BADGE_CLASSES[deathCause] ??
+              "bg-zinc-600/50 text-zinc-200 border-zinc-500/40"
+            }`}
+          >
+            {DEATH_CAUSE_LABELS[deathCause] ?? deathCause}
+          </span>
+        )}
         {confidence != null && (
           <span className="text-[10px] text-zinc-500">
             {Math.round(confidence * 100)}%
@@ -85,6 +107,11 @@ export default function EventCard({ event }: Props) {
       <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
         {extractContent(event)}
       </p>
+      {revivalCondition && (
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          复活条件: {revivalCondition}
+        </p>
+      )}
     </div>
   )
 }

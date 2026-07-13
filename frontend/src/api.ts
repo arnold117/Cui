@@ -1,4 +1,4 @@
-import type { Artifact, Claim, CorpusGraph, DocVersion, Event, Material } from "./types"
+import type { Artifact, Claim, CorpusGraph, DocVersion, Event, Material, VerdictTriage } from "./types"
 
 const BASE = "/api/v1"
 
@@ -56,6 +56,28 @@ export const answer = (artifactId: string, claimId: string, challengeId: string,
 
 export const autoVerdict = (artifactId: string, claimId: string, claimBody: string, question: string, answerText: string, challengeId: string) =>
   request<{ event: Event }>("POST", `/grill/${artifactId}/auto-verdict`, { claim_id: claimId, claim_body: claimBody, question, answer: answerText, challenge_id: challengeId })
+
+// Manual verdict. Used when the user amends an auto_verdict draft's 死因分诊
+// (the draft is retracted, then re-issued with the user's triage and signed).
+// kill requires death_cause; circumstantial requires revival_condition;
+// successor_claim_id only with boundary — the backend enforces all of it.
+export const postVerdict = (
+  artifactId: string,
+  claimId: string,
+  outcome: string,
+  rationale: string,
+  challengeId?: string,
+  triage?: VerdictTriage,
+) =>
+  request<{ event: Event }>("POST", `/grill/${artifactId}/verdict`, {
+    claim_id: claimId,
+    outcome,
+    rationale,
+    challenge_id: challengeId ?? null,
+    death_cause: triage?.death_cause ?? null,
+    revival_condition: triage?.revival_condition || null,
+    successor_claim_id: triage?.successor_claim_id || null,
+  })
 
 // Events
 export const confirmEvent = (artifactId: string, eventId: string) =>

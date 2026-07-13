@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import type { Event, Claim } from "../types"
+import type { Event, Claim, VerdictTriage } from "../types"
 import { isLensChallenge, isTasteChallenge } from "../types"
 import * as api from "../api"
 
@@ -53,7 +53,12 @@ export interface GrillFlowActions {
   /** Answer a SPECIFIC challenge by id, then auto-verdict against THAT
    * challenge's question. */
   submitAnswer: (challengeId: string, text: string) => void
-  confirmVerdict: (verdictId: string) => void
+  /** Confirm a pending verdict. For a KILL verdict the triage panel passes
+   * the (possibly user-amended) 死因分诊; when it differs from the drafted
+   * payload the draft is retracted and re-issued with the user's triage
+   * before signing (events are immutable — 机器起草人改判 = retract + 新
+   * verdict + confirm). */
+  confirmVerdict: (verdictId: string, triage?: VerdictTriage) => void
   retractVerdict: (verdictId: string) => void
   continueGrill: () => void
   stopGrill: () => void
@@ -371,11 +376,52 @@ export function useGrillFlow(
   )
 
   const confirmVerdict = useCallback(
-    async (verdictId: string) => {
+    async (verdictId: string, triage?: VerdictTriage) => {
       setError(null)
       setLoading(true)
       try {
-        const { event: confirmEvt } = await api.confirmEvent(artifactId, verdictId)
+        let verdictEvt = events.find(e => e.id === verdictId)
+        let confirmTargetId = verdictId
+
+        // 死因分诊: when the user's triage differs from the drafted payload,
+        // re-issue. Events are immutable, so "editing" the AI draft = retract
+        // it, post a manual verdict carrying the same outcome/rationale plus
+        // the user's triage, then confirm THAT (机器起草人签名，人改判重录).
+        if (verdictEvt && triage) {
+          const p = verdictEvt.payload
+          const changed =
+            (p.death_cause ?? undefined) !== triage.death_cause ||
+            ((p.revival_condition as string | undefined) || undefined) !==
+              (triage.revival_condition || undefined) ||
+            ((p.successor_claim_id as string | undefined) || undefined) !==
+              (triage.successor_claim_id || undefined)
+          if (changed) {
+            const { event: retractEvt } = await api.retractEvent(
+              artifactId,
+              verdictId,
+            )
+            if (!mountedRef.current) return
+            setEvents(prev => [...prev, retractEvt])
+
+            const { event: reissued } = await api.postVerdict(
+              artifactId,
+              claim.id,
+              (p.outcome as string) ?? "kill",
+              (p.rationale as string) ?? "",
+              p.challenge_id as string | undefined,
+              triage,
+            )
+            if (!mountedRef.current) return
+            setEvents(prev => [...prev, reissued])
+            verdictEvt = reissued
+            confirmTargetId = reissued.id
+          }
+        }
+
+        const { event: confirmEvt } = await api.confirmEvent(
+          artifactId,
+          confirmTargetId,
+        )
         if (!mountedRef.current) return
         setEvents(prev => [...prev, confirmEvt])
 
@@ -384,7 +430,6 @@ export function useGrillFlow(
         // (verdict.payload.challenge_id) — correct under parallel challenges —
         // and fall back to the legacy "most recent unconfirmed challenge before
         // this verdict in ts order" scan only when no link is present.
-        const verdictEvt = events.find(e => e.id === verdictId)
         const linkedChallengeId = verdictEvt?.payload?.challenge_id as
           | string
           | undefined
@@ -426,7 +471,7 @@ export function useGrillFlow(
         if (mountedRef.current) setLoading(false)
       }
     },
-    [artifactId, events, refreshEvents],
+    [artifactId, claim.id, events, refreshEvents],
   )
 
   const retractVerdict = useCallback(

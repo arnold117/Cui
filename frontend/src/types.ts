@@ -92,6 +92,28 @@ export function isTasteChallenge(event: Event): boolean {
   return event.type === "challenge" && event.payload.kind === "taste"
 }
 
+// 死因分诊 (death-cause triage) — how a killed claim died. Kill is not a
+// boolean: every NEW kill verdict carries exactly one cause; legacy verdicts
+// carry none and render as 未分类. circumstantial is the only non-terminal
+// cause and must carry a revival_condition; boundary may name the narrowed
+// successor claim (successor_claim_id).
+export type DeathCause = "refuted" | "not_worth" | "boundary" | "circumstantial"
+
+export const DEATH_CAUSES: DeathCause[] = [
+  "refuted",
+  "not_worth",
+  "boundary",
+  "circumstantial",
+]
+
+// The user-amendable triage part of a kill verdict (the confirm UI lets the
+// user override the auto_verdict proposal before signing it).
+export interface VerdictTriage {
+  death_cause: DeathCause
+  revival_condition?: string
+  successor_claim_id?: string
+}
+
 // Corpus graph (语料图) — library-level node-link view of confirmed relations.
 export interface GraphNode {
   id: string
@@ -110,6 +132,7 @@ export interface GraphEdge {
     | "depends_on"
     | "shares_method"
     | "shares_gap"
+    | "narrowed_from"
 }
 
 export interface CorpusGraph {
