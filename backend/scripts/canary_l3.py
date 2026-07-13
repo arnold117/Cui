@@ -117,12 +117,18 @@ def build_world(llm) -> World:
 
 
 def seed_grilled(
-    w: World, *, claim_id: str, artifact_id: str, body: str, outcome: str
+    w: World, *, claim_id: str, artifact_id: str, body: str, outcome: str,
+    rationale: str = "canary seed",
+    death_cause: str | None = None,
+    revival_condition: str | None = None,
 ) -> Claim:
     """Seed a fully-grilled claim (park → challenge → confirmed verdict).
 
     Mirrors the realistic event recipe used by the unit tests so that
-    ``claim_status`` genuinely resolves to survived/killed.
+    ``claim_status`` genuinely resolves to survived/killed. Killed seeds
+    should carry a ``death_cause`` so the precedent-injection path (判例
+    四元组 → ②① prompts) is exercised by the sentinel rather than the
+    legacy "unclassified" rendering; survived seeds carry none by design.
     """
     assert outcome in ("survived", "killed")
     w.repo.create_artifact(
@@ -145,12 +151,17 @@ def seed_grilled(
             target_ref=claim_id, payload={"question": "canary grill"},
         ),
     )
+    payload: dict = {
+        "outcome": "survive" if outcome == "survived" else "kill",
+        "rationale": rationale,
+    }
+    if death_cause is not None:
+        payload["death_cause"] = death_cause
+    if revival_condition is not None:
+        payload["revival_condition"] = revival_condition
     verdict = make_event(
         type=VERDICT, actor="system", confirmed=False, target_ref=claim_id,
-        payload={
-            "outcome": "survive" if outcome == "survived" else "kill",
-            "rationale": "canary seed",
-        },
+        payload=payload,
     )
     w.event_svc.append_event(artifact_id, verdict)
     w.event_svc.confirm_event(artifact_id, verdict.id)
@@ -208,6 +219,7 @@ def case_contradiction_fire(llm) -> CaseOutcome:
             "in healthy adults."
         ),
         outcome="survived",
+        rationale="Defended with replicated caffeine–recall RCT evidence.",
     )
     current_body = (
         "Daily caffeine intake impairs short-term memory recall "
@@ -251,6 +263,7 @@ def case_contradiction_silent(llm) -> CaseOutcome:
             "in healthy adults."
         ),
         outcome="survived",
+        rationale="Defended with replicated caffeine–recall RCT evidence.",
     )
     current_body = (
         "Daily caffeine intake increases resting heart rate "
@@ -284,6 +297,7 @@ def case_taste_fire(llm) -> CaseOutcome:
             "foreign vocabulary in second-language learners."
         ),
         outcome="survived",
+        rationale="Defended: the spacing effect replicated in my own vocab pilots.",
     )
     killed = seed_grilled(
         w, claim_id="c2-past-killed", artifact_id="c2-art-k",
@@ -292,6 +306,11 @@ def case_taste_fire(llm) -> CaseOutcome:
             "long-term retention for second-language learners."
         ),
         outcome="killed",
+        death_cause="refuted",
+        rationale=(
+            "Killed: massed practice lost to spacing at every delayed test — "
+            "factually wrong."
+        ),
     )
     current_body = (
         "Spaced repetition scheduling improves long-term retention of foreign "
@@ -370,6 +389,7 @@ def case_edges_fire(llm) -> CaseOutcome:
             "representation quality for downstream image classification."
         ),
         outcome="survived",
+        rationale="Survived: augmentation-invariance argument held under grilling.",
     )
     b = seed_grilled(
         w, claim_id="c3-claim-b", artifact_id="c3-art-b",
@@ -378,6 +398,7 @@ def case_edges_fire(llm) -> CaseOutcome:
             "representation quality for downstream text retrieval."
         ),
         outcome="survived",
+        rationale="Survived: the same contrastive objective transferred to text pairs.",
     )
 
     events = asyncio.run(w.lens.compute_semantic_edges(LIB))
@@ -409,6 +430,7 @@ def case_edges_silent(llm) -> CaseOutcome:
             "in college students."
         ),
         outcome="survived",
+        rationale="Survived: anxiety self-reports dropped in the tea group.",
     )
     d = seed_grilled(
         w, claim_id="c3s-claim-d", artifact_id="c3s-art-d",
@@ -417,6 +439,7 @@ def case_edges_silent(llm) -> CaseOutcome:
             "in urban buildings."
         ),
         outcome="survived",
+        rationale="Survived: cooling-load meters showed the reduction.",
     )
 
     expected = "0 LINK events (unrelated pair, no over-connection)"
