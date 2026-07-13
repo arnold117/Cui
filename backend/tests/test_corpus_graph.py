@@ -372,12 +372,21 @@ def test_claim_status_variants(store, event_svc, repo, svc):
     _seed_claim(repo, claim_id="k", artifact_id="ak", body="killed one")
     _seed_claim(repo, claim_id="p", artifact_id="ap", body="parked one")
     _seed_claim(repo, claim_id="o", artifact_id="ao", body="open one")
+    _seed_claim(repo, claim_id="g", artifact_id="ag", body="grilling one")
     _grill_to_verdict(store, event_svc, artifact_id="as", claim_id="s",
                       outcome="survived")
     _grill_to_verdict(store, event_svc, artifact_id="ak", claim_id="k",
                       outcome="killed")
     _park_only(store, artifact_id="ap", claim_id="p")
     # 'o' has no events at all -> open
+    # 'g' is mid-grill (park + pending challenge, no verdict) -> open, so the
+    # graph paints 拷问中 claims amber, matching the sidebar's 橙点 semantics.
+    _park_only(store, artifact_id="ag", claim_id="g")
+    store.append(
+        "ag",
+        make_event(type=CHALLENGE, actor="system", confirmed=False,
+                   target_ref="g", payload={"question": "q"}),
+    )
 
     graph = svc.corpus_graph(LIB)
     by_id = {n.id: n for n in graph.nodes}
@@ -385,6 +394,7 @@ def test_claim_status_variants(store, event_svc, repo, svc):
     assert by_id["k"].status == "killed"
     assert by_id["p"].status == "parked"
     assert by_id["o"].status == "open"
+    assert by_id["g"].status == "open"
 
 
 def test_claim_without_artifact_skipped(store, event_svc, repo, svc):

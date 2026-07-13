@@ -255,14 +255,22 @@ def claim_status(events: list[Event], claim_id: str) -> str:
 
     Returns: "open" | "survived" | "killed" | "parked"
 
-    Logic:
+    Logic (淬火语义: open = 在火上被拷问, parked = 密封休眠):
     - If a VERDICT with outcome="survive" exists (last non-retracted
       *confirmed* verdict wins) -> "survived"
     - If a VERDICT with outcome="kill" exists (same rule) -> "killed"
-    - If only a PARK event exists targeting this claim -> "parked"
+    - No ruling verdict, but a non-retracted CHALLENGE targets this claim
+      (pending or confirmed both count — being grilled IS the open state)
+      -> "open"
+    - Otherwise, a PARK event targeting this claim -> "parked"
+      (never challenged, or every challenge retracted)
     - Otherwise -> "open"
     - Retracted verdicts don't count.
     - Unconfirmed verdicts don't count (Fix H1).
+
+    Every claim is born with a PARK, so without the CHALLENGE rule a claim
+    mid-grill would still project as "parked" and "open" would be
+    unreachable in practice.
     """
     # Defensive sort (Fix 7).
     events = sorted(events, key=lambda e: e.ts)
@@ -271,6 +279,7 @@ def claim_status(events: list[Event], claim_id: str) -> str:
 
     last_outcome: str | None = None
     has_park = False
+    has_challenge = False
 
     for e in events:
         if e.target_ref != claim_id:
@@ -283,11 +292,15 @@ def claim_status(events: list[Event], claim_id: str) -> str:
                 last_outcome = e.payload.get("outcome")
         elif e.type == PARK:
             has_park = True
+        elif e.type == CHALLENGE:
+            has_challenge = True
 
     if last_outcome == "survive":
         return "survived"
     if last_outcome == "kill":
         return "killed"
+    if has_challenge:
+        return "open"
     if has_park and last_outcome is None:
         return "parked"
     return "open"

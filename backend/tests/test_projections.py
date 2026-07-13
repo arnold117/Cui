@@ -354,6 +354,64 @@ class TestClaimStatus:
         events = [v]
         assert claim_status(events, CLAIM_A) == "open"
 
+    # -- 拷问中 = open (grilled claims must not project as parked) ---------
+
+    def test_open_when_parked_claim_has_pending_challenge(self):
+        """PARK + a pending CHALLENGE (confirmed=False) -> open, not parked.
+
+        Every claim is born with a PARK; once a challenge lands on it the
+        claim is on the fire (拷问中), no longer sealed/dormant.
+        """
+        p = make_event(type=PARK, actor="user", target_ref=CLAIM_A)
+        c = make_event(
+            type=CHALLENGE, actor="system", target_ref=CLAIM_A, confirmed=False
+        )
+        assert claim_status([p, c], CLAIM_A) == "open"
+
+    def test_open_when_parked_claim_has_confirmed_challenge(self):
+        """PARK + a confirmed CHALLENGE -> open (pending or confirmed both count)."""
+        p = make_event(type=PARK, actor="user", target_ref=CLAIM_A)
+        c = make_event(
+            type=CHALLENGE, actor="system", target_ref=CLAIM_A, confirmed=True
+        )
+        assert claim_status([p, c], CLAIM_A) == "open"
+
+    def test_parked_when_only_challenge_is_retracted(self):
+        """PARK + a retracted CHALLENGE -> back to parked (off the fire)."""
+        p = make_event(type=PARK, actor="user", target_ref=CLAIM_A)
+        c = make_event(
+            type=CHALLENGE, actor="system", target_ref=CLAIM_A, confirmed=False
+        )
+        r = _retract(c.id)
+        assert claim_status([p, c, r], CLAIM_A) == "parked"
+
+    def test_challenge_for_other_claim_keeps_parked(self):
+        """A CHALLENGE targeting another claim doesn't open this one."""
+        p = make_event(type=PARK, actor="user", target_ref=CLAIM_A)
+        c = make_event(
+            type=CHALLENGE, actor="system", target_ref=CLAIM_B, confirmed=False
+        )
+        assert claim_status([p, c], CLAIM_A) == "parked"
+
+    def test_ruling_verdict_overrides_open(self):
+        """PARK + CHALLENGE + confirmed kill verdict -> killed (verdict rules)."""
+        p = make_event(type=PARK, actor="user", target_ref=CLAIM_A)
+        c = make_event(
+            type=CHALLENGE, actor="system", target_ref=CLAIM_A, confirmed=True
+        )
+        v = _verdict("kill", confirmed=True)
+        assert claim_status([p, c, v], CLAIM_A) == "killed"
+
+    def test_open_when_challenge_and_verdict_retracted(self):
+        """CHALLENGE + retracted verdict -> open (still being grilled)."""
+        p = make_event(type=PARK, actor="user", target_ref=CLAIM_A)
+        c = make_event(
+            type=CHALLENGE, actor="system", target_ref=CLAIM_A, confirmed=True
+        )
+        v = _verdict("kill", confirmed=True)
+        r = _retract(v.id)
+        assert claim_status([p, c, v, r], CLAIM_A) == "open"
+
 
 # ===========================================================================
 # has_unresolved_debt

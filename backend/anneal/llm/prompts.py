@@ -9,6 +9,17 @@ if TYPE_CHECKING:
 # rationale 截前 300 字加省略号 — no LLM summarization, no extra hop).
 RATIONALE_TRUNCATE_CHARS = 300
 
+# Output-language rule appended to the tail of every system prompt whose
+# output carries user-visible natural language (question / tension / rationale
+# / reasoning / evidence / assessment / revival_condition / reason). Without
+# it the model drifts to English on a Chinese claim — one board, two
+# languages. Structured fields (enums, ids, JSON keys) are unaffected: the
+# rule speaks only to natural-language fields.
+OUTPUT_LANGUAGE_INSTRUCTION = (
+    "Write all natural-language output fields in the same language as the "
+    "CURRENT claim."
+)
+
 
 def truncate_rationale(rationale: str, limit: int = RATIONALE_TRUNCATE_CHARS) -> str:
     """Deterministically cap a verdict rationale for prompt injection.
@@ -165,6 +176,7 @@ def build_challenge_prompt(claim: str, context: str, evidence: str = "") -> tupl
             f"Literature evidence:\n{evidence}\n\n"
             "Generate one focused challenge question for this claim."
         )
+    system += "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
     return system, user
 
 
@@ -202,6 +214,7 @@ def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) ->
         'the claim, or empty string if none>", '
         '"assessment": "<one-sentence rationale>"}'
     )
+    system += "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
     user = (
         f"Claim: {claim}\n\n"
         f"Paper title: {paper_title}\n\n"
@@ -308,6 +321,7 @@ def build_contradiction_prompt(
             "Do these claims contradict, duplicate, or stand in tension? "
             "Identify the factual relationship and, if so, the challenge question."
         )
+    system += "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
     return system, user
 
 
@@ -401,7 +415,7 @@ def build_taste_prompt(
         '"anchored_papers": [{"title": "<exact title of a provided paper>"}], '
         '"anchored_claims": [{"past_claim_id": "<id of a provided past claim>"}], '
         '"question": "<a refutable challenge, e.g. what is the worthwhile '
-        'increment here?>"}'
+        'increment here?>"}\n\n' + OUTPUT_LANGUAGE_INSTRUCTION
     )
 
     if prior_art_papers:
@@ -509,7 +523,8 @@ def build_semantic_edges_prompt(
         '{"edges": [{"target_claim_id": "<exact id of a provided candidate>", '
         '"edge_type": "builds_on" | "depends_on" | "shares_method" | '
         '"shares_gap", '
-        '"reason": "<one sentence: where the relationship factually holds>"}]}'
+        '"reason": "<one sentence: where the relationship factually holds>"}]}\n\n'
+        + OUTPUT_LANGUAGE_INSTRUCTION
     )
 
     if candidates:
@@ -591,4 +606,5 @@ def build_verdict_prompt(
             f"Literature evidence:\n{evidence}\n\n"
             "Does this answer adequately defend the claim against the challenge?"
         )
+    system += "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
     return system, user

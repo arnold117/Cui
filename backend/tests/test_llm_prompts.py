@@ -1,7 +1,12 @@
 from anneal.domain.events import GROUND, make_event
 from anneal.llm.prompts import (
+    OUTPUT_LANGUAGE_INSTRUCTION,
+    ClaimPrecedent,
     build_challenge_prompt,
+    build_contradiction_prompt,
     build_grounding_prompt,
+    build_semantic_edges_prompt,
+    build_taste_prompt,
     build_verdict_prompt,
     format_evidence_block,
     truncate_rationale,
@@ -115,6 +120,7 @@ def _challenge_baseline(claim: str, context: str) -> tuple[str, str]:
         "Respond ONLY with valid JSON in this exact format:\n"
         '{"question": "<your challenging question>", '
         '"target_aspect": "<methodology|evidence|logic|scope>"}'
+        "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
     )
     user = f"Claim: {claim}\n\nContext: {context}\n\nGenerate one focused challenge question for this claim."
     return system, user
@@ -152,6 +158,7 @@ def _verdict_baseline(claim: str, question: str, answer: str) -> tuple[str, str]
         'death_cause MUST be null when outcome is "survive" and one of the '
         'four causes when outcome is "kill". revival_condition MUST be null '
         'unless death_cause is "circumstantial".'
+        "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
     )
     user = (
         f"Claim: {claim}\n\n"
@@ -304,3 +311,51 @@ class TestVerdictPromptDeathTriage:
         """The escape valve is spelled out: no statable revival = not_worth."""
         system, _ = build_verdict_prompt("c", "q", "a")
         assert "cannot state one" in system
+
+
+class TestOutputLanguageInstruction:
+    """Every prompt whose output carries user-visible natural language must
+    instruct the model to answer in the CURRENT claim's language (one board
+    must not mix an English card with a Chinese card). Fakes can't test real
+    language behavior — asserting the instruction is present is the contract.
+    """
+
+    def test_challenge_prompt_carries_instruction(self):
+        system, _ = build_challenge_prompt("claim", "ctx")
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_challenge_prompt_with_evidence_carries_instruction(self):
+        system, _ = build_challenge_prompt("claim", "ctx", "- [SUPPORTS] a:b")
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_grounding_prompt_carries_instruction(self):
+        system, _ = build_grounding_prompt("claim", "title", "abstract")
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_verdict_prompt_carries_instruction(self):
+        system, _ = build_verdict_prompt("c", "q", "a")
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_verdict_prompt_with_evidence_carries_instruction(self):
+        system, _ = build_verdict_prompt("c", "q", "a", "- [SUPPORTS] a:b")
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_contradiction_prompt_carries_instruction(self):
+        system, _ = build_contradiction_prompt("a", "b", "survived")
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_contradiction_prompt_with_precedent_carries_instruction(self):
+        system, _ = build_contradiction_prompt(
+            "a", "b", "killed",
+            past_death_cause="not_worth", past_rationale="meh",
+        )
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_taste_prompt_carries_instruction(self):
+        past = [ClaimPrecedent(body="old", outcome="killed", claim_id="p1")]
+        system, _ = build_taste_prompt("current", [], past)
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_semantic_edges_prompt_carries_instruction(self):
+        system, _ = build_semantic_edges_prompt("current", [("cand", "c1")])
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
