@@ -11,6 +11,8 @@ Dependency: EventStore -> EventService -> GrillService.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from anneal.domain.constants import DEATH_CAUSES, SUPPORTED_ARTIFACT_KINDS
 from anneal.domain.events import (
     ANSWER,
@@ -25,11 +27,16 @@ from anneal.domain.projections import (
     ground_stance,
     has_grill_events,
     is_parked,
+    verdict_precedent,
 )
 from anneal.llm.client import LLMClient
 from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
 from anneal.services.event_service import EventService
 from anneal.store.event_store import EventStore
+from anneal.store.repository import Repository
+
+if TYPE_CHECKING:
+    from anneal.llm.prompts import ClaimPrecedent
 
 
 class GrillService:
@@ -37,12 +44,23 @@ class GrillService:
 
     Supported artifact kinds are validated at the service layer (spec §2.4:
     "泛化抽象，不泛化实现" — schema is generic, implementation is narrow).
+
+    ``repo`` is OPTIONAL and only powers 判例先验 (the Library-wide kill
+    precedents ``auto_challenge`` injects). Without it the service behaves
+    exactly as before — no precedents, today's prompt verbatim.
     """
 
-    def __init__(self, store: EventStore, event_service: EventService, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        store: EventStore,
+        event_service: EventService,
+        llm: LLMClient | None = None,
+        repo: Repository | None = None,
+    ) -> None:
         self._store = store
         self._event_service = event_service
         self._llm = llm
+        self._repo = repo
 
     # ------------------------------------------------------------------
     # Transition gate
@@ -315,8 +333,96 @@ class GrillService:
             in ("supports", "contradicts", "not_supported")
         ]
 
+    def _kill_precedents(self, artifact_id: str, claim_id: str) -> list[ClaimPrecedent]:
+        """Library-wide KILL 判例 to aim the next question (判例先验).
+
+        Scope mirrors the glossary: **Library 内穿透、跨库硬墙** — every killed
+        claim in the current artifact's Library qualifies (regardless of topic
+        or which artifact it was parked in), nothing outside it ever does. The
+        claim being grilled is excluded from its own precedent set.
+
+        Deliberately NOT topic-prefiltered (spec §2 Q3): the precedents worth
+        the most are the cross-topic ones — the same death recurring on
+        unrelated subjects — and lexical prefiltering drops exactly those,
+        degrading 判例先验 into a shadow of ②跨想法矛盾检测.
+
+        Trust chain is inherited, not rebuilt: ``verdict_precedent`` only reads
+        confirmed, non-retracted verdicts, so every injected rationale is one
+        the user wrote or signed. Legacy kills carry ``death_cause=None`` and
+        render as "unclassified" — never guessed into a cause.
+
+        Returns ``[]`` (⇒ today's prompt verbatim) when no repository is wired,
+        when the artifact cannot be resolved, or when the Library holds no
+        kills at all.
+        """
+        from anneal.lens.precedent import DatedPrecedent, select_kill_precedents
+        from anneal.llm.prompts import ClaimPrecedent
+
+        if self._repo is None:
+            return []
+        artifact = self._repo.get_artifact(artifact_id)
+        if artifact is None:
+            return []
+
+        dated: list[DatedPrecedent] = []
+        streams: dict[str, list[Event]] = {}  # claims sharing an artifact read it once
+        for claim in self._repo.list_claims(artifact.library_id):
+            if claim.id == claim_id or not claim.artifact_ids:
+                continue
+            parked_in = claim.artifact_ids[0]
+            if parked_in not in streams:
+                streams[parked_in] = self._store.get_events(parked_in)
+            precedent = verdict_precedent(streams[parked_in], claim.id)
+            # survive/open claims and (defensively) any precedent without a
+            # verdict ts — which the budget orders on — are not 判例 here.
+            if precedent is None or precedent.outcome != "kill" or precedent.ts is None:
+                continue
+            dated.append(
+                DatedPrecedent(
+                    ts=precedent.ts,
+                    precedent=ClaimPrecedent(
+                        body=claim.body,
+                        # claim_status vocabulary — what the prompt formatter
+                        # gates the death-cause line on.
+                        outcome="killed",
+                        claim_id=claim.id,
+                        death_cause=precedent.death_cause,
+                        rationale=precedent.rationale,
+                        revival_condition=precedent.revival_condition,
+                    ),
+                )
+            )
+        return select_kill_precedents(dated)
+
+    @staticmethod
+    def _filter_precedent_refs(
+        reported, injected: list[ClaimPrecedent]
+    ) -> list[str]:
+        """Drop hallucinated precedent references (同 lens_service 既有手法).
+
+        Only ids that were actually injected into the prompt survive; order is
+        preserved and duplicates collapse. A reference the user cannot click
+        back to is a fabricated provenance — and ``precedent_refs`` is the only
+        thing that makes 判例先验 auditable instead of a black-box 改良.
+        """
+        injected_ids = {p.claim_id for p in injected}
+        refs: list[str] = []
+        if not isinstance(reported, list):
+            return refs
+        for ref in reported:
+            if isinstance(ref, str) and ref in injected_ids and ref not in refs:
+                refs.append(ref)
+        return refs
+
     def auto_challenge(self, artifact_id: str, claim_id: str, claim_body: str, context: str = "") -> Event:
-        """LLM-generated challenge. confirmed=False per spec §2.6."""
+        """LLM-generated challenge. confirmed=False per spec §2.6.
+
+        判例先验 (spec-precedent-prior): the researcher's own Library-wide KILL
+        precedents ride into the prompt to aim the question at their recurring
+        weakness, and the precedents the model actually used are recorded on
+        the event as ``precedent_refs`` (hallucinated ids filtered out). With
+        no kill precedents the prompt is byte-identical to the legacy one.
+        """
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
         from anneal.llm.prompts import build_challenge_prompt, format_evidence_block
@@ -327,7 +433,8 @@ class GrillService:
             )
         )
         evidence = format_evidence_block(evidence_events)
-        system, user = build_challenge_prompt(claim_body, context, evidence)
+        precedents = self._kill_precedents(artifact_id, claim_id)
+        system, user = build_challenge_prompt(claim_body, context, evidence, precedents)
         result = self._llm.complete_json(system, user)
         question = result.get("question", "")
         if not question:
@@ -341,6 +448,9 @@ class GrillService:
                 "auto_generated": True,
                 "evidence_count": len(evidence_events),
                 "grounded_material_ids": [e.payload.get("material_id") for e in evidence_events],
+                "precedent_refs": self._filter_precedent_refs(
+                    result.get("precedent_refs"), precedents
+                ),
             },
         )
         return self._event_service.append_event(artifact_id, event)
@@ -366,6 +476,15 @@ class GrillService:
         ``challenge_id`` is optional and additive — when provided it is recorded
         in the payload so the verdict pairs to the specific challenge it resolves
         (see ``answer``/``verdict``). Omitting it keeps legacy behavior intact.
+
+        RED LINE — auto_verdict NEVER eats 判例 (spec-precedent-prior §2 Q2).
+        auto_challenge does, because asking a sharper question is 取证 and can
+        be automated; judging "more like you used to judge" is 定见 and is not
+        the machine's to make. Feeding kill precedents in here would be 前科
+        定罪: the model tilts toward kill because similar claims died before —
+        manufacturing consistency instead of seeking truth, and degrading the
+        Lens from reflected taste into anchoring inertia. This asymmetry is the
+        structural defense; do NOT "wire it up here too" for symmetry.
         """
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")

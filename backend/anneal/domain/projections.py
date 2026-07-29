@@ -313,6 +313,11 @@ class VerdictPrecedent(BaseModel):
     ``death_cause`` is None for survive verdicts AND for legacy kill verdicts
     recorded before death-cause triage — projection semantics: unclassified
     (死因未分类). Legacy events never break; every field is read with .get.
+
+    ``ts`` is the ruling verdict's timestamp — WHEN this precedent was set.
+    It is what makes the 判例先验 injection budget deterministic (ts 倒序最近 N
+    条, spec-precedent-prior §2 Q3); it is read off the event, never guessed,
+    and stays None only when a precedent is constructed by hand.
     """
 
     outcome: str
@@ -320,6 +325,7 @@ class VerdictPrecedent(BaseModel):
     rationale: str = ""
     revival_condition: str | None = None
     successor_claim_id: str | None = None
+    ts: datetime | None = None
 
 
 def verdict_precedent(events: list[Event], claim_id: str) -> VerdictPrecedent | None:
@@ -353,6 +359,7 @@ def verdict_precedent(events: list[Event], claim_id: str) -> VerdictPrecedent | 
         rationale=p.get("rationale", "") or "",
         revival_condition=p.get("revival_condition"),
         successor_claim_id=p.get("successor_claim_id"),
+        ts=ruling.ts,
     )
 
 

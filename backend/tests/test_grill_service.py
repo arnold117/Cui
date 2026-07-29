@@ -1018,3 +1018,412 @@ class TestAutoVerdictDeathTriage:
         event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
         assert event.payload["death_cause"] == "refuted"
         assert "revival_condition" not in event.payload
+
+
+# ===========================================================================
+# 判例先验 (precedent prior) — auto_challenge eats the Library's kill 判例
+# spec docs/spec-precedent-prior.md §2 + §4 acceptance 1-6
+# ===========================================================================
+
+
+from datetime import datetime, timedelta
+
+from anneal.domain.events import Event
+from anneal.domain.models import Artifact, Claim
+from anneal.llm.prompts import build_challenge_prompt, build_verdict_prompt
+
+LIBRARY = "lib-1"
+CHALLENGE_RESPONSE = json.dumps({"question": "Q?", "target_aspect": "scope"})
+
+
+def _repo_with_current_artifact(artifact_id: str = ARTIFACT, library_id: str = LIBRARY):
+    """Repository where the artifact under grill resolves to ``library_id``."""
+    repo = InMemoryRepository()
+    repo.create_artifact(
+        Artifact(id=artifact_id, library_id=library_id, kind="idea", goal="g")
+    )
+    return repo
+
+
+def _seed_ruled_claim(
+    store,
+    repo,
+    claim_id: str,
+    body: str,
+    *,
+    outcome: str = "kill",
+    death_cause: str | None = "refuted",
+    rationale: str = "the held-out set leaked",
+    revival_condition: str | None = None,
+    ts: datetime | None = None,
+    library_id: str = LIBRARY,
+    confirmed: bool = True,
+    artifact_id: str | None = None,
+):
+    """A Library claim parked in its own artifact, ruled on by a VERDICT.
+
+    Mirrors reality: precedents come from OTHER artifacts in the same Library
+    (Library 内穿透), and only a confirmed verdict counts as a 判例.
+    """
+    artifact_id = artifact_id or f"artifact-{claim_id}"
+    if repo.get_artifact(artifact_id) is None:
+        repo.create_artifact(
+            Artifact(id=artifact_id, library_id=library_id, kind="idea", goal="g")
+        )
+    repo.create_claim(
+        Claim(id=claim_id, library_id=library_id, body=body, artifact_ids=[artifact_id])
+    )
+    payload: dict = {"outcome": outcome, "rationale": rationale}
+    if outcome == "kill" and death_cause is not None:
+        payload["death_cause"] = death_cause
+    if revival_condition is not None:
+        payload["revival_condition"] = revival_condition
+    store.append(
+        artifact_id,
+        Event(
+            type=VERDICT,
+            actor="system",
+            confirmed=confirmed,
+            target_ref=claim_id,
+            ts=ts or datetime(2026, 1, 1),
+            payload=payload,
+        ),
+    )
+    return artifact_id
+
+
+class TestAutoChallengePrecedentPrior:
+    def _svc(self, store, event_svc, repo, responses=None):
+        llm = CapturingLLMClient(responses or [CHALLENGE_RESPONSE])
+        return GrillService(store, event_svc, llm=llm, repo=repo), llm
+
+    def test_kill_precedent_reaches_the_prompt(self):
+        """Acceptance 1: the 判例四元组 is injected into the mainline question."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, "past-kill",
+            "deep learning beats radiologists on chest X-rays",
+            death_cause="refuted", rationale="the held-out set leaked",
+        )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "MRI segmentation transfers across scanners")
+
+        assert "past-kill" in llm.last_user
+        assert "deep learning beats radiologists on chest X-rays" in llm.last_user
+        assert "refuted" in llm.last_user
+        assert "the held-out set leaked" in llm.last_user
+
+    def test_rationale_truncated_to_300_chars(self):
+        """Acceptance 1: the deterministic 300-char cap holds end to end."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(store, repo, "past-kill", "old claim", rationale="z" * 500)
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "z" * 300 + "…" in llm.last_user
+        assert "z" * 301 not in llm.last_user
+
+    def test_cross_topic_kill_still_injected(self):
+        """The reason 判例先验 is NOT topic-prefiltered (Q3): zero lexical
+        overlap must not cost a precedent its seat."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, "past-kill", "tumour imaging models generalize across hospitals"
+        )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "厨房油烟与哮喘发病率相关")
+
+        assert "past-kill" in llm.last_user
+
+    def test_survive_precedent_never_injected(self):
+        """Acceptance 2 / 前功赦免: survive 判例 are structurally excluded."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, "past-survivor", "pretraining helps low-data regimes",
+            outcome="survive", death_cause=None, rationale="held up under grilling",
+        )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "past-survivor" not in llm.last_user
+        assert "pretraining helps low-data regimes" not in llm.last_user
+        assert "held up under grilling" not in llm.last_user
+        assert event.payload["precedent_refs"] == []
+        # No kills at all ⇒ today's prompt, verbatim.
+        assert (llm.last_system, llm.last_user) == build_challenge_prompt(
+            "X causes Y", "", ""
+        )
+
+    def test_no_kill_precedents_prompt_is_legacy_verbatim(self):
+        """Acceptance 4: cold start degrades to today's prompt, never silence."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y", "background")
+
+        assert (llm.last_system, llm.last_user) == build_challenge_prompt(
+            "X causes Y", "background", ""
+        )
+        assert event.payload["precedent_refs"] == []
+
+    def test_without_repo_prompt_is_legacy_verbatim(self):
+        """Legacy construction (no repo) keeps working — nothing to collect."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        llm = CapturingLLMClient([CHALLENGE_RESPONSE])
+        svc = GrillService(store, event_svc, llm=llm)  # no repo
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert (llm.last_system, llm.last_user) == build_challenge_prompt(
+            "X causes Y", "", ""
+        )
+        assert event.payload["precedent_refs"] == []
+
+    def test_unresolvable_artifact_degrades_silently(self):
+        """Artifact not in the repository ⇒ no Library scope ⇒ no precedents."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = InMemoryRepository()  # ARTIFACT never registered
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert (llm.last_system, llm.last_user) == build_challenge_prompt(
+            "X causes Y", "", ""
+        )
+
+    def test_current_claim_is_not_its_own_precedent(self):
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, CLAIM_A, "the claim being grilled", artifact_id=ARTIFACT
+        )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "the claim being grilled" not in llm.last_user
+
+    def test_other_library_kill_is_walled_off(self):
+        """跨库硬墙 — a kill in another Library never crosses over."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, "foreign-kill", "someone else's dead idea", library_id="lib-2"
+        )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "foreign-kill" not in llm.last_user
+        assert "someone else's dead idea" not in llm.last_user
+
+    def test_unconfirmed_kill_verdict_is_not_a_precedent(self):
+        """Trust chain: only confirmed verdicts are 判例 (human-signed)."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, "draft-kill", "machine-drafted kill", confirmed=False
+        )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert "draft-kill" not in llm.last_user
+        assert "machine-drafted kill" not in llm.last_user
+
+    def test_budget_keeps_twelve_most_recent(self):
+        """Acceptance 6: >12 kills ⇒ ts 倒序取最近 12（可断言）."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        for i in range(15):
+            _seed_ruled_claim(
+                store, repo, f"kill-{i:02d}", f"dead idea number {i:02d}",
+                ts=datetime(2026, 1, 1) + timedelta(days=i),
+            )
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+
+        svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        injected = [i for i in range(15) if f"kill-{i:02d}" in llm.last_user]
+        assert injected == list(range(3, 15))  # the 12 newest, the 3 oldest dropped
+
+    def test_precedent_refs_recorded_on_the_event(self):
+        """Q5: which 判例 shaped this question is recorded, not inferred."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(store, repo, "kill-1", "dead idea one")
+        _seed_ruled_claim(store, repo, "kill-2", "dead idea two")
+        svc, llm = self._svc(store, event_svc, repo, responses=[json.dumps(
+            {"question": "Q?", "target_aspect": "scope",
+             "precedent_refs": ["kill-2"]}
+        )])
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert event.payload["precedent_refs"] == ["kill-2"]
+
+    def test_hallucinated_precedent_refs_dropped(self):
+        """Acceptance 5: ids outside the injected set are dropped."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(store, repo, "kill-1", "dead idea one")
+        svc, llm = self._svc(store, event_svc, repo, responses=[json.dumps(
+            {"question": "Q?", "target_aspect": "scope",
+             "precedent_refs": ["kill-1", "claim-that-never-existed", 42, None]}
+        )])
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert event.payload["precedent_refs"] == ["kill-1"]
+
+    def test_precedent_refs_deduped_and_ordered(self):
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(store, repo, "kill-1", "dead idea one")
+        _seed_ruled_claim(store, repo, "kill-2", "dead idea two")
+        svc, llm = self._svc(store, event_svc, repo, responses=[json.dumps(
+            {"question": "Q?", "target_aspect": "scope",
+             "precedent_refs": ["kill-2", "kill-1", "kill-2"]}
+        )])
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert event.payload["precedent_refs"] == ["kill-2", "kill-1"]
+
+    def test_malformed_precedent_refs_tolerated(self):
+        """A non-list precedent_refs is noise, not a fatal response."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(store, repo, "kill-1", "dead idea one")
+        svc, llm = self._svc(store, event_svc, repo, responses=[json.dumps(
+            {"question": "Q?", "target_aspect": "scope",
+             "precedent_refs": "kill-1"}
+        )])
+        _park(store)
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert event.payload["precedent_refs"] == []
+
+    def test_existing_payload_fields_unchanged(self):
+        """判例先验 is additive — the evidence provenance keeps its shape."""
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(store, repo, "kill-1", "dead idea one")
+        svc, llm = self._svc(store, event_svc, repo)
+        _park(store)
+        _seed_confirmed_ground(store, event_svc, verdict="supports", title="Landmark RCT")
+
+        event = svc.auto_challenge(ARTIFACT, CLAIM_A, "X causes Y")
+
+        assert event.payload["auto_generated"] is True
+        assert event.payload["question"] == "Q?"
+        assert event.payload["target_aspect"] == "scope"
+        assert event.payload["evidence_count"] == 1
+        assert len(event.payload["grounded_material_ids"]) == 1
+        # Evidence and precedents coexist in one prompt.
+        assert "Literature evidence:" in llm.last_user
+        assert "kill-1" in llm.last_user
+
+
+class TestAutoVerdictNeverEatsPrecedents:
+    """Acceptance 3 — 铁律 (spec §2 Q2): verdict 侧永不吃判例.
+
+    auto_challenge eating precedents is 取证; auto_verdict eating them would be
+    前科定罪 (kill because similar claims died before). This is a REGRESSION
+    test — it exists to fail loudly if someone "wires it up here too".
+    """
+
+    def _setup(self):
+        store = InMemoryEventStore()
+        event_svc = EventService(store)
+        repo = _repo_with_current_artifact()
+        _seed_ruled_claim(
+            store, repo, "past-kill", "deep learning beats radiologists",
+            death_cause="not_worth", rationale="not worth the annotation budget",
+        )
+        _seed_ruled_claim(
+            store, repo, "past-kill-2", "another dead idea",
+            death_cause="circumstantial", rationale="shelved",
+            revival_condition="dataset D goes public",
+        )
+        llm = CapturingLLMClient([json.dumps(
+            {"outcome": "kill", "rationale": "r", "confidence": 0.9,
+             "death_cause": "refuted"}
+        )])
+        svc = GrillService(store, event_svc, llm=llm, repo=repo)
+        _park(store)
+        svc.challenge(ARTIFACT, CLAIM_A, "Prove it")
+        return svc, llm
+
+    def test_verdict_prompt_is_byte_identical_to_the_no_precedent_prompt(self):
+        svc, llm = self._setup()
+
+        svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+        assert (llm.last_system, llm.last_user) == build_verdict_prompt(
+            "X causes Y", "Prove it", "I cannot", ""
+        )
+
+    def test_no_precedent_content_anywhere_in_the_verdict_prompt(self):
+        svc, llm = self._setup()
+
+        svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+        prompt = llm.last_system + llm.last_user
+        for leak in (
+            "past-kill",
+            "deep learning beats radiologists",
+            "not worth the annotation budget",
+            "dataset D goes public",
+            "Death cause:",
+            "Verdict rationale:",
+            "precedent_refs",
+        ):
+            assert leak not in prompt
+
+    def test_verdict_payload_carries_no_precedent_refs(self):
+        svc, llm = self._setup()
+
+        event = svc.auto_verdict(ARTIFACT, CLAIM_A, "X causes Y", "Prove it", "I cannot")
+
+        assert "precedent_refs" not in event.payload

@@ -359,3 +359,166 @@ class TestOutputLanguageInstruction:
     def test_semantic_edges_prompt_carries_instruction(self):
         system, _ = build_semantic_edges_prompt("current", [("cand", "c1")])
         assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+    def test_challenge_prompt_with_precedents_carries_instruction(self):
+        system, _ = build_challenge_prompt(
+            "claim", "ctx", "",
+            [ClaimPrecedent(body="old", outcome="killed", claim_id="p1")],
+        )
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system
+
+
+# ===========================================================================
+# 判例先验 (precedent prior) — build_challenge_prompt eats KILL precedents
+# spec docs/spec-precedent-prior.md §2 + §4 acceptance 1/2/4
+# ===========================================================================
+
+
+def _kill(
+    claim_id: str = "past-1",
+    body: str = "deep learning beats radiologists on chest X-rays",
+    death_cause: str | None = "refuted",
+    rationale: str = "the held-out set leaked",
+    revival_condition: str | None = None,
+) -> ClaimPrecedent:
+    return ClaimPrecedent(
+        body=body,
+        outcome="killed",
+        claim_id=claim_id,
+        death_cause=death_cause,
+        rationale=rationale,
+        revival_condition=revival_condition,
+    )
+
+
+class TestChallengeWithKillPrecedents:
+    def test_user_carries_the_precedent_quadruple(self):
+        """判例四元组: id + body + death cause + rationale reach the prompt."""
+        _system, user = build_challenge_prompt(
+            "MRI segmentation transfers across scanners",
+            "ctx",
+            "",
+            [_kill()],
+        )
+        assert "past-1" in user
+        assert "deep learning beats radiologists on chest X-rays" in user
+        assert "refuted" in user
+        assert "the held-out set leaked" in user
+
+    def test_rationale_truncated_at_300_chars(self):
+        long_rationale = "z" * 500
+        _system, user = build_challenge_prompt(
+            "claim", "ctx", "", [_kill(rationale=long_rationale)]
+        )
+        assert "z" * 300 + "…" in user
+        assert "z" * 301 not in user
+
+    def test_revival_condition_only_for_circumstantial(self):
+        _system, user = build_challenge_prompt(
+            "claim", "ctx", "",
+            [_kill(death_cause="circumstantial", revival_condition="dataset D opens")],
+        )
+        assert "dataset D opens" in user
+
+        _system, user2 = build_challenge_prompt(
+            "claim", "ctx", "",
+            [_kill(death_cause="not_worth", revival_condition="dataset D opens")],
+        )
+        assert "dataset D opens" not in user2
+
+    def test_legacy_kill_renders_unclassified(self):
+        """Legacy kill (no triage) is labeled honestly, never guessed."""
+        _system, user = build_challenge_prompt(
+            "claim", "ctx", "", [_kill(death_cause=None)]
+        )
+        assert "unclassified" in user
+
+    def test_multiple_precedents_all_present(self):
+        _system, user = build_challenge_prompt(
+            "claim", "ctx", "",
+            [_kill("p1", body="claim one"), _kill("p2", body="claim two")],
+        )
+        assert "p1" in user and "p2" in user
+        assert "claim one" in user and "claim two" in user
+
+    def test_system_demands_precedent_refs(self):
+        """Q5 观测: the model must report which precedents it used."""
+        system, _user = build_challenge_prompt("claim", "ctx", "", [_kill()])
+        assert '"precedent_refs"' in system
+        assert "NEVER invent an id." in system
+
+    def test_system_keeps_base_json_schema(self):
+        system, _user = build_challenge_prompt("claim", "ctx", "", [_kill()])
+        assert '"question"' in system
+        assert '"target_aspect"' in system
+
+    def test_system_pushes_cross_topic_use(self):
+        """The whole point vs ②: precedents travel ACROSS topics (Q3)."""
+        system, _user = build_challenge_prompt("claim", "ctx", "", [_kill()])
+        assert "ACROSS TOPICS" in system
+
+    def test_system_forbids_precedent_conviction(self):
+        """前科定罪 red line: a past kill is history, not evidence/verdict."""
+        system, _user = build_challenge_prompt("claim", "ctx", "", [_kill()])
+        assert "NOT evidence against the current claim" in system
+        assert "already dead" in system
+
+    def test_evidence_and_precedents_coexist(self):
+        ev = "- [CONTRADICTS] arxiv:Paper X — null result (contradicts)"
+        _system, user = build_challenge_prompt("claim", "ctx", ev, [_kill()])
+        assert "Literature evidence:" in user
+        assert ev in user
+        assert "past-1" in user
+
+    def test_output_language_instruction_still_last(self):
+        system, _user = build_challenge_prompt("claim", "ctx", "", [_kill()])
+        assert system.endswith(OUTPUT_LANGUAGE_INSTRUCTION)
+
+
+class TestChallengePrecedentExclusions:
+    def test_survive_precedent_never_enters_the_prompt(self):
+        """前功赦免 excluded structurally — even if a caller hands one over,
+        the prompt stays byte-identical to the no-precedent prompt."""
+        survived = ClaimPrecedent(
+            body="transformer pretraining helps low-data regimes",
+            outcome="survived",
+            claim_id="survivor-1",
+            rationale="held up under grilling",
+        )
+        with_survivor = build_challenge_prompt("X improves Y", "bg", "", [survived])
+
+        assert with_survivor == _challenge_baseline("X improves Y", "bg")
+        assert "survivor-1" not in with_survivor[1]
+        assert "transformer pretraining" not in with_survivor[1]
+        assert '"precedent_refs"' not in with_survivor[0]
+
+    def test_survive_dropped_but_kill_kept(self):
+        survived = ClaimPrecedent(
+            body="survivor body", outcome="survived", claim_id="survivor-1"
+        )
+        _system, user = build_challenge_prompt(
+            "claim", "ctx", "", [survived, _kill("killer-1", body="killer body")]
+        )
+        assert "killer-1" in user
+        assert "survivor-1" not in user
+        assert "survivor body" not in user
+
+    def test_no_precedents_is_byte_identical(self):
+        """Acceptance 4: cold start degrades to today's prompt VERBATIM."""
+        assert build_challenge_prompt("X improves Y", "bg", "", []) == _challenge_baseline(
+            "X improves Y", "bg"
+        )
+        assert build_challenge_prompt(
+            "X improves Y", "bg", "", None
+        ) == _challenge_baseline("X improves Y", "bg")
+
+    def test_precedent_default_arg_matches_explicit_empty(self):
+        assert build_challenge_prompt("c", "ctx", "") == build_challenge_prompt(
+            "c", "ctx", "", []
+        )
+
+    def test_no_precedents_with_evidence_is_unchanged(self):
+        ev = "- [SUPPORTS] arxiv:Paper X"
+        assert build_challenge_prompt("c", "ctx", ev) == build_challenge_prompt(
+            "c", "ctx", ev, []
+        )

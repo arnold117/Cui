@@ -89,7 +89,11 @@ def _init_state() -> None:
     _state["event_service"] = event_service
     _state["park_service"] = ParkService(event_store, event_service, repo=repo)
     _state["collect_service"] = CollectService(event_store, event_service, repo=repo)
-    _state["grill_service"] = GrillService(event_store, event_service, llm=llm_client)
+    # repo powers 判例先验 — auto_challenge needs the Library scope to collect
+    # the researcher's own kill precedents (auto_verdict never sees them).
+    _state["grill_service"] = GrillService(
+        event_store, event_service, llm=llm_client, repo=repo
+    )
     _state["grounding_service"] = GroundingService(
         event_store, event_service, repo=repo, llm=llm_client
     )

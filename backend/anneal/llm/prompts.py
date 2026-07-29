@@ -149,7 +149,54 @@ def format_evidence_block(evidence_events: list[Event]) -> str:
     return "\n".join(lines)
 
 
-def build_challenge_prompt(claim: str, context: str, evidence: str = "") -> tuple[str, str]:
+def format_kill_precedent_block(precedents: list[ClaimPrecedent]) -> str:
+    """Render KILL precedents as a prompt block (判例先验 / precedent prior).
+
+    One item per precedent, each carrying its 判例四元组 via
+    ``format_precedent_lines`` (death cause — "unclassified" for legacy kills —
+    truncated rationale, revival condition for circumstantial kills).
+
+    STRUCTURAL GATE (spec-precedent-prior §2 Q4): anything whose outcome is not
+    ``killed`` is dropped here, so a survive precedent can never reach the
+    mainline prompt even if a caller hands one over — 前功赦免 is excluded by
+    construction, not by the model's goodwill. Empty output means "no
+    precedent", and callers keep their legacy prompt verbatim.
+    """
+    items: list[str] = []
+    for pc in precedents:
+        if pc.outcome != "killed":
+            continue
+        item = f"- past_claim_id: {pc.claim_id}\n  Claim: {pc.body}"
+        for line in format_precedent_lines(
+            pc.outcome, pc.death_cause, pc.rationale, pc.revival_condition
+        ):
+            item += f"\n  {line}"
+        items.append(item)
+    return "\n\n".join(items)
+
+
+def build_challenge_prompt(
+    claim: str,
+    context: str,
+    evidence: str = "",
+    precedents: list[ClaimPrecedent] | None = None,
+) -> tuple[str, str]:
+    """The mainline grill question (auto_challenge).
+
+    判例先验 (spec-precedent-prior §2): ``precedents`` are the researcher's OWN
+    past KILL 判例, injected to change the ANGLE of attack — same single card,
+    aimed at where this researcher's ideas actually die. 角度层, not 内容层:
+    finding a fresh contradiction is ②'s job, not this one's.
+
+    Only kills are injected (``format_kill_precedent_block`` drops the rest),
+    and the model reports back which precedents it used via ``precedent_refs``,
+    so the effect is observable and assertable instead of a black-box改良 (the
+    service then filters hallucinated ids).
+
+    NO PRECEDENTS = NO CHANGE: with an empty/None list the prompt is byte-for-byte
+    today's prompt — cold start degrades to the legacy behavior, it never goes
+    silent and never asks about a history that does not exist.
+    """
     system = (
         "You are a rigorous academic reviewer. Your job is to generate a single, "
         "focused challenge question that tests the validity of a research claim. "
@@ -159,7 +206,7 @@ def build_challenge_prompt(claim: str, context: str, evidence: str = "") -> tupl
         '{"question": "<your challenging question>", '
         '"target_aspect": "<methodology|evidence|logic|scope>"}'
     )
-    user = f"Claim: {claim}\n\nContext: {context}\n\nGenerate one focused challenge question for this claim."
+    parts = [f"Claim: {claim}", f"Context: {context}"]
     if evidence:
         system += (
             "\n\nGround your challenge in the provided literature evidence where "
@@ -171,13 +218,56 @@ def build_challenge_prompt(claim: str, context: str, evidence: str = "") -> tupl
             "contradicting was never recorded — do NOT treat them as "
             "refutations."
         )
-        user = (
-            f"Claim: {claim}\n\nContext: {context}\n\n"
-            f"Literature evidence:\n{evidence}\n\n"
-            "Generate one focused challenge question for this claim."
+        parts.append(f"Literature evidence:\n{evidence}")
+
+    precedent_block = format_kill_precedent_block(precedents or [])
+    if precedent_block:
+        system += (
+            "\n\nAIM THE QUESTION WHERE THIS RESEARCHER'S IDEAS ACTUALLY DIE. "
+            "You are also given past claims THIS SAME researcher already "
+            "grilled and KILLED, each with the triaged cause of death and the "
+            "rationale they themselves wrote. A cause of death that recurs is "
+            "a recurring weakness, and it TRAVELS ACROSS TOPICS: a precedent "
+            "on a completely different subject that died of the same cause is "
+            "MORE useful to you than a same-topic precedent that died of "
+            "something else. Probe the recurring weakness FIRST.\n"
+            "- refuted (truth-axis kill): ask what would make the current "
+            "claim wrong in that same way.\n"
+            "- not_worth (taste kill): the researcher judged that direction "
+            "correct but not worth doing — probe what the worthwhile increment "
+            "is here.\n"
+            "- boundary: an over-broad formulation died and a narrowed one "
+            "lived — probe this claim's scope and boundary conditions.\n"
+            "- circumstantial: the claim could not be defended at the time "
+            "(missing material or proof); the revival condition names what was "
+            "missing — probe whether the current claim has it.\n"
+            "- unclassified (legacy): no cause was recorded — read the "
+            "rationale text itself; never guess a cause.\n\n"
+            "HARD LIMIT: the precedents change WHICH WEAKNESS YOU PROBE and "
+            "nothing else. A past kill is history, NOT evidence against the "
+            "current claim — it is never a reason to treat this claim as "
+            "already dead, to declare it a repeat offense, or to pass any "
+            "verdict on it. Do not score, rank, or judge its merit; still ask "
+            "exactly ONE question.\n\n"
+            'Add one more field to your JSON: "precedent_refs": '
+            '["<past_claim_id>", ...] — the ids of the precedents that '
+            "actually shaped your question. Use ONLY ids listed above, copied "
+            "exactly, and use [] when no precedent shaped the question. NEVER "
+            "invent an id."
         )
+        parts.append(
+            "This researcher's OWN past KILL precedents (their grilled "
+            f"trajectory; topics may be unrelated):\n{precedent_block}"
+        )
+        parts.append(
+            "Generate one focused challenge question for this claim, aimed by "
+            "where this researcher's own ideas have died before."
+        )
+    else:
+        parts.append("Generate one focused challenge question for this claim.")
+
     system += "\n\n" + OUTPUT_LANGUAGE_INSTRUCTION
-    return system, user
+    return system, "\n\n".join(parts)
 
 
 def build_grounding_prompt(claim: str, paper_title: str, paper_abstract: str) -> tuple[str, str]:
