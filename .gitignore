@@ -46,3 +46,6 @@ htmlcov/
 *.db
 *.sqlite3
 data/
+
+# agent worktrees (Claude Code)
+.claude/
