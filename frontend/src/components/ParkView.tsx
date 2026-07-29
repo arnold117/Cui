@@ -9,7 +9,8 @@ interface Props {
 
 export default function ParkView({ onRefresh, onSelect }: Props) {
   const [body, setBody] = useState("")
-  const [kind, setKind] = useState<"idea" | "review">("idea")
+  // 只有 idea 是实现了的 kind；schema 侧的开放集不受影响（见下方选择器注释）。
+  const kind = "idea"
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -60,15 +61,13 @@ export default function ParkView({ onRefresh, onSelect }: Props) {
         />
 
         <div className="flex items-center gap-3">
-          <select
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
-            value={kind}
-            onChange={e => setKind(e.target.value as "idea" | "review")}
-            disabled={loading}
-          >
-            <option value="idea">idea</option>
-            <option value="review">review</option>
-          </select>
+          {/* kind 选择器只暴露"实现了的" kind。schema 侧 kind 仍是开放集
+              (idea/review/paper/revision…) —— 泛化抽象，不泛化实现。摆一个
+              后端零分支的 kind 进选择器，是向用户承诺一条产品没走的路：
+              选它和选 idea 行为完全一样，而 L3 各刀跨 artifact 吃同一个
+              grilled 池子，你会以为它们被区别对待了。真做 review 的那天，
+              把选项加回来是一行的事。 */}
+          <span className="text-sm text-zinc-500 px-1">{kind}</span>
 
           <button
             className="px-4 py-2 bg-zinc-100 text-zinc-900 rounded-lg font-medium hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"

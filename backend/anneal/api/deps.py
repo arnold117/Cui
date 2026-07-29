@@ -51,6 +51,24 @@ from anneal.store.repository import (
 
 _log = logging.getLogger(__name__)
 
+
+def _storage_logger() -> logging.Logger:
+    """Logger the storage banner is actually visible through.
+
+    Resolved at call time, not import time. Under uvicorn the root logger keeps
+    its default WARNING level, so an INFO on a plain module logger is silently
+    dropped — meaning the "PostgreSQL, you are safe" half of the banner would
+    never be seen and only the alarm half would work. ``uvicorn.error`` is the
+    logger that owns the running server's handlers. Outside uvicorn (tests,
+    scripts) it has none, and we fall back to the module logger.
+    """
+    uvicorn_log = logging.getLogger("uvicorn.error")
+    # NOTE ``hasHandlers()``, not ``.handlers``: uvicorn attaches its handler to
+    # the parent "uvicorn" logger and lets "uvicorn.error" propagate, so the
+    # child's own handler list is empty even under a live server.
+    return uvicorn_log if uvicorn_log.hasHandlers() else _log
+
+
 _state: dict[str, object] = {}
 
 
@@ -69,6 +87,7 @@ def _init_state() -> None:
     process can have, so the load order is load-bearing, not cosmetic.
     """
     load_dotenv()
+    log = _storage_logger()
     db_url = os.getenv("ANNEAL_DATABASE_URL")
 
     if db_url:
@@ -77,7 +96,7 @@ def _init_state() -> None:
         event_store: EventStore = PostgresEventStore(engine)
         feed_store = PostgresLensFeedStore(engine)
         repo: Repository = PostgresRepository(engine)
-        _log.info("event store: PostgreSQL — trajectories persist across restarts")
+        log.info("event store: PostgreSQL — trajectories persist across restarts")
     else:
         event_store = InMemoryEventStore()
         feed_store = InMemoryLensFeedStore()
@@ -85,7 +104,7 @@ def _init_state() -> None:
         # A silent in-memory store is indistinguishable from a persistent one
         # that happens to be empty — the same trap the L3 canary exists for.
         # Say it out loud: this mode DESTROYS every trajectory on shutdown.
-        _log.warning(
+        log.warning(
             "event store: IN-MEMORY — ANNEAL_DATABASE_URL is unset, so every "
             "claim, grill and verdict in this session is LOST on shutdown. "
             "Set it in backend/.env (or the environment) to persist. "
