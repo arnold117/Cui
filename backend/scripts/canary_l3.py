@@ -20,7 +20,7 @@ TRIGGER DISCIPLINE — RUN THIS AFTER ANY OF:
 WHAT IT COSTS / TOUCHES
 -----------------------
 Uses the REAL configured LLM (backend/.env → ANNEAL_LLM_*; DeepSeek in the
-default setup) — roughly 7 chat calls per clean run (a couple more on retries)
+default setup) — roughly 9 chat calls per clean run (a couple more on retries)
 plus one OpenAlex search. Storage is a per-case, throwaway
 InMemoryEventStore/InMemoryRepository — NO product database or data file is
 read or written. This is exactly why it is NOT part of the default pytest run
@@ -45,6 +45,13 @@ CASES (each detector gets a "must fire" and a "must stay silent" end)
   C3-silent  ③ semantic edges: lexically-overlapping but semantically
              unrelated pair (passes the prefilter, so the LLM's restraint is
              actually exercised) → 0 LINK events.
+  C4-fire    判例先验 (mainline auto_challenge): a same-topic decoy kill + a
+             CROSS-TOPIC kill carrying the recurring weakness → the challenge
+             cites the cross-topic precedent. Guards the one property that
+             separates 判例先验 from ② — precedents are NOT topic-filtered.
+  C4-silent  判例先验 on an empty library → a question is still produced
+             (the mainline never goes silent) with precedent_refs == [] (no
+             fabricated provenance).
 
 FAILURE POLICY (LLM variance)
 -----------------------------
@@ -84,6 +91,7 @@ from anneal.lens.prefilter import prefilter_candidates  # noqa: E402
 from anneal.llm.client import create_client  # noqa: E402
 from anneal.llm.config import load_llm_config  # noqa: E402
 from anneal.services.event_service import EventService  # noqa: E402
+from anneal.services.grill_service import GrillService  # noqa: E402
 from anneal.services.lens_service import (  # noqa: E402
     _SEMANTIC_EDGE_TYPES,
     _TASTE_TIERS,
@@ -106,6 +114,7 @@ class World:
     event_svc: EventService
     repo: InMemoryRepository
     lens: LensService
+    grill: GrillService
 
 
 def build_world(llm) -> World:
@@ -113,7 +122,9 @@ def build_world(llm) -> World:
     event_svc = EventService(store)
     repo = InMemoryRepository()
     lens = LensService(store, event_svc, repo=repo, llm=llm)
-    return World(store, event_svc, repo, lens)
+    # repo is what powers 判例先验 on the mainline path (C4).
+    grill = GrillService(store, event_svc, llm=llm, repo=repo)
+    return World(store, event_svc, repo, lens, grill)
 
 
 def seed_grilled(
@@ -459,6 +470,177 @@ def case_edges_silent(llm) -> CaseOutcome:
     return CaseOutcome(True, expected, "0 LINK events")
 
 
+def park_current(w: World, *, artifact_id: str, claim_id: str, body: str) -> None:
+    """Register the current artifact/claim AND park it (auto_challenge's gate)."""
+    register_current(w, artifact_id=artifact_id, claim_id=claim_id, body=body)
+    w.store.append(
+        artifact_id,
+        make_event(
+            type=PARK, actor="user", confirmed=True,
+            target_ref=claim_id, payload={"kind": "idea"},
+        ),
+    )
+
+
+def check_precedent_is_cross_topic(current_body: str, past: Claim) -> str | None:
+    """Precondition for C4-fire: the sample must have ZERO lexical overlap.
+
+    Inverse of ``check_prefilter_reaches_llm``. 判例先验's whole reason to exist
+    is that it does NOT topic-prefilter: the precedent worth the most is the
+    same death recurring on an unrelated subject, which lexical overlap cannot
+    see. If this sample ever gains topic-word overlap, the case would pass even
+    on an implementation that (wrongly) filters by topic — i.e. it would stop
+    testing the one property that distinguishes 判例先验 from ②.
+    """
+    if prefilter_candidates(current_body, [past]):
+        return (
+            "PRECONDITION BROKEN: the 'cross-topic' canary precedent now shares "
+            "topic words with the current claim, so this case no longer proves "
+            "that precedent selection skips the lexical prefilter. Re-tune the "
+            "sample wording until overlap is zero."
+        )
+    return None
+
+
+def case_precedent_prior_fire(llm) -> CaseOutcome:
+    """判例先验 fires ACROSS topics on the mainline auto_challenge.
+
+    SAMPLE DESIGN (learned the hard way — the first version of this case was
+    vacuous): the recurring weakness must be one the claim's own text CANNOT
+    reveal, otherwise a precedent-blind model asks the same question anyway and
+    then attributes a matching precedent post-hoc — the case passes while
+    proving nothing. So the seeded pattern is 品味死 (not_worth): whether a
+    marginal gain is WORTH pursuing is not a property of the claim text at all,
+    it lives only in this researcher's own history. A blind reviewer attacks
+    methodology ("is the delta significant?"); a precedent-fed one attacks
+    worth ("what makes this 0.009 more than another third-decimal gain?").
+
+    A same-topic decoy that died of an unrelated cause is seeded alongside: an
+    implementation that picked precedents by topic would cite only the decoy —
+    exactly the 「退化成②的影子」 failure mode.
+
+    WHAT THIS ALARM PROVES: the precedents reached the mainline prompt, the
+    cross-topic one survived selection, and the model attributed it. It is a
+    binary alarm, not a measure of how much the question improved.
+    """
+    w = build_world(llm)
+    decoy = seed_grilled(
+        w, claim_id="c4-past-decoy", artifact_id="c4-art-decoy",
+        body=(
+            "Query expansion with synonym dictionaries improves nDCG@10 on our "
+            "retrieval benchmark."
+        ),
+        outcome="killed",
+        death_cause="refuted",
+        rationale=(
+            "Killed: the gain vanished once the random seed was fixed — it was "
+            "run-to-run noise, not an effect."
+        ),
+    )
+    cross_ocr = seed_grilled(
+        w, claim_id="c4-past-ocr", artifact_id="c4-art-ocr",
+        body=(
+            "A denoising pre-pass before OCR raises character accuracy from "
+            "97.1% to 97.4% on scanned archives."
+        ),
+        outcome="killed",
+        death_cause="not_worth",
+        rationale=(
+            "Killed: the gain is real but nobody's decision changes at 0.3%. I "
+            "keep chasing third-decimal gains no downstream user can feel."
+        ),
+    )
+    cross_ga = seed_grilled(
+        w, claim_id="c4-past-ga", artifact_id="c4-art-ga",
+        body=(
+            "Tuning the crossover rate of our scheduling genetic algorithm "
+            "shortens makespan by 1.2% on synthetic workloads."
+        ),
+        outcome="killed",
+        death_cause="not_worth",
+        rationale=(
+            "Killed: correct but not worth the compute budget — synthetic-only "
+            "marginal wins again. Same pattern: I optimise what is easy to measure."
+        ),
+    )
+    current_body = (
+        "Adding a learned positional re-weighting layer to our retrieval "
+        "pipeline improves nDCG@10 from 0.412 to 0.421 on the benchmark."
+    )
+    park_current(w, artifact_id="c4-art-cur", claim_id="c4-cur", body=current_body)
+
+    expected = "1 CHALLENGE citing a CROSS-TOPIC precedent, no hallucinated ids"
+    cross_ids = {cross_ocr.id, cross_ga.id}
+    for cross in (cross_ocr, cross_ga):
+        precondition_err = check_precedent_is_cross_topic(current_body, cross)
+        if precondition_err:
+            return CaseOutcome(False, expected, f"{cross.id} no longer cross-topic",
+                               detail=precondition_err)
+
+    event = w.grill.auto_challenge("c4-art-cur", "c4-cur", current_body)
+    refs = event.payload.get("precedent_refs", [])
+    question = event.payload.get("question", "")
+
+    if not question:
+        return CaseOutcome(False, expected, "empty question")
+    if not refs:
+        return CaseOutcome(
+            False, expected, "precedent_refs is EMPTY — precedents changed nothing",
+            detail=f"question={question!r}",
+        )
+    ghosts = [r for r in refs if r not in cross_ids | {decoy.id}]
+    if ghosts:
+        # Structurally impossible (the service filters) — if seen, the
+        # anti-hallucination layer itself is broken.
+        return CaseOutcome(
+            False, expected, f"HALLUCINATED precedent ids {ghosts}",
+            detail="precedent_refs filter is not doing its job",
+        )
+    if not cross_ids & set(refs):
+        return CaseOutcome(
+            False, expected,
+            "only the SAME-TOPIC decoy was cited — cross-topic precedents lost",
+            detail=(
+                f"refs={refs}, question={question!r}. 判例先验 has degraded into "
+                "a topic-matching shadow of ②跨想法矛盾检测."
+            ),
+        )
+    return CaseOutcome(True, expected, f"refs={refs}, question={question!r}")
+
+
+def case_precedent_prior_cold_start_silent(llm) -> CaseOutcome:
+    """判例先验 on an empty library: still asks, but cites NOTHING.
+
+    NOTE the asymmetry with C1/C2/C3-silent: the mainline grill must NEVER go
+    silent for lack of history (spec §2 Q5 — no 无判例不出问题 gate). "Silent"
+    here means no fabricated provenance: a question is produced and
+    ``precedent_refs`` is empty.
+    """
+    w = build_world(llm)
+    current_body = (
+        "Adding a learned positional re-weighting layer to our retrieval "
+        "pipeline improves nDCG@10 from 0.412 to 0.421 on the benchmark."
+    )
+    park_current(w, artifact_id="c4s-art-cur", claim_id="c4s-cur", body=current_body)
+
+    expected = "1 CHALLENGE with a question and precedent_refs == []"
+    event = w.grill.auto_challenge("c4s-art-cur", "c4s-cur", current_body)
+    question = event.payload.get("question", "")
+    refs = event.payload.get("precedent_refs", [])
+
+    if not question:
+        return CaseOutcome(
+            False, expected, "empty question — mainline grill went SILENT",
+            detail="cold start must degrade to today's behaviour, never silence",
+        )
+    if refs:
+        return CaseOutcome(
+            False, expected, f"FABRICATED provenance {refs}",
+            detail="empty library has no precedents; the filter should drop all ids",
+        )
+    return CaseOutcome(True, expected, f"question={question!r}, refs=[]")
+
+
 # ---------------------------------------------------------------------------
 # Harness — retry-once policy, report table, exit code
 # ---------------------------------------------------------------------------
@@ -470,6 +652,10 @@ CASES = [
     ("C2-silent", "① taste silent on cold start", case_taste_cold_start_silent),
     ("C3-fire", "③ semantic edge on method-reuse pair", case_edges_fire),
     ("C3-silent", "③ zero edges on unrelated pair", case_edges_silent),
+    ("C4-fire", "判例先验 cites cross-topic kill on mainline challenge",
+     case_precedent_prior_fire),
+    ("C4-silent", "判例先验 fabricates no provenance on empty library",
+     case_precedent_prior_cold_start_silent),
 ]
 
 
