@@ -29,7 +29,11 @@ def client(monkeypatch):
     """
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
-    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
+    # EMPTY, never deleted — same idiom as the LLM vars above and for the same
+    # reason: `_init_state` runs load_dotenv() before reading this one, so a
+    # DELETED variable is refilled straight from backend/.env and the suite
+    # would run against the developer's real research database.
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
     app = create_app()
     with TestClient(app) as c:
         yield c
@@ -875,7 +879,11 @@ def client_with_challenge_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns a challenge response."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
-    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
+    # EMPTY, never deleted — same idiom as the LLM vars above and for the same
+    # reason: `_init_state` runs load_dotenv() before reading this one, so a
+    # DELETED variable is refilled straight from backend/.env and the suite
+    # would run against the developer's real research database.
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -890,7 +898,11 @@ def client_with_verdict_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns a verdict response."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
-    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
+    # EMPTY, never deleted — same idiom as the LLM vars above and for the same
+    # reason: `_init_state` runs load_dotenv() before reading this one, so a
+    # DELETED variable is refilled straight from backend/.env and the suite
+    # would run against the developer's real research database.
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -905,7 +917,11 @@ def client_with_bad_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns garbage (unparseable JSON)."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
-    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
+    # EMPTY, never deleted — same idiom as the LLM vars above and for the same
+    # reason: `_init_state` runs load_dotenv() before reading this one, so a
+    # DELETED variable is refilled straight from backend/.env and the suite
+    # would run against the developer's real research database.
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient(["this is not json at all"])
@@ -1012,7 +1028,11 @@ def client_with_contradiction_llm(monkeypatch):
     """TestClient with a FakeLLMClient that reports a hard contradiction."""
     monkeypatch.setenv("ANNEAL_LLM_KEY", "")
     monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
-    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
+    # EMPTY, never deleted — same idiom as the LLM vars above and for the same
+    # reason: `_init_state` runs load_dotenv() before reading this one, so a
+    # DELETED variable is refilled straight from backend/.env and the suite
+    # would run against the developer's real research database.
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
     app = create_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -1641,3 +1661,63 @@ class TestVerdictDeathTriageAPI:
             payload["revival_condition"]
             == "Tier 1 proof insufficient + embedding accepted"
         )
+
+
+class TestEnvLoadOrder:
+    """`.env` 里的 ANNEAL_DATABASE_URL 必须真的被读到（数据丢失回归）。
+
+    出身事故（2026-07-29）：`_init_state` 在 `load_dotenv()` 之前就读了
+    ANNEAL_DATABASE_URL——而 dotenv 只在稍后的 `load_llm_config()` 里被加载。
+    结果 .env 能供上 LLM key（后读）却从不供上数据库 URL（先读），应用静默
+    跑在内存存储上、外表完全健康：拷问照常，产出的轨迹在下次重启全部消失。
+    轨迹是护城河，静默丢失是这个进程最坏的失败模式。
+    """
+
+    def test_dotenv_is_loaded_before_database_url_is_read(self, monkeypatch):
+        """dotenv 提供的 URL 必须能决定存储选型（顺序对了才可能）。"""
+        import os
+
+        from anneal.api import deps
+        from anneal.services.lens_feed_service import InMemoryLensFeedStore
+        from anneal.store.event_store import InMemoryEventStore
+        from anneal.store.repository import InMemoryRepository
+
+        # 模拟 .env 的效果：load_dotenv 把变量注入环境。
+        def fake_load_dotenv(*_args, **_kwargs):
+            os.environ["ANNEAL_DATABASE_URL"] = "postgresql://from-dotenv/anneal"
+            return True
+
+        seen: dict[str, str] = {}
+        monkeypatch.setattr(deps, "load_dotenv", fake_load_dotenv)
+        monkeypatch.setattr(deps, "create_db_engine", lambda url: seen.setdefault("url", url))
+        monkeypatch.setattr(deps, "create_all_tables", lambda _engine: None)
+        monkeypatch.setattr(deps, "PostgresEventStore", lambda _e: InMemoryEventStore())
+        monkeypatch.setattr(deps, "PostgresLensFeedStore", lambda _e: InMemoryLensFeedStore())
+        monkeypatch.setattr(deps, "PostgresRepository", lambda _e: InMemoryRepository())
+
+        try:
+            deps._init_state()
+        finally:
+            os.environ.pop("ANNEAL_DATABASE_URL", None)
+            deps._state.clear()
+
+        assert seen.get("url") == "postgresql://from-dotenv/anneal", (
+            "dotenv 提供的 ANNEAL_DATABASE_URL 没被采用 —— load_dotenv() 又跑到"
+            "读取之后去了，轨迹会静默丢失"
+        )
+
+    def test_in_memory_fallback_is_not_silent(self, monkeypatch, caplog):
+        """没有 URL 时必须大声说出来 —— 静默回退正是事故本身。"""
+        import logging
+
+        from anneal.api import deps
+
+        monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+        monkeypatch.setattr(deps, "load_dotenv", lambda *a, **k: True)
+
+        with caplog.at_level(logging.WARNING, logger="anneal.api.deps"):
+            deps._init_state()
+        deps._state.clear()
+
+        assert any("IN-MEMORY" in r.message for r in caplog.records)
+        assert any("LOST" in r.message for r in caplog.records)

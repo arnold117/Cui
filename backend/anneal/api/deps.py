@@ -9,10 +9,12 @@ repository.  Otherwise falls back to in-memory implementations (tests).
 
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from anneal.domain.models import Library
@@ -47,6 +49,8 @@ from anneal.store.repository import (
 # Module-level state — populated by the lifespan context manager
 # ---------------------------------------------------------------------------
 
+_log = logging.getLogger(__name__)
+
 _state: dict[str, object] = {}
 
 
@@ -55,7 +59,16 @@ def _init_state() -> None:
 
     If ``ANNEAL_DATABASE_URL`` is set, use PostgreSQL-backed stores.
     Otherwise fall back to in-memory implementations (suitable for tests).
+
+    ``load_dotenv()`` MUST run before that variable is read. It used to be
+    reached only later, inside ``load_llm_config()`` — so a ``.env`` supplied
+    the LLM key (read after) but never the database URL (read here), and the
+    app silently ran on in-memory storage while looking completely healthy:
+    grilling worked, and every trajectory it produced died at the next
+    restart. 轨迹是护城河 — losing it silently is the worst failure this
+    process can have, so the load order is load-bearing, not cosmetic.
     """
+    load_dotenv()
     db_url = os.getenv("ANNEAL_DATABASE_URL")
 
     if db_url:
@@ -64,10 +77,20 @@ def _init_state() -> None:
         event_store: EventStore = PostgresEventStore(engine)
         feed_store = PostgresLensFeedStore(engine)
         repo: Repository = PostgresRepository(engine)
+        _log.info("event store: PostgreSQL — trajectories persist across restarts")
     else:
         event_store = InMemoryEventStore()
         feed_store = InMemoryLensFeedStore()
         repo = InMemoryRepository()
+        # A silent in-memory store is indistinguishable from a persistent one
+        # that happens to be empty — the same trap the L3 canary exists for.
+        # Say it out loud: this mode DESTROYS every trajectory on shutdown.
+        _log.warning(
+            "event store: IN-MEMORY — ANNEAL_DATABASE_URL is unset, so every "
+            "claim, grill and verdict in this session is LOST on shutdown. "
+            "Set it in backend/.env (or the environment) to persist. "
+            "轨迹是护城河，这个模式下它不会留下来。"
+        )
 
     # Ensure default library exists (idempotent — safe on every startup)
     if repo.get_library("default") is None:
