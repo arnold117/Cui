@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import type { Claim, DeathCause, Event, VerdictTriage } from "../types"
+import type { DeathCause, Event, VerdictTriage } from "../types"
 import { DEATH_CAUSES, precedentRefs } from "../types"
 import {
   DEATH_CAUSE_BADGE_CLASSES,
@@ -7,9 +7,9 @@ import {
   DEATH_CAUSE_LABELS,
   deriveClaimStatus,
   formatTime,
-  rulingVerdict,
 } from "../utils"
 import { getClaim, getTrajectory, listArtifacts } from "../api"
+import { PrecedentBadge, PrecedentPanel, usePrecedentTrace } from "./PrecedentTrace"
 
 interface Props {
   event: Event
@@ -288,106 +288,6 @@ function VerdictMessage({
 }
 
 // ---------------------------------------------------------------------------
-// 判例先验 (precedent prior, spec-precedent-prior §2 Q5). The main-line
-// auto_challenge aims its question with the researcher's OWN kill precedents,
-// and reports back which ones it used as `precedent_refs` (hallucinated ids
-// already dropped backend-side). This trace is what keeps 本刀 auditable
-// instead of a black-box 改良 — and it is 取证, not 定见:
-//
-//   文案红线 (前科定罪): the copy may say where the ANGLE of the question came
-//   from. It may NOT suggest the current claim resembles a past kill, nor that
-//   anything is being repeated — that would be the UI passing the verdict the
-//   system is forbidden to pass.
-//
-// Resolution is USER-ACTION-DRIVEN (click to expand → fetch once). No effect
-// watches derived state; this app has already paid for that pattern once.
-// ---------------------------------------------------------------------------
-interface PrecedentEntry {
-  claimId: string
-  /** null when the claim can no longer be resolved — the row stays, honestly. */
-  body: string | null
-  /** Where the claim was parked — the click-through target (backend reads
-   *  precedents off this same artifact: claim.artifact_ids[0]). */
-  artifactId?: string
-  /** Only when the ruling verdict was actually read AND carries a cause.
-   *  Legacy kills show no badge (投影语义: 未分类, never invented — mirrors
-   *  EventCard). */
-  deathCause?: string
-}
-
-async function resolvePrecedent(claimId: string): Promise<PrecedentEntry> {
-  let claim: Claim
-  try {
-    claim = (await getClaim(claimId)).claim
-  } catch {
-    return { claimId, body: null }
-  }
-  const entry: PrecedentEntry = {
-    claimId,
-    body: claim.body,
-    artifactId: claim.artifact_ids[0],
-  }
-  if (!entry.artifactId) return entry
-  try {
-    const { events } = await getTrajectory(entry.artifactId)
-    const ruling = rulingVerdict(events, claimId)
-    if (ruling && ruling.payload.outcome === "kill") {
-      entry.deathCause = ruling.payload.death_cause as string | undefined
-    }
-  } catch {
-    // 死因读不到就不显示 — the body alone still traces back.
-  }
-  return entry
-}
-
-function PrecedentRow({
-  entry,
-  onOpenArtifact,
-}: {
-  entry: PrecedentEntry
-  onOpenArtifact?: (artifactId: string) => void
-}) {
-  const clickable = Boolean(onOpenArtifact && entry.artifactId)
-  const body = entry.body
-  const preview =
-    body === null
-      ? "这条判例已读不到（claim 不可解析）"
-      : body.length > 90
-        ? body.slice(0, 89) + "…"
-        : body
-
-  return (
-    <button
-      type="button"
-      disabled={!clickable}
-      title={body ?? entry.claimId}
-      onClick={() => {
-        if (clickable) onOpenArtifact!(entry.artifactId!)
-      }}
-      className={`w-full text-left rounded-md border border-zinc-700/50 bg-zinc-900/50 px-2 py-1.5 space-y-1 ${
-        clickable
-          ? "hover:bg-zinc-800/70 hover:border-violet-600/50 cursor-pointer"
-          : "cursor-default"
-      }`}
-    >
-      {entry.deathCause && (
-        <span
-          className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
-            DEATH_CAUSE_BADGE_CLASSES[entry.deathCause] ??
-            "bg-zinc-600/50 text-zinc-200 border-zinc-500/40"
-          }`}
-        >
-          {DEATH_CAUSE_LABELS[entry.deathCause] ?? entry.deathCause}
-        </span>
-      )}
-      <span className={`block text-[11px] leading-relaxed ${body === null ? "text-zinc-500 italic" : "text-zinc-300"}`}>
-        {preview}
-      </span>
-    </button>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Challenge bubble. Its own component because the 判例 trace holds state, and
 // hooks cannot live behind GrillMessage's early returns (same reason as
 // VerdictMessage).
@@ -415,20 +315,7 @@ function ChallengeMessage({
   // Library held no kills. Both read as [] ⇒ no badge (never a「基于 0 条判例」
   // empty shell).
   const refs = precedentRefs(event)
-  const [tracing, setTracing] = useState(false)
-  const [entries, setEntries] = useState<PrecedentEntry[] | null>(null)
-  const [resolving, setResolving] = useState(false)
-
-  const handleTrace = () => {
-    const next = !tracing
-    setTracing(next)
-    if (!next || entries !== null || resolving) return
-    setResolving(true)
-    Promise.all(refs.map(resolvePrecedent))
-      .then(setEntries)
-      .catch(() => setEntries([]))
-      .finally(() => setResolving(false))
-  }
+  const trace = usePrecedentTrace(refs)
 
   return (
     <div className="flex justify-start">
@@ -450,14 +337,11 @@ function ChallengeMessage({
             )}
             <EvidenceBadge count={event.payload.evidence_count} />
             {refs.length > 0 && (
-              <button
-                type="button"
-                onClick={handleTrace}
-                aria-expanded={tracing}
-                className="text-[10px] font-semibold text-violet-200 bg-violet-700/50 border border-violet-600/40 px-1.5 py-0.5 rounded-full hover:bg-violet-700/70 transition-colors"
-              >
-                ⟲ 提问角度来自 {refs.length} 条判例 {tracing ? "▾" : "▸"}
-              </button>
+              <PrecedentBadge
+                count={refs.length}
+                expanded={trace.expanded}
+                onToggle={trace.toggle}
+              />
             )}
           </div>
           {isLens && provenanceNote && (
@@ -471,24 +355,14 @@ function ChallengeMessage({
           <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{question}</p>
 
           {/* 判例溯源 — 取证形状: what the question was aimed WITH, never a
-              judgement on the claim being grilled. */}
-          {tracing && refs.length > 0 && (
-            <div className="mt-2.5 rounded-lg border border-violet-800/40 bg-violet-950/30 px-2.5 py-2 space-y-1.5">
-              <p className="text-[11px] text-violet-200/90 leading-relaxed">
-                这一问的提问角度参考了你自己 kill 过的这几条 claim
-              </p>
-              <p className="text-[10px] text-zinc-500 leading-relaxed">
-                判例只决定「从哪个角度问」——过去的 kill 不是当下的证据，也不是对这条 claim 的判断
-              </p>
-              {resolving && <p className="text-[10px] text-zinc-500">读取判例中...</p>}
-              {entries?.map(entry => (
-                <PrecedentRow
-                  key={entry.claimId}
-                  entry={entry}
-                  onOpenArtifact={onOpenArtifact}
-                />
-              ))}
-            </div>
+              judgement on the claim being grilled. Shared with the trajectory
+              replay (EventCard) so both views say the same thing. */}
+          {trace.expanded && refs.length > 0 && (
+            <PrecedentPanel
+              entries={trace.entries}
+              resolving={trace.resolving}
+              onOpenArtifact={onOpenArtifact}
+            />
           )}
         </div>
         {isPending && !isLoading && (

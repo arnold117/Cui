@@ -172,6 +172,109 @@ class TestGetEndpoints:
 
 
 # ---------------------------------------------------------------------------
+# GET /claim/{id}/precedent — 判例先验 溯源 read side.
+#
+# The 判例徽章 resolves each cited claim through this endpoint, so the
+# selection rule (retracted dropped / CONFIRMED only / last ruling wins) has
+# exactly ONE implementation: the ``verdict_precedent`` projection.  These
+# tests pin the trust chain at the HTTP boundary — a client that re-derived it
+# would be free to drift from them.
+# ---------------------------------------------------------------------------
+
+
+class TestClaimPrecedent:
+    def test_confirmed_kill_returns_precedent(self, client: TestClient):
+        data = _park(client, body="killed idea")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        _answer(client, artifact_id, claim_id)
+        v = _verdict(
+            client,
+            artifact_id,
+            claim_id,
+            outcome="kill",
+            rationale="sample size never survives",
+            death_cause="boundary",
+        )
+        _confirm(client, artifact_id, v["event"]["id"])
+
+        resp = client.get(f"/api/v1/claim/{claim_id}/precedent")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # One request carries BOTH halves the badge needs: the claim (body +
+        # its parking artifact, the click-through target) and the 判例.
+        assert body["claim"]["id"] == claim_id
+        assert body["claim"]["body"] == "killed idea"
+        assert body["claim"]["artifact_ids"] == [artifact_id]
+        precedent = body["precedent"]
+        assert precedent["outcome"] == "kill"
+        assert precedent["death_cause"] == "boundary"
+        assert precedent["rationale"] == "sample size never survives"
+        assert precedent["ts"] is not None
+
+    def test_survive_precedent_carries_no_death_cause(self, client: TestClient):
+        """survive rules too — 死因 stays None (never invented)."""
+        data = _grill_to_survived(client, "survived idea")
+        claim_id = data["claim"]["id"]
+
+        resp = client.get(f"/api/v1/claim/{claim_id}/precedent")
+        assert resp.status_code == 200
+        precedent = resp.json()["precedent"]
+        assert precedent["outcome"] == "survive"
+        assert precedent["death_cause"] is None
+
+    def test_no_verdict_returns_null_precedent(self, client: TestClient):
+        """A parked, un-ruled claim: the claim resolves, the 判例 is null."""
+        data = _park(client, body="just parked")
+        claim_id = data["claim"]["id"]
+
+        resp = client.get(f"/api/v1/claim/{claim_id}/precedent")
+        assert resp.status_code == 200
+        assert resp.json()["precedent"] is None
+        assert resp.json()["claim"]["id"] == claim_id
+
+    def test_unconfirmed_verdict_is_not_a_precedent(self, client: TestClient):
+        """The confirm gate IS the trust chain — an unsigned draft never rules."""
+        data = _park(client, body="draft verdict idea")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        _answer(client, artifact_id, claim_id)
+        v = _verdict(client, artifact_id, claim_id, outcome="kill", death_cause="refuted")
+        assert v["event"]["confirmed"] is False  # nothing signed it
+
+        resp = client.get(f"/api/v1/claim/{claim_id}/precedent")
+        assert resp.status_code == 200
+        assert resp.json()["precedent"] is None
+
+    def test_retracted_verdict_is_not_a_precedent(self, client: TestClient):
+        data = _park(client, body="retracted verdict idea")
+        artifact_id = data["artifact"]["id"]
+        claim_id = data["claim"]["id"]
+        _start_grill(client, artifact_id)
+        _challenge(client, artifact_id, claim_id)
+        _answer(client, artifact_id, claim_id)
+        v = _verdict(client, artifact_id, claim_id, outcome="kill", death_cause="refuted")
+        event_id = v["event"]["id"]
+        _confirm(client, artifact_id, event_id)
+        retract = client.post(
+            f"/api/v1/events/{artifact_id}/retract", json={"event_id": event_id}
+        )
+        assert retract.status_code == 200, retract.text
+
+        resp = client.get(f"/api/v1/claim/{claim_id}/precedent")
+        assert resp.status_code == 200
+        assert resp.json()["precedent"] is None
+
+    def test_claim_not_found_returns_404(self, client: TestClient):
+        resp = client.get("/api/v1/claim/nonexistent/precedent")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Grill tests
 # ---------------------------------------------------------------------------
 

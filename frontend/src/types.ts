@@ -98,6 +98,21 @@ export function isTasteChallenge(event: Event): boolean {
 // NEW events always carry the key (`[]` when the Library held no kills);
 // LEGACY events have no key at all — both must read as "no precedents", so the
 // fallback lives here rather than at each call site.
+// The 判例 a claim's RULING verdict left behind, as projected by the backend
+// `verdict_precedent` and served by GET /claim/{id}/precedent. The selection
+// rule (retracted dropped / CONFIRMED only / last ruling wins) lives there and
+// ONLY there — the frontend consumes this shape, it never re-derives it.
+// `death_cause` is null for survive verdicts AND for legacy kills recorded
+// before 死因分诊 (投影语义: 未分类, never guessed into a cause).
+export interface VerdictPrecedent {
+  outcome: string
+  death_cause: string | null
+  rationale: string
+  revival_condition: string | null
+  successor_claim_id: string | null
+  ts: string | null
+}
+
 export function precedentRefs(event: Event): string[] {
   const refs = event.payload.precedent_refs
   if (!Array.isArray(refs)) return []

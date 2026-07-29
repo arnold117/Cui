@@ -1,4 +1,4 @@
-import type { Artifact, Claim, CorpusGraph, DocVersion, Event, GroundVerdict, Material, VerdictTriage } from "./types"
+import type { Artifact, Claim, CorpusGraph, DocVersion, Event, GroundVerdict, Material, VerdictPrecedent, VerdictTriage } from "./types"
 
 const BASE = "/api/v1"
 
@@ -26,6 +26,17 @@ export const getArtifact = (id: string) =>
 
 export const getClaim = (id: string) =>
   request<{ claim: Claim }>("GET", `/claim/${id}`)
+
+// 判例先验 溯源 — a claim plus the 判例 its ruling verdict left behind, in ONE
+// request. `precedent` is null for an un-ruled claim (parked / open / unsigned
+// draft verdict); 404 only when the claim itself is gone. The ruling-verdict
+// selection rule is the backend `verdict_precedent` projection's alone — never
+// re-implement it here, that was the drift this endpoint exists to remove.
+export const getClaimPrecedent = (id: string) =>
+  request<{ claim: Claim; precedent: VerdictPrecedent | null }>(
+    "GET",
+    `/claim/${id}/precedent`,
+  )
 
 export const listArtifacts = (libraryId: string) =>
   request<{ artifacts: Artifact[] }>("GET", `/artifacts?library_id=${libraryId}`)

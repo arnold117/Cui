@@ -28,6 +28,7 @@ from anneal.domain.invariants import (
     ParkIsolationViolation,
     UngrilledError,
 )
+from anneal.domain.projections import verdict_precedent
 from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
 from anneal.services.collect_service import CollectService
 from anneal.services.event_service import EventService
@@ -225,6 +226,44 @@ def get_claim(
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
     return {"claim": claim.model_dump(mode="json")}
+
+
+@router.get("/claim/{claim_id}/precedent")
+def get_claim_precedent(
+    claim_id: str,
+    repo: Repository = Depends(get_repository),
+    store: EventStore = Depends(get_event_store),
+):
+    """A claim plus the 判例 its ruling verdict left behind (判例先验 溯源).
+
+    The selection rule — retracted verdicts dropped, unconfirmed drafts never
+    count, the LAST ruling wins — lives in ``verdict_precedent`` and NOWHERE
+    else.  This endpoint exists so the 判例徽章 can read that projection
+    instead of re-deriving it client-side: two implementations of one trust
+    chain is a drift surface, and the confirm gate is exactly what must not
+    drift.
+
+    Pure read, zero new storage, the projection itself untouched.  Stream
+    lookup mirrors ``GrillService._kill_precedents``: claim → its parking
+    artifact (``artifact_ids[0]``) → events.
+
+    ``precedent`` is null — never an error — for an un-ruled claim (parked,
+    open, or holding only an unsigned draft verdict) and for a claim with no
+    parking artifact.  404 only when the claim itself is gone.
+    """
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+
+    precedent = None
+    if claim.artifact_ids:
+        events = store.get_events(claim.artifact_ids[0])
+        precedent = verdict_precedent(events, claim_id)
+
+    return {
+        "claim": claim.model_dump(mode="json"),
+        "precedent": precedent.model_dump(mode="json") if precedent else None,
+    }
 
 
 @router.get("/artifacts")
