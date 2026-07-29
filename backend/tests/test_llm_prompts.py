@@ -522,3 +522,32 @@ class TestChallengePrecedentExclusions:
         assert build_challenge_prompt("c", "ctx", ev) == build_challenge_prompt(
             "c", "ctx", ev, []
         )
+
+
+class TestPrecedentLanguageDiscipline:
+    """判例是逐字引用的历史，可能与当前 claim 不同语言 — 输出语言必须跟 claim。
+
+    实跑发现的回归（英文 claim + 中文判例理由 → 问题漂成中文，4 次里 2 次），
+    撞 commit 00cc61f「LLM 输出语言跟随 claim」。单测只钉住指令在场；真实
+    漂移率由 canary + live 走查兜底（修后 0/5，修前 2/4）。
+    """
+
+    def _mixed_language_precedent(self):
+        return ClaimPrecedent(
+            body="A denoising pre-pass before OCR raises accuracy to 97.4%.",
+            outcome="killed", claim_id="p1", death_cause="not_worth",
+            rationale="Killed: 增益是真的，但 0.3% 不改变任何人的决定。",
+        )
+
+    def test_precedent_block_carries_language_discipline(self):
+        system, _user = build_challenge_prompt(
+            "X improves Y", "ctx", "", [self._mixed_language_precedent()]
+        )
+        assert "may be written in a DIFFERENT language" in system
+        assert "follows the CURRENT claim" in system
+
+    def test_no_precedents_no_extra_language_clause(self):
+        """无判例时不加这段 — 逐字等价那条铁律不许被这个修复破坏。"""
+        system, _user = build_challenge_prompt("X improves Y", "ctx", "")
+        assert "may be written in a DIFFERENT language" not in system
+        assert OUTPUT_LANGUAGE_INSTRUCTION in system

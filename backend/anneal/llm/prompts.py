@@ -253,7 +253,11 @@ def build_challenge_prompt(
             '["<past_claim_id>", ...] — the ids of the precedents that '
             "actually shaped your question. Use ONLY ids listed above, copied "
             "exactly, and use [] when no precedent shaped the question. NEVER "
-            "invent an id."
+            "invent an id.\n\n"
+            "The precedents are quoted verbatim from this researcher's own "
+            "records and may be written in a DIFFERENT language from the "
+            "current claim. Their language is not a cue: your output language "
+            "follows the CURRENT claim, always."
         )
         parts.append(
             "This researcher's OWN past KILL precedents (their grilled "
