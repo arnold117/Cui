@@ -12,6 +12,9 @@ interface Props {
   claim: Claim
   artifact: Artifact
   onRefresh: () => void
+  /** Navigate to another artifact — used by 判例溯源 on a challenge card to
+   * open the cited kill's own record. Optional. */
+  onOpenArtifact?: (artifactId: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -31,6 +34,7 @@ function ChallengeCard({
   onRetract,
   libraryId,
   claimId,
+  onOpenArtifact,
 }: {
   cv: ChallengeView
   loading: boolean
@@ -39,6 +43,7 @@ function ChallengeCard({
   onRetract: (verdictId: string) => void
   libraryId: string
   claimId: string
+  onOpenArtifact?: (artifactId: string) => void
 }) {
   const [answerText, setAnswerText] = useState("")
 
@@ -58,8 +63,13 @@ function ChallengeCard({
 
   return (
     <div className="space-y-3">
-      {/* The challenge bubble (carries the lens badge when applicable). */}
-      <GrillMessage event={cv.event} isPending={false} isLoading={loading} />
+      {/* The challenge bubble (carries the lens / 判例 badges when applicable). */}
+      <GrillMessage
+        event={cv.event}
+        isPending={false}
+        isLoading={loading}
+        onOpenArtifact={onOpenArtifact}
+      />
 
       {/* The user's answer, if any. */}
       {cv.answerEvent && (
@@ -120,7 +130,7 @@ function ChallengeCard({
   )
 }
 
-export default function GrillView({ artifactId, claim, artifact, onRefresh }: Props) {
+export default function GrillView({ artifactId, claim, artifact, onRefresh, onOpenArtifact }: Props) {
   const flow = useGrillFlow(artifactId, claim, artifact.kind)
   const [promoting, setPromoting] = useState(false)
   const [promoteError, setPromoteError] = useState<string | null>(null)
@@ -284,6 +294,7 @@ export default function GrillView({ artifactId, claim, artifact, onRefresh }: Pr
               onRetract={flow.retractVerdict}
               libraryId={artifact.library_id}
               claimId={claim.id}
+              onOpenArtifact={onOpenArtifact}
             />
           ))}
 

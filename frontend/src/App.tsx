@@ -155,6 +155,7 @@ function App() {
           claim={claim}
           artifact={artifact}
           onRefresh={handleRefresh}
+          onOpenArtifact={handleSelect}
         />
       )
     }

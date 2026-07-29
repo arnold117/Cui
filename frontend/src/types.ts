@@ -92,6 +92,18 @@ export function isTasteChallenge(event: Event): boolean {
   return event.type === "challenge" && event.payload.kind === "taste"
 }
 
+// 判例先验 (precedent prior) — the KILL precedents the main-line auto_challenge
+// actually used to aim this question, recorded on the CHALLENGE payload as
+// `precedent_refs: claim_id[]` (hallucinated ids already filtered backend-side).
+// NEW events always carry the key (`[]` when the Library held no kills);
+// LEGACY events have no key at all — both must read as "no precedents", so the
+// fallback lives here rather than at each call site.
+export function precedentRefs(event: Event): string[] {
+  const refs = event.payload.precedent_refs
+  if (!Array.isArray(refs)) return []
+  return refs.filter((r): r is string => typeof r === "string" && r.length > 0)
+}
+
 // GROUND 判定三态 — how a paper bears on a claim. 「文献没谈」和「文献打」是
 // 两个完全不同的状态; silent (查无) is a legitimate first-class output.
 export type GroundVerdict = "supports" | "contradicts" | "silent"

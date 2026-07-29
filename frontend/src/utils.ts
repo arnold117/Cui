@@ -57,6 +57,35 @@ export function formatTime(ts: string): string {
   })
 }
 
+/**
+ * The verdict that RULES a claim, or null without one — read-side mirror of the
+ * backend `verdict_precedent` projection: the LAST non-retracted CONFIRMED
+ * verdict targeting `claimId` wins. Drafts and retracted verdicts never count;
+ * the confirm gate is the trust chain, so nothing unsigned is ever shown as a
+ * 判例.
+ */
+export function rulingVerdict(events: Event[], claimId: string): Event | null {
+  const retracted = new Set<string>()
+  for (const e of events) {
+    if (e.type === "retract" && e.target_ref) retracted.add(e.target_ref)
+  }
+
+  const confirmed = new Set<string>()
+  for (const e of events) {
+    if (e.type === "confirm" && e.target_ref && !retracted.has(e.id)) {
+      confirmed.add(e.target_ref)
+    }
+  }
+
+  let ruling: Event | null = null
+  for (const e of events) {
+    if (e.type !== "verdict" || e.target_ref !== claimId) continue
+    if (retracted.has(e.id)) continue
+    if (e.confirmed || confirmed.has(e.id)) ruling = e
+  }
+  return ruling
+}
+
 export function deriveClaimStatus(events: Event[]): ClaimStatus {
   const retracted = new Set<string>()
   for (const e of events) {
