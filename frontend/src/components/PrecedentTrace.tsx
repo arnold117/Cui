@@ -157,7 +157,10 @@ function PrecedentRow({
 
 /**
  * The expanded 溯源 panel — 取证形状: what the question was aimed WITH, never
- * a judgement on the claim being grilled.
+ * a judgement on the claim being grilled. The 红线 line under the heading is
+ * the last guard against 前科定罪 being read into the badge, so it is kept
+ * legible (zinc-400, AA on this panel) rather than decorative — still
+ * subordinate to the question, but not something the eye slides past.
  */
 export function PrecedentPanel({
   entries,
@@ -173,7 +176,7 @@ export function PrecedentPanel({
       <p className="text-[11px] text-violet-200/90 leading-relaxed">
         这一问的提问角度参考了你自己 kill 过的这几条 claim
       </p>
-      <p className="text-[10px] text-zinc-500 leading-relaxed">
+      <p className="text-[10px] text-zinc-400 leading-relaxed">
         判例只决定「从哪个角度问」——过去的 kill 不是当下的证据，也不是对这条 claim 的判断
       </p>
       {resolving && <p className="text-[10px] text-zinc-500">读取判例中...</p>}

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react"
 import type { Claim, Event } from "../types"
+import { precedentRefs } from "../types"
 import {
   DEATH_CAUSE_BADGE_CLASSES,
   DEATH_CAUSE_LABELS,
   formatTimestamp,
 } from "../utils"
 import { getClaim } from "../api"
+import { PrecedentBadge, PrecedentPanel, usePrecedentTrace } from "./PrecedentTrace"
 
 interface Props {
   event: Event
@@ -120,9 +122,16 @@ export default function EventCard({ event, onOpenArtifact }: Props) {
       ? (event.payload.successor_claim_id as string | undefined)
       : undefined
 
+  // 判例先验 徽章 in the trajectory replay: 复盘 must be able to see which of
+  // your own kills aimed a given question, not just the live grill stream.
+  // Only CHALLENGE events carry `precedent_refs`; legacy ones lack the key and
+  // an empty array renders nothing (no「基于 0 条判例」empty shell).
+  const refs = event.type === "challenge" ? precedentRefs(event) : []
+  const trace = usePrecedentTrace(refs)
+
   return (
     <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-4 py-3 space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <span
           className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${
             verdictBadge ? verdictBadge.bg : style.bg
@@ -156,11 +165,25 @@ export default function EventCard({ event, onOpenArtifact }: Props) {
             {Math.round(confidence * 100)}%
           </span>
         )}
+        {refs.length > 0 && (
+          <PrecedentBadge
+            count={refs.length}
+            expanded={trace.expanded}
+            onToggle={trace.toggle}
+          />
+        )}
         <span className="text-[10px] text-zinc-600 ml-auto">{formatTimestamp(event.ts)}</span>
       </div>
       <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
         {extractContent(event)}
       </p>
+      {trace.expanded && refs.length > 0 && (
+        <PrecedentPanel
+          entries={trace.entries}
+          resolving={trace.resolving}
+          onOpenArtifact={onOpenArtifact}
+        />
+      )}
       {revivalCondition && (
         <p className="text-xs text-zinc-400 leading-relaxed">
           复活条件: {revivalCondition}
