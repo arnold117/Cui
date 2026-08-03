@@ -7,6 +7,7 @@ import TrajectoryView from "./components/TrajectoryView"
 import VersionsView from "./components/VersionsView"
 import CorpusGraphView from "./components/CorpusGraphView"
 import EmptyState from "./components/EmptyState"
+import ResearchUniversePrototype from "./prototypes/ResearchUniversePrototype"
 import { LIBRARY_ID } from "./constants"
 import { getArtifact, getTrajectory, getClaim } from "./api"
 import { deriveClaimStatus } from "./utils"
@@ -15,6 +16,18 @@ import type { Artifact, Claim, ClaimStatus } from "./types"
 type DocTab = "doc" | "trajectory" | "versions"
 
 function App() {
+  const getPrototypeVariant = () => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get("prototype") === "research-universe" ? params.get("variant") : null
+  }
+  const [prototypeVariant, setPrototypeVariant] = useState(getPrototypeVariant)
+
+  useEffect(() => {
+    const syncPrototypeVariant = () => setPrototypeVariant(getPrototypeVariant())
+    window.addEventListener("popstate", syncPrototypeVariant)
+    return () => window.removeEventListener("popstate", syncPrototypeVariant)
+  }, [])
+
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
   const [showGraph, setShowGraph] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -219,6 +232,10 @@ function App() {
         )}
       </div>
     )
+  }
+
+  if (prototypeVariant === "A" || prototypeVariant === "B" || prototypeVariant === "C") {
+    return <ResearchUniversePrototype variant={prototypeVariant} />
   }
 
   return (
