@@ -1,6 +1,6 @@
 # Cui — 领域术语表 (Glossary)
 
-> 只放术语定义，不放实现细节。实现决策见 `docs/spec-*.md` 与 `docs/adr/`。
+> 只放术语定义，不放实现细节。当前产品决策见 `docs/prd-research-universe.md` 与 `docs/spec-research-universe-mvp.md`；`docs/archive/pre-research-universe/` 是历史 spec，非当前实现依据。
 > 产品方向/铁律见用户记忆 `project_direction.md`（灵魂文档）。
 
 ## 三区

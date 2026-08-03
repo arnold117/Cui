@@ -1,21 +1,27 @@
 # 淬 · Cui
 
-An AI-native writing engine that **grills your ideas before they become drafts**.
+> **让严肃研究者持续经营一个会反过来质询自己的研究宇宙。**
 
-Not a retrieval tool. Not a summarizer. A thinking engine that treats every abandoned draft, every killed hypothesis, and every grilled trajectory as private intellectual assets — compounding into a personal Lens that learns how *you* think.
+An AI-native research environment. Cui starts from questions, not documents: users explore in problem workspaces, submit self-authored claims to adversarial examination, confirm evidence and conclusions, and let those traceable changes shape private research directions. Documents are downstream, externally-facing forms—not the center.
 
-## What makes this different
+## Product authority
 
-| What others do | What Cui does |
-|---|---|
-| Document-centric: input PDF, output summary | **Thought-centric**: ideas are first-class, documents are artifacts |
-| Stateless: every session starts from zero | **Trajectory**: dead ideas, grilled arguments, pivots — all accumulate |
-| Compliant: "here's what the literature says" | **Adversarial**: "here's why your idea might be wrong" |
-| One-shot generation | **Iterative forging**: think → challenge → refine → crystallize |
+- [Product requirements — Research Universe](docs/prd-research-universe.md)
+- [Phase 1 specification — Minimal Research Universe](docs/spec-research-universe-mvp.md)
+- [Phase 1 UX / interaction specification](docs/spec-research-universe-ux.md)
+- [Domain glossary](CONTEXT.md)
+- [Pre-redesign specs (historical archive)](docs/archive/pre-research-universe/)
+
+## Principles
+
+- Automate evidence-gathering; never automate verdicts.
+- Preserve evolution: questions, claims, conclusions, and directions may change, but never without provenance.
+- Lens learns only from user-released, gated trajectories—not PARK or unconfirmed exploration.
+- A survived claim passed a gate; it is not a truth certificate.
 
 ## Status
 
-Early development. Architecture being forged.
+Early development. The Research Universe model is being built natively.
 
 ## License
 
