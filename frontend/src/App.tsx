@@ -234,7 +234,7 @@ function App() {
     )
   }
 
-  if (prototypeVariant === "A" || prototypeVariant === "B" || prototypeVariant === "C") {
+  if (prototypeVariant === "A" || prototypeVariant === "B" || prototypeVariant === "C" || prototypeVariant === "D") {
     return <ResearchUniversePrototype variant={prototypeVariant} />
   }
 
