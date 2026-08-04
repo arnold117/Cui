@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
@@ -13,6 +14,7 @@ from sqlalchemy import Engine, and_, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from anneal.research_universe.domain.events import NativeEvent, PendingNativeEvent
+from anneal.research_universe.command_guard import command_lock_key
 from anneal.research_universe.store import schema
 
 
@@ -42,6 +44,8 @@ def command_fingerprint(universe_id: str, command_type: str, payload: dict[str, 
 class NativeEventStore(Protocol):
     def create_active_universe(self, library_id: str, universe_id: str | None = None) -> str: ...
     def get_active_universe(self, library_id: str) -> str | None: ...
+    def lookup_command(self, universe_id: str, command_id: str, fingerprint: str) -> CommitResult | None: ...
+    def command_execution(self, universe_id: str, command_id: str): ...
     def append(self, *, universe_id: str, command_id: str, command_type: str, command_payload: dict[str, object], actor_kind: str, actor_id: str | None, expected_sequences: dict[tuple[str, str], int], events: list[PendingNativeEvent], result_payload: dict[str, object]) -> CommitResult: ...
     def read_events(self, universe_id: str) -> list[NativeEvent]: ...
 
@@ -65,6 +69,19 @@ class InMemoryNativeEventStore:
 
     def get_active_universe(self, library_id: str) -> str | None:
         return next((uid for uid, (lid, _, archived) in self._universes.items() if lid == library_id and archived is None), None)
+
+    @contextmanager
+    def command_execution(self, universe_id: str, command_id: str):
+        # InMemory adapter serializes whole execution in its existing reentrant lock.
+        with self._lock:
+            yield
+
+    def lookup_command(self, universe_id: str, command_id: str, fingerprint: str) -> CommitResult | None:
+        with self._lock:
+            prior = self._commands.get((universe_id, command_id))
+            if prior is None: return None
+            if prior[0] != fingerprint: raise CommandFingerprintConflict(command_id)
+            return CommitResult(**{**prior[1].__dict__, "replayed": True})
 
     def append(self, **kwargs: object) -> CommitResult:
         universe_id = kwargs["universe_id"]  # type: ignore[assignment]
@@ -114,6 +131,21 @@ class PostgresNativeEventStore:
     """Postgres adapter. Locks streams in canonical order inside one transaction."""
     def __init__(self, engine: Engine) -> None: self._engine = engine
 
+    @contextmanager
+    def command_execution(self, universe_id: str, command_id: str):
+        """Session guard: global order is guard -> append-command -> stream -> fence.
+
+        It uses a distinct lock namespace from append's transaction advisory lock,
+        avoiding self-deadlock while retaining crash-safe connection-scoped release.
+        """
+        conn = self._engine.connect(); key = command_lock_key(universe_id, command_id)
+        try:
+            conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": key})
+            yield
+        finally:
+            try: conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+            finally: conn.close()
+
     def create_active_universe(self, library_id: str, universe_id: str | None = None) -> str:
         universe_id = universe_id or str(uuid4())
         try:
@@ -125,6 +157,14 @@ class PostgresNativeEventStore:
     def get_active_universe(self, library_id: str) -> str | None:
         with self._engine.connect() as conn:
             return conn.execute(select(schema.research_universes.c.id).where(schema.research_universes.c.library_id == library_id, schema.research_universes.c.archived_at.is_(None))).scalar_one_or_none()
+
+    def lookup_command(self, universe_id: str, command_id: str, fingerprint: str) -> CommitResult | None:
+        with self._engine.connect() as conn:
+            existing = conn.execute(select(schema.ru_commits).where(schema.ru_commits.c.command_id == command_id, schema.ru_commits.c.universe_id == universe_id)).mappings().one_or_none()
+            if existing is None: return None
+            if existing["command_fingerprint"] != fingerprint: raise CommandFingerprintConflict(command_id)
+            ids = conn.execute(select(schema.ru_events.c.id).where(schema.ru_events.c.commit_position == existing["position"]).order_by(schema.ru_events.c.commit_index)).scalars().all()
+            return CommitResult(existing["position"], list(ids), existing["result_payload"], True)
 
     def append(self, *, universe_id: str, command_id: str, command_type: str, command_payload: dict[str, object], actor_kind: str, actor_id: str | None, expected_sequences: dict[tuple[str, str], int], events: list[PendingNativeEvent], result_payload: dict[str, object]) -> CommitResult:
         targets = [(kind, ident, expected) for (kind, ident), expected in expected_sequences.items()]

@@ -1,6 +1,6 @@
 """PostgreSQL integration tests.
 
-Skipped when ANNEAL_TEST_DATABASE_URL is not set.
+Skipped when CUI_TEST_DATABASE_URL is not set.
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ from anneal.store.schema import metadata
 from anneal.store.schema import metadata as legacy_metadata
 from anneal.store import schema
 
-PG_URL = os.getenv("ANNEAL_TEST_DATABASE_URL")
+PG_URL = os.getenv("CUI_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(not PG_URL, reason="No PG (set ANNEAL_TEST_DATABASE_URL)")
+pytestmark = pytest.mark.skipif(not PG_URL, reason="No PG (set CUI_TEST_DATABASE_URL)")
 
 
 @pytest.fixture()
@@ -243,7 +243,7 @@ def _alembic_config(url: str) -> Config:
 
 @pytest.fixture()
 def native_engine(monkeypatch):
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", PG_URL)
+    monkeypatch.setenv("CUI_DATABASE_URL", PG_URL)
     command.upgrade(_alembic_config(PG_URL), "head")
     eng = create_engine(PG_URL, pool_pre_ping=True)
     with eng.begin() as conn:
@@ -316,15 +316,15 @@ def test_populated_legacy_preflight_stamp_upgrade_preserves_rows():
             conn.execute(schema.libraries.insert().values(id="legacy-lib", name="Legacy", created_at=datetime.utcnow()))
             conn.execute(schema.artifacts.insert().values(id="legacy-artifact", library_id="legacy-lib", kind="paper", goal="preserve", created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
         verify_legacy_schema(url)
-        previous = os.environ.get("ANNEAL_DATABASE_URL")
-        os.environ["ANNEAL_DATABASE_URL"] = url
+        previous = os.environ.get("CUI_DATABASE_URL")
+        os.environ["CUI_DATABASE_URL"] = url
         try:
             config = _alembic_config(url)
             command.stamp(config, "legacy_baseline")
             command.upgrade(config, "head")
         finally:
-            if previous is None: os.environ.pop("ANNEAL_DATABASE_URL", None)
-            else: os.environ["ANNEAL_DATABASE_URL"] = previous
+            if previous is None: os.environ.pop("CUI_DATABASE_URL", None)
+            else: os.environ["CUI_DATABASE_URL"] = previous
         with legacy.connect() as conn:
             assert conn.execute(select(schema.artifacts.c.id).where(schema.artifacts.c.id == "legacy-artifact")).scalar_one() == "legacy-artifact"
             assert "ru_events" in inspect(legacy).get_table_names()
@@ -345,7 +345,7 @@ def test_native_concurrent_absent_same_stream_returns_replay(native_engine):
 
 def test_native_production_factory_smoke_on_migrated_database(native_engine, monkeypatch):
     from anneal.api.app import create_native_app
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", PG_URL)
+    monkeypatch.setenv("CUI_DATABASE_URL", PG_URL)
     app = create_native_app()
     with TestClient(app) as client:
         active = client.get("/api/v2/universes/active")

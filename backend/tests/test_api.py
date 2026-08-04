@@ -27,13 +27,13 @@ def client(monkeypatch):
     won't fill them from .env — no real LLM client is created.  Tests
     that need an LLM use separate fixtures that inject a FakeLLMClient.
     """
-    monkeypatch.setenv("ANNEAL_LLM_KEY", "")
-    monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.setenv("CUI_LLM_KEY", "")
+    monkeypatch.setenv("CUI_LLM_MODEL", "")
     # EMPTY, never deleted — same idiom as the LLM vars above and for the same
     # reason: `_init_state` runs load_dotenv() before reading this one, so a
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+    monkeypatch.setenv("CUI_DATABASE_URL", "")
     app = create_legacy_regression_app()
     with TestClient(app) as c:
         yield c
@@ -877,13 +877,13 @@ class TestReviewKind:
 @pytest.fixture()
 def client_with_challenge_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns a challenge response."""
-    monkeypatch.setenv("ANNEAL_LLM_KEY", "")
-    monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.setenv("CUI_LLM_KEY", "")
+    monkeypatch.setenv("CUI_LLM_MODEL", "")
     # EMPTY, never deleted — same idiom as the LLM vars above and for the same
     # reason: `_init_state` runs load_dotenv() before reading this one, so a
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+    monkeypatch.setenv("CUI_DATABASE_URL", "")
     app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -896,13 +896,13 @@ def client_with_challenge_llm(monkeypatch):
 @pytest.fixture()
 def client_with_verdict_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns a verdict response."""
-    monkeypatch.setenv("ANNEAL_LLM_KEY", "")
-    monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.setenv("CUI_LLM_KEY", "")
+    monkeypatch.setenv("CUI_LLM_MODEL", "")
     # EMPTY, never deleted — same idiom as the LLM vars above and for the same
     # reason: `_init_state` runs load_dotenv() before reading this one, so a
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+    monkeypatch.setenv("CUI_DATABASE_URL", "")
     app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -915,13 +915,13 @@ def client_with_verdict_llm(monkeypatch):
 @pytest.fixture()
 def client_with_bad_llm(monkeypatch):
     """TestClient with a FakeLLMClient that returns garbage (unparseable JSON)."""
-    monkeypatch.setenv("ANNEAL_LLM_KEY", "")
-    monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.setenv("CUI_LLM_KEY", "")
+    monkeypatch.setenv("CUI_LLM_MODEL", "")
     # EMPTY, never deleted — same idiom as the LLM vars above and for the same
     # reason: `_init_state` runs load_dotenv() before reading this one, so a
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+    monkeypatch.setenv("CUI_DATABASE_URL", "")
     app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient(["this is not json at all"])
@@ -1026,13 +1026,13 @@ class TestAutoGrillAPI:
 @pytest.fixture()
 def client_with_contradiction_llm(monkeypatch):
     """TestClient with a FakeLLMClient that reports a hard contradiction."""
-    monkeypatch.setenv("ANNEAL_LLM_KEY", "")
-    monkeypatch.setenv("ANNEAL_LLM_MODEL", "")
+    monkeypatch.setenv("CUI_LLM_KEY", "")
+    monkeypatch.setenv("CUI_LLM_MODEL", "")
     # EMPTY, never deleted — same idiom as the LLM vars above and for the same
     # reason: `_init_state` runs load_dotenv() before reading this one, so a
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+    monkeypatch.setenv("CUI_DATABASE_URL", "")
     app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
@@ -1664,10 +1664,10 @@ class TestVerdictDeathTriageAPI:
 
 
 class TestEnvLoadOrder:
-    """`.env` 里的 ANNEAL_DATABASE_URL 必须真的被读到（数据丢失回归）。
+    """`.env` 里的 CUI_DATABASE_URL 必须真的被读到（数据丢失回归）。
 
     出身事故（2026-07-29）：`_init_state` 在 `load_dotenv()` 之前就读了
-    ANNEAL_DATABASE_URL——而 dotenv 只在稍后的 `load_llm_config()` 里被加载。
+    CUI_DATABASE_URL——而 dotenv 只在稍后的 `load_llm_config()` 里被加载。
     结果 .env 能供上 LLM key（后读）却从不供上数据库 URL（先读），应用静默
     跑在内存存储上、外表完全健康：拷问照常，产出的轨迹在下次重启全部消失。
     轨迹是护城河，静默丢失是这个进程最坏的失败模式。
@@ -1684,7 +1684,7 @@ class TestEnvLoadOrder:
 
         # 模拟 .env 的效果：load_dotenv 把变量注入环境。
         def fake_load_dotenv(*_args, **_kwargs):
-            os.environ["ANNEAL_DATABASE_URL"] = "postgresql://from-dotenv/anneal"
+            os.environ["CUI_DATABASE_URL"] = "postgresql://from-dotenv/anneal"
             return True
 
         seen: dict[str, str] = {}
@@ -1698,11 +1698,11 @@ class TestEnvLoadOrder:
         try:
             deps._init_state()
         finally:
-            os.environ.pop("ANNEAL_DATABASE_URL", None)
+            os.environ.pop("CUI_DATABASE_URL", None)
             deps._state.clear()
 
         assert seen.get("url") == "postgresql://from-dotenv/anneal", (
-            "dotenv 提供的 ANNEAL_DATABASE_URL 没被采用 —— load_dotenv() 又跑到"
+            "dotenv 提供的 CUI_DATABASE_URL 没被采用 —— load_dotenv() 又跑到"
             "读取之后去了，轨迹会静默丢失"
         )
 
@@ -1712,7 +1712,7 @@ class TestEnvLoadOrder:
 
         from anneal.api import deps
 
-        monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
+        monkeypatch.setenv("CUI_DATABASE_URL", "")
         monkeypatch.setattr(deps, "load_dotenv", lambda *a, **k: True)
 
         with caplog.at_level(logging.WARNING, logger="anneal.api.deps"):

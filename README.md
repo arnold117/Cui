@@ -23,7 +23,7 @@ An AI-native research environment. Cui starts from questions, not documents: use
 
 ## Status
 
-Early development. The Research Universe model is being built natively.
+Early development. Native Research Universe foundation and the first complete fact tracer are live: question Workspace → exploration revisions/anchors → self-authored Claim → immutable Review Round → structured LLM Challenge → contextual Universe readback. Next implementation slice: sealed PARK and explicit release provenance.
 
 ## License
 

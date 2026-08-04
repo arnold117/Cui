@@ -12,13 +12,13 @@ from anneal.store.schema import metadata as legacy_metadata
 
 def _config(url: str) -> Config:
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
-    os.environ["ANNEAL_DATABASE_URL"] = url
+    os.environ["CUI_DATABASE_URL"] = url
     return config
 
 
 def test_fresh_upgrade_and_native_only_downgrade(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'fresh.db'}"
-    monkeypatch.setenv("ANNEAL_DATABASE_URL", url)
+    monkeypatch.setenv("CUI_DATABASE_URL", url)
     config = _config(url)
     command.upgrade(config, "head")
     engine = sa.create_engine(url)

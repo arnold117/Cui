@@ -11,17 +11,17 @@ class LLMConfig:
     base_url: str | None = None
 
 def load_llm_config() -> LLMConfig | None:
-    """Load LLM config from ANNEAL_LLM_* env vars. Returns None if key missing."""
+    """Load LLM config from CUI_LLM_* env vars. Returns None if key missing."""
     load_dotenv()
-    key = os.getenv("ANNEAL_LLM_KEY", "")
+    key = os.getenv("CUI_LLM_KEY", "")
     if not key:
         return None
-    model = os.getenv("ANNEAL_LLM_MODEL", "")
+    model = os.getenv("CUI_LLM_MODEL", "")
     if not model:
         return None
     return LLMConfig(
-        provider=os.getenv("ANNEAL_LLM_PROVIDER", "openai").lower(),
+        provider=os.getenv("CUI_LLM_PROVIDER", "openai").lower(),
         api_key=key,
         model=model,
-        base_url=os.getenv("ANNEAL_LLM_BASE_URL") or None,
+        base_url=os.getenv("CUI_LLM_BASE_URL") or None,
     )

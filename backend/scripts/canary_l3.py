@@ -13,13 +13,13 @@ silent stays silent.
 TRIGGER DISCIPLINE — RUN THIS AFTER ANY OF:
   * any edit to anneal/llm/prompts.py (contradiction / taste / semantic-edges
     prompts);
-  * an LLM model / provider swap (ANNEAL_LLM_MODEL / _PROVIDER / _BASE_URL);
+  * an LLM model / provider swap (CUI_LLM_MODEL / _PROVIDER / _BASE_URL);
   * any change to anneal/lens/prefilter.py or anneal/lens/topic_terms.py;
   * before every release.
 
 WHAT IT COSTS / TOUCHES
 -----------------------
-Uses the REAL configured LLM (backend/.env → ANNEAL_LLM_*; DeepSeek in the
+Uses the REAL configured LLM (backend/.env → CUI_LLM_*; DeepSeek in the
 default setup) — roughly 9 chat calls per clean run (a couple more on retries)
 plus one OpenAlex search. Storage is a per-case, throwaway
 InMemoryEventStore/InMemoryRepository — NO product database or data file is
@@ -684,8 +684,8 @@ def main() -> int:
     config = load_llm_config()
     if config is None:
         print(
-            "SETUP ERROR: no LLM config. Expected ANNEAL_LLM_KEY / "
-            "ANNEAL_LLM_MODEL in backend/.env (see anneal/llm/config.py).",
+            "SETUP ERROR: no LLM config. Expected CUI_LLM_KEY / "
+            "CUI_LLM_MODEL in backend/.env (see anneal/llm/config.py).",
             file=sys.stderr,
         )
         return 2

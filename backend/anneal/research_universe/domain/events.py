@@ -22,6 +22,7 @@ class WorkspaceCreatedPayload(Payload):
 
 class ExplorationNoteSavedPayload(Payload):
     note_id: str
+    note_revision_id: str
     workspace_id: str
     text: str
     author: Literal["user"] = "user"
@@ -30,7 +31,11 @@ class ExplorationNoteSavedPayload(Payload):
 class ExplorationAnchorCreatedPayload(Payload):
     anchor_id: str
     workspace_id: str
-    text: str
+    note_id: str
+    note_revision_id: str
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+    selected_text: str
     author: Literal["user"] = "user"
 
 
@@ -60,6 +65,7 @@ class ChallengeCreatedPayload(Payload):
     claim_text: str
     attack_surface: str
     why_it_matters: str
+    self_check_method: str
     generator_kind: Literal["system", "user"]
     prompt_version: str
     model_identifier: str | None

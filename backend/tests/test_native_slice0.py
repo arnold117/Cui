@@ -29,8 +29,8 @@ def test_native_test_app_provisions_server_scoped_active_universe():
 
 
 def test_native_production_fails_closed_without_database(monkeypatch):
-    monkeypatch.delenv("ANNEAL_DATABASE_URL", raising=False)
-    with pytest.raises(RuntimeError, match="ANNEAL_DATABASE_URL"):
+    monkeypatch.delenv("CUI_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="CUI_DATABASE_URL"):
         create_native_app()
 
 

@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 llm = [
   "openai>=1.0",
-  "anthropic>=0.30",
+  "anthropic>=0.109.1",
 ]
 dev = [
   "pytest",
@@ -30,3 +30,6 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+  "live: requires explicit external LLM credentials and makes live provider calls",
+]

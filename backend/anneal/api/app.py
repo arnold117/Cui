@@ -19,6 +19,11 @@ from anneal.store.event_store import PostgresEventStore
 from anneal.store.repository import PostgresRepository
 from anneal.store.schema import libraries
 from anneal.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router as create_native_router
+from anneal.research_universe.api.slice1 import create_slice1_router
+from anneal.research_universe.application import Slice1Service
+from anneal.research_universe.challenge_generator import RealChallengeGenerator
+from anneal.llm.client import create_client
+from anneal.llm.config import load_llm_config
 from anneal.research_universe.store.event_store import InMemoryNativeEventStore, NativeEventStore, PostgresNativeEventStore, UniverseAlreadyActive
 
 
@@ -55,9 +60,9 @@ def _resolve_library_context(engine, supplied: LibraryContext | None) -> Library
 def create_native_app(settings: object | None = None, native_store: NativeEventStore | None = None, library_context: LibraryContext | None = None, principal: LocalPrincipal | None = None) -> FastAPI:
     """Production/development factory: PostgreSQL and schema head are mandatory."""
     database_url = getattr(settings, "database_url", None) if settings else None
-    database_url = database_url or os.getenv("ANNEAL_DATABASE_URL")
+    database_url = database_url or os.getenv("CUI_DATABASE_URL")
     if not database_url:
-        raise RuntimeError("ANNEAL_DATABASE_URL is required for the native application")
+        raise RuntimeError("CUI_DATABASE_URL is required for the native application")
     _assert_database_at_head(database_url)
     if native_store is not None:
         raise RuntimeError("production native application does not accept injected stores")
@@ -70,15 +75,29 @@ def create_native_app(settings: object | None = None, native_store: NativeEventS
         except UniverseAlreadyActive:
             pass
     app = _cors(FastAPI(title="Cui"))
-    app.include_router(create_native_router(store, context, principal or LocalPrincipal()), prefix="/api/v2")
+    resolved_principal = principal or LocalPrincipal()
+    config = load_llm_config()
+    if config is None:
+        raise RuntimeError("CUI_LLM_KEY and CUI_LLM_MODEL are required for native Slice 1 challenge generation")
+    challenge_service = Slice1Service(store, resolved_principal.id, RealChallengeGenerator(create_client(config), config.model))
+    app.include_router(create_native_router(store, context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_slice1_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_archive_router(PostgresRepository(engine), PostgresEventStore(engine), context.library_id), prefix="/api/v2")
     return app
 
 
-def create_native_test_app(native_store: InMemoryNativeEventStore, library_context: LibraryContext | None = None, principal: LocalPrincipal | None = None) -> FastAPI:
+def create_native_test_app(native_store: InMemoryNativeEventStore, library_context: LibraryContext | None = None, principal: LocalPrincipal | None = None, challenge_generator=None) -> FastAPI:
     """Explicit in-memory factory; never selected by missing configuration."""
     app = _cors(FastAPI(title="Cui native test"))
-    app.include_router(create_native_router(native_store, library_context or LibraryContext("default"), principal or LocalPrincipal()), prefix="/api/v2")
+    resolved_context = library_context or LibraryContext("default")
+    resolved_principal = principal or LocalPrincipal()
+    if challenge_generator is None:
+        class _UnavailableGenerator:
+            def generate(self, **kwargs): raise RuntimeError("test must inject a challenge generator")
+        challenge_generator = _UnavailableGenerator()
+    service = Slice1Service(native_store, resolved_principal.id, challenge_generator)
+    app.include_router(create_native_router(native_store, resolved_context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_slice1_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_archive_router(), prefix="/api/v2")
     return app
 

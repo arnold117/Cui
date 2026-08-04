@@ -3,7 +3,7 @@
 Module-level state holding store instances.  Provides FastAPI Depends
 callables for each service.  Uses a lifespan context manager for setup.
 
-When ``ANNEAL_DATABASE_URL`` is set, uses PostgreSQL-backed stores and
+When ``CUI_DATABASE_URL`` is set, uses PostgreSQL-backed stores and
 repository.  Otherwise falls back to in-memory implementations (tests).
 """
 
@@ -75,7 +75,7 @@ _state: dict[str, object] = {}
 def _init_state() -> None:
     """Initialize all stores and services.
 
-    If ``ANNEAL_DATABASE_URL`` is set, use PostgreSQL-backed stores.
+    If ``CUI_DATABASE_URL`` is set, use PostgreSQL-backed stores.
     Otherwise fall back to in-memory implementations (suitable for tests).
 
     ``load_dotenv()`` MUST run before that variable is read. It used to be
@@ -88,7 +88,7 @@ def _init_state() -> None:
     """
     load_dotenv()
     log = _storage_logger()
-    db_url = os.getenv("ANNEAL_DATABASE_URL")
+    db_url = os.getenv("CUI_DATABASE_URL")
 
     if db_url:
         engine = create_db_engine(db_url)
@@ -105,7 +105,7 @@ def _init_state() -> None:
         # that happens to be empty — the same trap the L3 canary exists for.
         # Say it out loud: this mode DESTROYS every trajectory on shutdown.
         log.warning(
-            "event store: IN-MEMORY — ANNEAL_DATABASE_URL is unset, so every "
+            "event store: IN-MEMORY — CUI_DATABASE_URL is unset, so every "
             "claim, grill and verdict in this session is LOST on shutdown. "
             "Set it in backend/.env (or the environment) to persist. "
             "轨迹是护城河，这个模式下它不会留下来。"

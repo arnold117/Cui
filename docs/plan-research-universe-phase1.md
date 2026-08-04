@@ -1,6 +1,6 @@
 # Implementation Plan：Research Universe Phase 1 Native Rebuild
 
-> 状态：独立对抗性 review 后已修订，可进入实施（2026-08-04）。
+> 状态：Slice 0–1 已完成并验证；Slice 2 待实施（2026-08-04）。
 >
 > 产品权威：[`prd-research-universe.md`](prd-research-universe.md) · [`spec-research-universe-mvp.md`](spec-research-universe-mvp.md) · [`spec-research-universe-ux.md`](spec-research-universe-ux.md) · [`spec-research-universe-visual.md`](spec-research-universe-visual.md)。
 >
@@ -108,7 +108,7 @@ Phase 1 是**单用户、单选定 Library 的本地应用**，不是多租户�
 
 1. 将 `alembic` 加入 backend runtime/deployment dependency；
 2. 创建 `backend/alembic.ini` 与 migration environment；
-3. migration 读取 `ANNEAL_DATABASE_URL`，不得读取／修改 `.env`；
+3. migration 读取 `CUI_DATABASE_URL`，不得读取／修改 `.env`；
 4. 建立两个明确 revision：`legacy_baseline` 描述现有 legacy schema，`native_v1` 只创建 native root/stream/event/idempotency 表；
 5. **新空数据库**执行 `alembic upgrade head`，由 baseline 创建 legacy schema，再由增量创建 native schema；
 6. **已有 pre-Alembic 数据库**先运行只读 schema preflight（表、列、约束和版本指纹完全匹配）再 `alembic stamp legacy_baseline`，随后 `upgrade head`；不匹配时停止，禁止猜测或自动修补；
@@ -181,7 +181,7 @@ ru_events
 
 明确分成三个 app factory，不由运行时静默猜测：
 
-- `create_native_app(settings, native_store, library_context, principal)`：生产／开发入口；必须有 `ANNEAL_DATABASE_URL` 且 schema revision = head，否则启动失败并给出明确错误；只挂 `/api/v2` native + read-only archive；
+- `create_native_app(settings, native_store, library_context, principal)`：生产／开发入口；必须有 `CUI_DATABASE_URL` 且 schema revision = head，否则启动失败并给出明确错误；只挂 `/api/v2` native + read-only archive；
 - `create_native_test_app(InMemoryNativeStore, ...)`：测试显式注入，绝不由缺少 DB URL 自动选择；
 - `create_legacy_regression_app(...)`：只供现有 `/api/v1` regression tests，显式挂 legacy router，不作为部署入口。
 
@@ -497,7 +497,9 @@ frontend/src/features/legacy-archive/
 - `/` 与直接访问 `/archive` 都可刷新进入正确 surface，production bundle 不 import legacy mutation client；
 - native app 无 DB 或 revision 非 head 时 fail closed；仅显式 test app 可注入内存 store。
 
-### Slice 1 — First Fact tracer / narrow live challenge port
+### Slice 1 — First Fact tracer / narrow live challenge port ✅
+
+> **完成状态（2026-08-04）**：已在 native event store、`/api/v2` 与生产前端上贯通。后端 full suite `793 passed`；Alembic 创建的真实 PostgreSQL Slice 1 contract `4 passed`；前端 Vitest `23 passed`、build 通过、mock Playwright `5 passed`；另以真实 PostgreSQL + `deepseek-v4-flash` 跑通未 mock 的 Browser → Vite → FastAPI → LLM → Review Round 全栈旅程 `1 passed`（5.3s）。中英文 live challenge 均返回结构化攻击面、意义、自检方法与 provenance。Review 在 Slice 1 明示 pending，并提供返回 Workspace／Universe 的合法出口；Answer／Verdict 仍按计划留在 Slice 3。
 
 **交付：**
 

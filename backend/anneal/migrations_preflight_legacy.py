@@ -47,7 +47,7 @@ def verify_legacy_schema(database_url: str) -> None:
             if actual.get(table) != FROZEN_LEGACY_MANIFEST.get(table): raise RuntimeError(f"legacy schema mismatch in {table}: expected {FROZEN_LEGACY_MANIFEST.get(table)!r}, found {actual.get(table)!r}")
         raise RuntimeError("legacy schema mismatch")
 def main() -> None:
-    url=os.getenv("ANNEAL_DATABASE_URL")
-    if not url: raise RuntimeError("ANNEAL_DATABASE_URL is required")
+    url=os.getenv("CUI_DATABASE_URL")
+    if not url: raise RuntimeError("CUI_DATABASE_URL is required")
     verify_legacy_schema(url); print("legacy schema matches frozen baseline; safe to stamp legacy_baseline")
 if __name__ == "__main__": main()

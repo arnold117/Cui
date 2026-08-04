@@ -12,9 +12,9 @@ if config.config_file_name:
 
 
 def database_url() -> str:
-    value = os.getenv("ANNEAL_DATABASE_URL")
+    value = os.getenv("CUI_DATABASE_URL")
     if not value:
-        raise RuntimeError("ANNEAL_DATABASE_URL is required to run migrations")
+        raise RuntimeError("CUI_DATABASE_URL is required to run migrations")
     return value
 
 

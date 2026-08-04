@@ -15,7 +15,7 @@ def get_database_url() -> str:
     from dotenv import load_dotenv
 
     load_dotenv()
-    return os.getenv("ANNEAL_DATABASE_URL", DEFAULT_URL)
+    return os.getenv("CUI_DATABASE_URL", DEFAULT_URL)
 
 
 def create_db_engine(url: str | None = None) -> Engine:

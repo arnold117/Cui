@@ -1,37 +1,29 @@
 import { lazy, Suspense } from "react"
 import { UniverseShell } from "./features/research-universe/shell/UniverseShell"
 import { StartStation } from "./features/research-universe/screens/StartStation"
+import { WorkspaceDesk } from "./features/research-universe/screens/WorkspaceDesk"
+import { ReviewRoundDesk } from "./features/research-universe/screens/ReviewRoundDesk"
+import { UniverseHome } from "./features/research-universe/screens/UniverseHome"
 import { LegacyArchive } from "./features/legacy-archive/LegacyArchive"
 import { AppRouter, useNavigation } from "./router"
 
 const ResearchUniversePrototype = lazy(() => import("./prototypes/ResearchUniversePrototype"))
-
-function RetiredPath({ pathname }: { pathname: string }) {
-  return <UniverseShell><section className="ru-start-station ru-retired-path"><p className="ru-kicker">路径已退役</p><h1>这里不再是研究宇宙的入口。</h1><p className="ru-reading-copy"><code>{pathname}</code> 属于旧版界面，不能进入新的研究宇宙。旧记录仍可在只读 archive 中查看。</p><a className="ru-retired-link" href="/archive">查看旧记录</a></section></UniverseShell>
-}
-
-function NotFound({ pathname }: { pathname: string }) {
-  return <UniverseShell><section className="ru-start-station ru-retired-path"><p className="ru-kicker">未找到路径</p><h1>这个位置不存在。</h1><p className="ru-reading-copy"><code>{pathname}</code> 不是 Cui 的可用研究路径。</p><a className="ru-retired-link" href="/">回到研究宇宙</a></section></UniverseShell>
-}
+function RetiredPath({ pathname }: { pathname: string }) { return <UniverseShell><section className="ru-start-station ru-retired-path"><p className="ru-kicker">路径已退役</p><h1>这里不再是研究宇宙的入口。</h1><p className="ru-reading-copy"><code>{pathname}</code> 属于旧版界面，不能进入新的研究宇宙。旧记录仍可在只读 archive 中查看。</p><a className="ru-retired-link" href="/archive">查看旧记录</a></section></UniverseShell> }
+function NotFound({ pathname }: { pathname: string }) { return <UniverseShell><section className="ru-start-station ru-retired-path"><p className="ru-kicker">未找到路径</p><h1>这个位置不存在。</h1><p className="ru-reading-copy"><code>{pathname}</code> 不是 Cui 的可用研究路径。</p><a className="ru-retired-link" href="/">回到研究宇宙</a></section></UniverseShell> }
 
 function RoutedApp() {
-  const { location } = useNavigation()
-  const { pathname, search } = location
-  const artifactMatch = pathname.match(/^\/artifact\/([^/]+)$/)
-  const archiveArtifactMatch = pathname.match(/^\/archive\/artifacts\/([^/]+)$/)
-  const prototypeVariant = new URLSearchParams(search).get("variant")
-
-  if (pathname === "/__prototype/research-universe" && ["A", "B", "C", "D"].includes(prototypeVariant ?? "")) {
-    return <Suspense fallback={null}><ResearchUniversePrototype variant={prototypeVariant as "A" | "B" | "C" | "D"} /></Suspense>
-  }
+  const { location } = useNavigation(); const { pathname, search } = location
+  const artifactMatch = pathname.match(/^\/artifact\/([^/]+)$/); const archiveArtifactMatch = pathname.match(/^\/archive\/artifacts\/([^/]+)$/)
+  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
+  if (pathname === "/__prototype/research-universe" && ["A", "B", "C", "D"].includes(prototypeVariant ?? "")) return <Suspense fallback={null}><ResearchUniversePrototype variant={prototypeVariant as "A" | "B" | "C" | "D"} /></Suspense>
   if (pathname === "/archive") return <LegacyArchive />
   if (archiveArtifactMatch) return <LegacyArchive artifactId={archiveArtifactMatch[1]} />
   if (artifactMatch) return <LegacyArchive artifactId={artifactMatch[1]} redirectedFrom={pathname} />
   if (pathname === "/park" || /^\/library\/[^/]+\/graph$/.test(pathname) || pathname.startsWith("/claim/") || pathname.startsWith("/grill/")) return <RetiredPath pathname={pathname} />
-  if (pathname === "/") return <UniverseShell><StartStation /></UniverseShell>
+  if (workspaceMatch) return <UniverseShell trail={["问题工作区"]}><WorkspaceDesk workspaceId={workspaceMatch[1]} /></UniverseShell>
+  if (reviewMatch) return <UniverseShell trail={["问题工作区", "审查轮次"]}><ReviewRoundDesk roundId={reviewMatch[1]} /></UniverseShell>
+  if (pathname === "/") return <UniverseShell><div className="ru-root"><StartStation /><UniverseHome /></div></UniverseShell>
   return <NotFound pathname={pathname} />
 }
-
 function App() { return <AppRouter><RoutedApp /></AppRouter> }
-
 export default App
