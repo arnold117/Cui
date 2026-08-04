@@ -11,7 +11,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from anneal.api.app import create_app
+from anneal.api.app import create_legacy_regression_app
 from anneal.api.deps import _state
 from tests.fakes import FakeLLMClient
 
@@ -34,7 +34,7 @@ def client(monkeypatch):
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
     monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
-    app = create_app()
+    app = create_legacy_regression_app()
     with TestClient(app) as c:
         yield c
 
@@ -884,7 +884,7 @@ def client_with_challenge_llm(monkeypatch):
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
     monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
-    app = create_app()
+    app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
             json.dumps({"question": "What evidence supports this?", "target_aspect": "evidence"}),
@@ -903,7 +903,7 @@ def client_with_verdict_llm(monkeypatch):
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
     monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
-    app = create_app()
+    app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
             json.dumps({"outcome": "survive", "rationale": "well supported", "confidence": 0.9}),
@@ -922,7 +922,7 @@ def client_with_bad_llm(monkeypatch):
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
     monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
-    app = create_app()
+    app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient(["this is not json at all"])
         _state["grill_service"]._llm = fake_llm
@@ -1033,7 +1033,7 @@ def client_with_contradiction_llm(monkeypatch):
     # DELETED variable is refilled straight from backend/.env and the suite
     # would run against the developer's real research database.
     monkeypatch.setenv("ANNEAL_DATABASE_URL", "")
-    app = create_app()
+    app = create_legacy_regression_app()
     with TestClient(app) as c:
         fake_llm = FakeLLMClient([
             json.dumps({

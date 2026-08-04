@@ -1,258 +1,37 @@
-import { useState, useCallback, useEffect, useRef } from "react"
-import Sidebar from "./components/Sidebar"
-import ParkView from "./components/ParkView"
-import GrillView from "./components/GrillView"
-import DocView from "./components/DocView"
-import TrajectoryView from "./components/TrajectoryView"
-import VersionsView from "./components/VersionsView"
-import CorpusGraphView from "./components/CorpusGraphView"
-import EmptyState from "./components/EmptyState"
-import ResearchUniversePrototype from "./prototypes/ResearchUniversePrototype"
-import { LIBRARY_ID } from "./constants"
-import { getArtifact, getTrajectory, getClaim } from "./api"
-import { deriveClaimStatus } from "./utils"
-import type { Artifact, Claim, ClaimStatus } from "./types"
+import { lazy, Suspense } from "react"
+import { UniverseShell } from "./features/research-universe/shell/UniverseShell"
+import { StartStation } from "./features/research-universe/screens/StartStation"
+import { LegacyArchive } from "./features/legacy-archive/LegacyArchive"
+import { AppRouter, useNavigation } from "./router"
 
-type DocTab = "doc" | "trajectory" | "versions"
+const ResearchUniversePrototype = lazy(() => import("./prototypes/ResearchUniversePrototype"))
 
-function App() {
-  const getPrototypeVariant = () => {
-    const params = new URLSearchParams(window.location.search)
-    return params.get("prototype") === "research-universe" ? params.get("variant") : null
-  }
-  const [prototypeVariant, setPrototypeVariant] = useState(getPrototypeVariant)
-
-  useEffect(() => {
-    const syncPrototypeVariant = () => setPrototypeVariant(getPrototypeVariant())
-    window.addEventListener("popstate", syncPrototypeVariant)
-    return () => window.removeEventListener("popstate", syncPrototypeVariant)
-  }, [])
-
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
-  const [showGraph, setShowGraph] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  // Loaded data for selected artifact
-  const [artifact, setArtifact] = useState<Artifact | null>(null)
-  const [claim, setClaim] = useState<Claim | null>(null)
-  const [status, setStatus] = useState<ClaimStatus>("parked")
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [loadingArtifact, setLoadingArtifact] = useState(false)
-  const [docTab, setDocTab] = useState<DocTab>("doc")
-  // Which artifact the status-based default tab has been applied for — the
-  // default is applied once per selection (killed → 轨迹), so a refresh never
-  // yanks a manually chosen tab.
-  const defaultTabAppliedFor = useRef<string | null>(null)
-
-  const handleRefresh = useCallback(() => {
-    setRefreshKey(k => k + 1)
-  }, [])
-
-  const handleSelect = useCallback((id: string | null) => {
-    setShowGraph(false)
-    setSelectedArtifactId(id)
-    setDocTab("doc")
-    defaultTabAppliedFor.current = null
-  }, [])
-
-  const handleShowGraph = useCallback(() => {
-    setShowGraph(true)
-  }, [])
-
-  // Fetch artifact + claim + status when selection changes
-  useEffect(() => {
-    if (!selectedArtifactId) {
-      setArtifact(null)
-      setClaim(null)
-      setStatus("parked")
-      setLoadError(null)
-      return
-    }
-
-    let cancelled = false
-    setLoadingArtifact(true)
-    setLoadError(null)
-
-    async function load() {
-      try {
-        const [{ artifact: art }, { events }] = await Promise.all([
-          getArtifact(selectedArtifactId!),
-          getTrajectory(selectedArtifactId!),
-        ])
-        if (cancelled) return
-
-        setArtifact(art)
-        const derived = deriveClaimStatus(events)
-        setStatus(derived)
-
-        // 阵亡想法进门第一眼是死亡记录: a killed artifact defaults to the
-        // 轨迹 tab (死因徽章/理由), not the empty DOC. Applied once per
-        // selection — DOC/版本 stay manually reachable.
-        if (defaultTabAppliedFor.current !== selectedArtifactId) {
-          defaultTabAppliedFor.current = selectedArtifactId
-          setDocTab(derived === "killed" ? "trajectory" : "doc")
-        }
-
-        // Find the claim from artifact's park event or from the artifact itself
-        // The park event should have a claim, or we fetch from the first claim reference
-        const parkEvent = events.find(e => e.type === "park")
-        const claimId = parkEvent?.target_ref || (parkEvent?.payload?.claim_id as string | undefined)
-        if (claimId) {
-          const { claim: c } = await getClaim(claimId)
-          if (!cancelled) setClaim(c)
-        } else {
-          // Fallback: the claim body might be in the artifact goal
-          if (!cancelled) {
-            setClaim({
-              id: "",
-              library_id: art.library_id,
-              body: art.goal,
-              artifact_ids: [art.id],
-              created_at: art.created_at,
-              updated_at: art.updated_at,
-            })
-          }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setLoadError(e instanceof Error ? e.message : "Failed to load artifact")
-        }
-      } finally {
-        if (!cancelled) setLoadingArtifact(false)
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [selectedArtifactId, refreshKey])
-
-  const renderContent = () => {
-    // Library-level corpus graph view takes precedence over artifact views.
-    if (showGraph) {
-      return <CorpusGraphView libraryId={LIBRARY_ID} />
-    }
-
-    // No selection: show park view
-    if (selectedArtifactId === null) {
-      return <ParkView onRefresh={handleRefresh} onSelect={(id) => setSelectedArtifactId(id)} />
-    }
-
-    // Loading
-    if (loadingArtifact) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-zinc-500">Loading...</p>
-        </div>
-      )
-    }
-
-    // Error
-    if (loadError) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-red-400">{loadError}</p>
-        </div>
-      )
-    }
-
-    // No artifact loaded
-    if (!artifact || !claim) {
-      return <EmptyState />
-    }
-
-    // Parked or grilling: show GrillView
-    if (status === "parked" || status === "grilling") {
-      return (
-        <GrillView
-          artifactId={artifact.id}
-          claim={claim}
-          artifact={artifact}
-          onRefresh={handleRefresh}
-          onOpenArtifact={handleSelect}
-        />
-      )
-    }
-
-    // Survived or killed: show tab toggle between doc and trajectory
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden bg-zinc-950">
-        {/* Tab bar */}
-        <div className="shrink-0 border-b border-zinc-800 px-5 flex gap-0">
-          <button
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              docTab === "doc"
-                ? "border-purple-500 text-purple-300"
-                : "border-transparent text-zinc-500 hover:text-zinc-300"
-            }`}
-            onClick={() => setDocTab("doc")}
-          >
-            DOC
-          </button>
-          <button
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              docTab === "trajectory"
-                ? "border-purple-500 text-purple-300"
-                : "border-transparent text-zinc-500 hover:text-zinc-300"
-            }`}
-            onClick={() => setDocTab("trajectory")}
-          >
-            轨迹
-          </button>
-          <button
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              docTab === "versions"
-                ? "border-purple-500 text-purple-300"
-                : "border-transparent text-zinc-500 hover:text-zinc-300"
-            }`}
-            onClick={() => setDocTab("versions")}
-          >
-            版本
-          </button>
-          <div className="flex-1" />
-          <div className="flex items-center pr-1">
-            <span
-              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                status === "survived"
-                  ? "bg-emerald-700/50 text-emerald-200"
-                  : "bg-red-700/50 text-red-200"
-              }`}
-            >
-              {status === "survived" ? "SURVIVED" : "KILLED"}
-            </span>
-          </div>
-        </div>
-
-        {/* Tab content */}
-        {docTab === "doc" ? (
-          <DocView artifactId={artifact.id} libraryId={artifact.library_id} />
-        ) : docTab === "trajectory" ? (
-          <TrajectoryView artifactId={artifact.id} onOpenArtifact={handleSelect} />
-        ) : (
-          <VersionsView artifactId={artifact.id} />
-        )}
-      </div>
-    )
-  }
-
-  if (prototypeVariant === "A" || prototypeVariant === "B" || prototypeVariant === "C" || prototypeVariant === "D") {
-    return <ResearchUniversePrototype variant={prototypeVariant} />
-  }
-
-  return (
-    <div className="h-screen flex bg-zinc-950 text-zinc-100">
-      <Sidebar
-        selectedId={selectedArtifactId}
-        onSelect={handleSelect}
-        refreshKey={refreshKey}
-        showGraph={showGraph}
-        onShowGraph={handleShowGraph}
-      />
-
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {renderContent()}
-      </main>
-    </div>
-  )
+function RetiredPath({ pathname }: { pathname: string }) {
+  return <UniverseShell><section className="ru-start-station ru-retired-path"><p className="ru-kicker">路径已退役</p><h1>这里不再是研究宇宙的入口。</h1><p className="ru-reading-copy"><code>{pathname}</code> 属于旧版界面，不能进入新的研究宇宙。旧记录仍可在只读 archive 中查看。</p><a className="ru-retired-link" href="/archive">查看旧记录</a></section></UniverseShell>
 }
+
+function NotFound({ pathname }: { pathname: string }) {
+  return <UniverseShell><section className="ru-start-station ru-retired-path"><p className="ru-kicker">未找到路径</p><h1>这个位置不存在。</h1><p className="ru-reading-copy"><code>{pathname}</code> 不是 Cui 的可用研究路径。</p><a className="ru-retired-link" href="/">回到研究宇宙</a></section></UniverseShell>
+}
+
+function RoutedApp() {
+  const { location } = useNavigation()
+  const { pathname, search } = location
+  const artifactMatch = pathname.match(/^\/artifact\/([^/]+)$/)
+  const archiveArtifactMatch = pathname.match(/^\/archive\/artifacts\/([^/]+)$/)
+  const prototypeVariant = new URLSearchParams(search).get("variant")
+
+  if (pathname === "/__prototype/research-universe" && ["A", "B", "C", "D"].includes(prototypeVariant ?? "")) {
+    return <Suspense fallback={null}><ResearchUniversePrototype variant={prototypeVariant as "A" | "B" | "C" | "D"} /></Suspense>
+  }
+  if (pathname === "/archive") return <LegacyArchive />
+  if (archiveArtifactMatch) return <LegacyArchive artifactId={archiveArtifactMatch[1]} />
+  if (artifactMatch) return <LegacyArchive artifactId={artifactMatch[1]} redirectedFrom={pathname} />
+  if (pathname === "/park" || /^\/library\/[^/]+\/graph$/.test(pathname) || pathname.startsWith("/claim/") || pathname.startsWith("/grill/")) return <RetiredPath pathname={pathname} />
+  if (pathname === "/") return <UniverseShell><StartStation /></UniverseShell>
+  return <NotFound pathname={pathname} />
+}
+
+function App() { return <AppRouter><RoutedApp /></AppRouter> }
 
 export default App

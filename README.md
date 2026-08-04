@@ -10,6 +10,7 @@ An AI-native research environment. Cui starts from questions, not documents: use
 - [Phase 1 specification — Minimal Research Universe](docs/spec-research-universe-mvp.md)
 - [Phase 1 UX / interaction specification](docs/spec-research-universe-ux.md)
 - [Phase 1 visual specification](docs/spec-research-universe-visual.md)
+- [Phase 1 native rebuild implementation plan](docs/plan-research-universe-phase1.md)
 - [Domain glossary](CONTEXT.md)
 - [Pre-redesign specs (historical archive)](docs/archive/pre-research-universe/)
 

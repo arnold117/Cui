@@ -26,6 +26,9 @@ class Repository(Protocol):
     def create_claim(self, claim: Claim) -> None: ...
     def get_claim(self, claim_id: str) -> Claim | None: ...
     def list_claims(self, library_id: str) -> list[Claim]: ...
+    def list_materials(self, library_id: str) -> list[Material]: ...
+    def list_projects(self, library_id: str) -> list[Project]: ...
+    def list_conversations(self, library_id: str) -> list[Conversation]: ...
     def create_material(self, material: Material) -> None: ...
     def get_material(self, material_id: str) -> Material | None: ...
     def create_conversation(self, conv: Conversation) -> None: ...
@@ -79,6 +82,15 @@ class InMemoryRepository:
 
     def list_claims(self, library_id: str) -> list[Claim]:
         return [c for c in self._claims.values() if c.library_id == library_id]
+
+    def list_materials(self, library_id: str) -> list[Material]:
+        return [m for m in self._materials.values() if m.library_id == library_id]
+
+    def list_projects(self, library_id: str) -> list[Project]:
+        return [p for p in self._projects.values() if p.library_id == library_id]
+
+    def list_conversations(self, library_id: str) -> list[Conversation]:
+        return [c for c in self._conversations.values() if c.library_id == library_id]
 
     # --- Material ---
 
@@ -310,6 +322,19 @@ class PostgresRepository:
                     )
                 )
             return claims
+
+    def list_materials(self, library_id: str) -> list[Material]:
+        with self._engine.connect() as conn:
+            return [Material(id=r.id, library_id=r.library_id, kind=r.kind, provenance=r.provenance, payload=r.payload) for r in conn.execute(select(schema.materials).where(schema.materials.c.library_id == library_id))]
+
+    def list_projects(self, library_id: str) -> list[Project]:
+        with self._engine.connect() as conn:
+            return [Project(id=r.id, library_id=r.library_id, goal=r.goal) for r in conn.execute(select(schema.projects).where(schema.projects.c.library_id == library_id))]
+
+    def list_conversations(self, library_id: str) -> list[Conversation]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(select(schema.conversations).where(schema.conversations.c.library_id == library_id))
+            return [Conversation(id=r.id, library_id=r.library_id, project_ids=[x.project_id for x in conn.execute(select(schema.conversation_projects.c.project_id).where(schema.conversation_projects.c.conversation_id == r.id))], created_at=r.created_at, updated_at=r.updated_at) for r in rows]
 
     # --- Material ---
 

@@ -6,10 +6,16 @@ Skipped when ANNEAL_TEST_DATABASE_URL is not set.
 from __future__ import annotations
 
 import os
+from uuid import uuid4
+from sqlalchemy.engine import make_url
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text, select
+from alembic import command
+from alembic.config import Config
+from pathlib import Path
+from fastapi.testclient import TestClient
 
 from anneal.domain.events import Event, make_event
 from anneal.domain.models import Artifact, Claim, Library, Project, Material
@@ -18,6 +24,8 @@ from anneal.store.database import create_all_tables
 from anneal.store.event_store import DuplicateEventError, PostgresEventStore
 from anneal.store.repository import PostgresRepository
 from anneal.store.schema import metadata
+from anneal.store.schema import metadata as legacy_metadata
+from anneal.store import schema
 
 PG_URL = os.getenv("ANNEAL_TEST_DATABASE_URL")
 
@@ -217,3 +225,156 @@ class TestPostgresLensFeedStore:
         assert len(store.list_entries("lib-1")) == 1
         assert len(store.list_entries("lib-2")) == 1
         assert store.list_entries("lib-1")[0].library_id == "lib-1"
+
+
+# ------------------------------------------------------------------
+# Native Research Universe Postgres contract (never SQLite proof)
+# ------------------------------------------------------------------
+
+from concurrent.futures import ThreadPoolExecutor
+from anneal.research_universe.store import schema as native_schema
+from anneal.research_universe.store.event_store import ExpectedSequenceConflict, PostgresNativeEventStore
+from anneal.research_universe.domain.events import PendingNativeEvent
+
+def _alembic_config(url: str) -> Config:
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", url)
+    return config
+
+@pytest.fixture()
+def native_engine(monkeypatch):
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", PG_URL)
+    command.upgrade(_alembic_config(PG_URL), "head")
+    eng = create_engine(PG_URL, pool_pre_ping=True)
+    with eng.begin() as conn:
+        conn.execute(text("TRUNCATE ru_events, ru_commits, ru_streams, research_universes RESTART IDENTITY CASCADE"))
+        conn.execute(text("DELETE FROM libraries"))
+        conn.execute(text("INSERT INTO ru_commit_fence (id) VALUES (1) ON CONFLICT (id) DO NOTHING"))
+    yield eng
+    eng.dispose()
+
+def _workspace_event(aggregate_id: str) -> PendingNativeEvent:
+    return PendingNativeEvent(event_type="workspace_created", aggregate_type="workspace", aggregate_id=aggregate_id, payload={"workspace_id": aggregate_id, "initial_question_version_id": f"q-{aggregate_id}", "initial_question_text": "Question?"})
+
+def _append_native(store, universe, command, aggregate):
+    return store.append(universe_id=universe, command_id=command, command_type="create_workspace", command_payload={"workspace_id": aggregate}, actor_kind="user", actor_id="local", expected_sequences={("workspace", aggregate): 0}, events=[_workspace_event(aggregate)], result_payload={"workspace_id": aggregate})
+
+def test_native_concurrent_streams_have_unique_global_cursor(native_engine):
+    store = PostgresNativeEventStore(native_engine)
+    universe = store.create_active_universe("native-library")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda n: _append_native(store, universe, f"command-{n}", f"workspace-{n}"), range(2)))
+    assert sorted(x.commit_position for x in results) == [1, 2]
+    assert [e.commit_position for e in store.read_events(universe)] == [1, 2]
+
+def test_native_same_command_replays_and_same_stream_conflicts(native_engine):
+    store = PostgresNativeEventStore(native_engine)
+    universe = store.create_active_universe("native-library")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: _append_native(store, universe, "same-command", "workspace"), range(2)))
+    assert {x.commit_position for x in results} == {1}
+    assert sum(x.replayed for x in results) == 1
+    assert len(store.read_events(universe)) == 1
+
+def test_native_command_ids_are_universe_scoped(native_engine):
+    store = PostgresNativeEventStore(native_engine)
+    first = store.create_active_universe("library-one")
+    second = store.create_active_universe("library-two")
+    assert _append_native(store, first, "shared-command", "one").replayed is False
+    result = _append_native(store, second, "shared-command", "two")
+    assert result.replayed is False
+    assert len(store.read_events(first)) == len(store.read_events(second)) == 1
+
+
+def test_native_missing_commit_fence_fails_closed(native_engine):
+    store = PostgresNativeEventStore(native_engine)
+    universe = store.create_active_universe("native-library")
+    with native_engine.begin() as conn:
+        conn.execute(native_schema.ru_commit_fence.delete())
+    with pytest.raises(RuntimeError, match="commit fence"):
+        _append_native(store, universe, "command", "workspace")
+
+
+def test_native_migration_schema_matches_runtime_metadata(native_engine):
+    inspector = inspect(native_engine)
+    for table in native_schema.metadata.sorted_tables:
+        actual_fks = {(x["name"], tuple(x["constrained_columns"]), x["referred_table"], tuple(x["referred_columns"])) for x in inspector.get_foreign_keys(table.name)}
+        expected_fks = {(fk.name, tuple(e.parent.name for e in fk.elements), fk.elements[0].column.table.name, tuple(e.column.name for e in fk.elements)) for fk in table.foreign_key_constraints}
+        assert actual_fks == expected_fks
+
+def test_populated_legacy_preflight_stamp_upgrade_preserves_rows():
+    from anneal.migrations_preflight_legacy import verify_legacy_schema
+    source = make_url(PG_URL)
+    database = f"anneal_cutover_{uuid4().hex[:12]}"
+    admin = create_engine(str(source.set(database="postgres")), isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection: connection.execute(text(f'CREATE DATABASE "{database}"'))
+    url = str(source.set(database=database))
+    try:
+        legacy = create_engine(url)
+        legacy_metadata.create_all(legacy)
+        with legacy.begin() as conn:
+            conn.execute(schema.libraries.insert().values(id="legacy-lib", name="Legacy", created_at=datetime.utcnow()))
+            conn.execute(schema.artifacts.insert().values(id="legacy-artifact", library_id="legacy-lib", kind="paper", goal="preserve", created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
+        verify_legacy_schema(url)
+        previous = os.environ.get("ANNEAL_DATABASE_URL")
+        os.environ["ANNEAL_DATABASE_URL"] = url
+        try:
+            config = _alembic_config(url)
+            command.stamp(config, "legacy_baseline")
+            command.upgrade(config, "head")
+        finally:
+            if previous is None: os.environ.pop("ANNEAL_DATABASE_URL", None)
+            else: os.environ["ANNEAL_DATABASE_URL"] = previous
+        with legacy.connect() as conn:
+            assert conn.execute(select(schema.artifacts.c.id).where(schema.artifacts.c.id == "legacy-artifact")).scalar_one() == "legacy-artifact"
+            assert "ru_events" in inspect(legacy).get_table_names()
+        legacy.dispose()
+    finally:
+        try: legacy.dispose()
+        except UnboundLocalError: pass
+        with admin.connect() as connection: connection.execute(text(f'DROP DATABASE IF EXISTS "{database}"'))
+        admin.dispose()
+
+def test_native_concurrent_absent_same_stream_returns_replay(native_engine):
+    store = PostgresNativeEventStore(native_engine)
+    universe = store.create_active_universe("race-library")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: _append_native(store, universe, "absent-same", "initially-absent"), range(2)))
+    assert len({x.commit_position for x in outcomes}) == 1
+    assert sum(x.replayed for x in outcomes) == 1
+
+def test_native_production_factory_smoke_on_migrated_database(native_engine, monkeypatch):
+    from anneal.api.app import create_native_app
+    monkeypatch.setenv("ANNEAL_DATABASE_URL", PG_URL)
+    app = create_native_app()
+    with TestClient(app) as client:
+        active = client.get("/api/v2/universes/active")
+        assert active.status_code == 200
+        assert active.json()["library_id"]
+        assert client.post("/api/v2/universes").json() == active.json()
+        assert client.get("/api/v1/artifacts").status_code == 404
+
+
+def test_native_distinct_commands_racing_new_stream_yield_sequence_conflict(native_engine):
+    store = PostgresNativeEventStore(native_engine)
+    universe = store.create_active_universe("distinct-race-library")
+
+    def append(command_id: str):
+        try:
+            return _append_native(store, universe, command_id, "initially-absent")
+        except ExpectedSequenceConflict as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(append, ("distinct-race-a", "distinct-race-b")))
+
+    successes = [result for result in outcomes if not isinstance(result, Exception)]
+    conflicts = [result for result in outcomes if isinstance(result, ExpectedSequenceConflict)]
+    assert len(successes) == 1
+    assert successes[0].replayed is False
+    assert len(conflicts) == 1
+    events = store.read_events(universe)
+    assert len(events) == 1
+    assert events[0].aggregate_id == "initially-absent"
+    with native_engine.connect() as conn:
+        assert conn.execute(select(native_schema.ru_commits.c.position)).all() == [(successes[0].commit_position,)]
