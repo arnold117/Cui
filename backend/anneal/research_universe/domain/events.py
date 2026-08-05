@@ -73,13 +73,31 @@ class ChallengeCreatedPayload(Payload):
     uncertainty: str
 
 
+class ParkReleasedPayload(Payload):
+    release_id: str
+    capture_id: str
+    workspace_id: str
+    provisional_role: Literal["trigger_question", "exploration_context", "material_lead", "unnamed"]
+
+
+class ClaimForgedFromCapturePayload(Payload):
+    provenance_id: str
+    claim_id: str
+    capture_id: str
+    release_id: str
+    workspace_id: str
+    author: Literal["user"] = "user"
+
+
 Slice1Payload: TypeAlias = Annotated[
     WorkspaceCreatedPayload
     | ExplorationNoteSavedPayload
     | ExplorationAnchorCreatedPayload
     | ClaimCreatedPayload
     | ReviewRoundStartedPayload
-    | ChallengeCreatedPayload,
+    | ChallengeCreatedPayload
+    | ParkReleasedPayload
+    | ClaimForgedFromCapturePayload,
     Field(discriminator=None),
 ]
 
@@ -90,6 +108,8 @@ EVENT_PAYLOAD_TYPES: dict[tuple[str, int], type[Payload]] = {
     ("claim_created", 1): ClaimCreatedPayload,
     ("review_round_started", 1): ReviewRoundStartedPayload,
     ("challenge_created", 1): ChallengeCreatedPayload,
+    ("park_released", 1): ParkReleasedPayload,
+    ("claim_forged_from_capture", 1): ClaimForgedFromCapturePayload,
 }
 
 

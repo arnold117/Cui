@@ -6,8 +6,9 @@ from typing import Protocol
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
 from anneal.research_universe.domain.events import (
-    ChallengeCreatedPayload, ClaimCreatedPayload, ExplorationAnchorCreatedPayload,
-    ExplorationNoteSavedPayload, PendingNativeEvent, ReviewRoundStartedPayload,
+    ChallengeCreatedPayload, ClaimCreatedPayload, ClaimForgedFromCapturePayload,
+    ExplorationAnchorCreatedPayload, ExplorationNoteSavedPayload,
+    ParkReleasedPayload, PendingNativeEvent, ReviewRoundStartedPayload,
     WorkspaceCreatedPayload,
 )
 from anneal.research_universe.store.event_store import CommitResult, NativeEventStore, command_fingerprint
@@ -39,7 +40,7 @@ def _events(store: NativeEventStore, universe_id: str):
 
 
 def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id: str) -> dict:
-    workspace = None; note_revisions = []; anchors = []; claims = []; rounds = []; challenges = []
+    workspace = None; note_revisions = []; anchors = []; claims = []; rounds = []; challenges = []; park_release_refs = []; forged = []
     workspace_sequence = 0
     for event in _events(store, universe_id):
         p = event.validated_payload()
@@ -53,6 +54,10 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
             anchors.append({"id": p.anchor_id, "note_id": p.note_id, "note_revision_id": p.note_revision_id, "start": p.start, "end": p.end, "selected_text": p.selected_text})
         elif event.event_type == "claim_created" and p.origin_workspace_id == workspace_id:
             claims.append({"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text, "sequence": event.sequence})
+        elif event.event_type == "park_released" and p.workspace_id == workspace_id:
+            park_release_refs.append({"id": p.release_id, "capture_id": p.capture_id, "provisional_role": p.provisional_role})
+        elif event.event_type == "claim_forged_from_capture" and p.workspace_id == workspace_id:
+            forged.append({"id": p.provenance_id, "claim_id": p.claim_id, "capture_id": p.capture_id, "release_id": p.release_id})
         elif event.event_type == "review_round_started" and p.workspace_id == workspace_id:
             rounds.append({"id": p.round_id, "claim_id": p.claim_id, "question_snapshot": {"version_id": p.question_version_id, "text": p.question_text}, "claim_snapshot": {"version_id": p.claim_version_id, "text": p.claim_text}, "sequence": event.sequence})
         elif event.event_type == "challenge_created":
@@ -65,6 +70,8 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
         note_revisions=note_revisions,
         anchors=anchors,
         claims=claims,
+        park_release_refs=park_release_refs,
+        claim_forge_provenance=forged,
         review_rounds=rounds,
         pending_challenges=[x for x in challenges if x["review_round_id"] in {r["id"] for r in rounds}],
     )
@@ -88,6 +95,11 @@ def universe_home_projection(store: NativeEventStore, universe_id: str) -> dict:
     return {"universe_id": universe_id, "workspaces": workspaces, "pending_facts": pending}
 
 
+
+def park_release_refs(store: NativeEventStore, universe_id: str, capture_id: str) -> list[dict]:
+    return [{"universe_id": universe_id, "id": p.release_id, "capture_id": p.capture_id, "workspace_id": p.workspace_id, "provisional_role": p.provisional_role} for e in _events(store, universe_id) if e.event_type == "park_released" and (p := e.validated_payload()).capture_id == capture_id]
+
+
 class Slice1Service:
     def __init__(self, store: NativeEventStore, actor_id: str | None, generator: ChallengeGenerator, guard: CommandExecutionGuard | None = None) -> None:
         self.store, self.actor_id, self.generator, self.guard = store, actor_id, generator, guard
@@ -100,6 +112,39 @@ class Slice1Service:
         prior = self.store.lookup_command(universe_id, command_id, fingerprint)
         if prior: return prior
         return self.store.append(universe_id=universe_id, command_id=command_id, command_type=command_type, command_payload=payload, actor_kind="user", actor_id=self.actor_id, expected_sequences=expected, events=[event], result_payload=result)
+
+    def _append_many(self, universe_id: str, command_id: str, command_type: str, payload: dict, expected: dict[tuple[str, str], int], events: list[PendingNativeEvent], result: dict) -> CommitResult:
+        fingerprint = command_fingerprint(universe_id, command_type, payload, [(kind, ident, sequence) for (kind, ident), sequence in expected.items()])
+        prior = self.store.lookup_command(universe_id, command_id, fingerprint)
+        if prior: return prior
+        return self.store.append(universe_id=universe_id, command_id=command_id, command_type=command_type, command_payload=payload, actor_kind="user", actor_id=self.actor_id, expected_sequences=expected, events=events, result_payload=result)
+
+    def release_park(self, universe_id: str, capture_id: str, command_id: str, expected_sequence: int, provisional_role: str, workspace_id: str | None = None, question: str | None = None, workspace_expected_sequence: int = 0) -> CommitResult:
+        if (workspace_id is None) == (question is None): raise BoundaryViolation("release requires exactly one target: existing workspace or new user-authored question")
+        release_id = self._id(command_id, "park-release")
+        events = []
+        expected = {("park_release", release_id): expected_sequence}
+        if workspace_id is None:
+            workspace_id = self._id(command_id, "workspace"); qid = self._id(command_id, "question")
+            wp = WorkspaceCreatedPayload(workspace_id=workspace_id, initial_question_version_id=qid, initial_question_text=question or "")
+            events.append(PendingNativeEvent(event_type="workspace_created", payload=wp.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id))
+            expected[("workspace", workspace_id)] = workspace_expected_sequence
+        else:
+            workspace_projection(self.store, universe_id, workspace_id)
+        rp = ParkReleasedPayload(release_id=release_id, capture_id=capture_id, workspace_id=workspace_id, provisional_role=provisional_role) # type: ignore[arg-type]
+        events.append(PendingNativeEvent(event_type="park_released", payload=rp.model_dump(), aggregate_type="park_release", aggregate_id=release_id))
+        payload = {"capture_id": capture_id, "workspace_id": workspace_id, "question": question, "provisional_role": provisional_role}
+        result = {"capture_id": capture_id, "release_id": release_id, "workspace_id": workspace_id, "aggregate_sequences": {"park_release": expected_sequence + 1}}
+        if question is not None: result["aggregate_sequences"]["workspace"] = workspace_expected_sequence + 1
+        return self._append_many(universe_id, command_id, "release_park", payload, expected, events, result)
+
+    def forge_claim_from_capture(self, universe_id: str, workspace_id: str, claim_id: str, capture_id: str, release_id: str, command_id: str, expected_sequence: int) -> CommitResult:
+        workspace_projection(self.store, universe_id, workspace_id);
+        if not any(e.event_type == "claim_created" and e.validated_payload().claim_id == claim_id and e.validated_payload().origin_workspace_id == workspace_id for e in _events(self.store, universe_id)): raise NotFound(claim_id)
+        if not any(e.event_type == "park_released" and e.validated_payload().release_id == release_id and e.validated_payload().capture_id == capture_id and e.validated_payload().workspace_id == workspace_id for e in _events(self.store, universe_id)): raise BoundaryViolation("forge provenance requires a release into the claim workspace")
+        provenance_id = self._id(command_id, "claim-forge-provenance")
+        p = ClaimForgedFromCapturePayload(provenance_id=provenance_id, claim_id=claim_id, capture_id=capture_id, release_id=release_id, workspace_id=workspace_id)
+        return self._append(universe_id, command_id, "forge_claim_from_capture", p.model_dump(), {("claim_forge_provenance", provenance_id): expected_sequence}, PendingNativeEvent(event_type="claim_forged_from_capture", payload=p.model_dump(), aggregate_type="claim_forge_provenance", aggregate_id=provenance_id), {"provenance_id": provenance_id, "claim_id": claim_id, "aggregate_sequences": {"claim_forge_provenance": expected_sequence + 1}})
 
     def create_workspace(self, universe_id: str, command_id: str, expected_sequence: int, question: str) -> CommitResult:
         wid, qid = self._id(command_id, "workspace"), self._id(command_id, "question"); p = WorkspaceCreatedPayload(workspace_id=wid, initial_question_version_id=qid, initial_question_text=question)

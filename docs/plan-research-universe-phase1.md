@@ -1,6 +1,6 @@
 # Implementation Plan：Research Universe Phase 1 Native Rebuild
 
-> 状态：Slice 0–1 已完成并验证；Slice 2 待实施（2026-08-04）。
+> 状态：Slice 0–2 已完成并验证；下一片为 Slice 3（2026-08-04）。
 >
 > 产品权威：[`prd-research-universe.md`](prd-research-universe.md) · [`spec-research-universe-mvp.md`](spec-research-universe-mvp.md) · [`spec-research-universe-ux.md`](spec-research-universe-ux.md) · [`spec-research-universe-visual.md`](spec-research-universe-visual.md)。
 >
@@ -232,7 +232,7 @@ ru_events
 
 #### PARK / Release
 
-- `park_captured`
+- sealed PARK capture record（Library-scoped，独立 sealed store；不是 Research Universe event）
 - `park_released`（source capture ID + target Workspace + provisional role）
 - `claim_forged_from_capture`
 
@@ -285,7 +285,7 @@ Slice 0 不需要一次实现所有事件，但必须先建立一个 versioned c
 | `workspace_concluded` | conclusion ID/type/text、basis refs、new user position |
 | `workspace_branched` / `workspace_absorbed` | source Workspace、successor/target Workspace refs、user reason、resulting explicit position |
 | Direction events | proposition version or explicit unnamed state、declared status、Workspace/conclusion refs、user reason |
-| PARK events | capture ID + immutable original；release ID、target Workspace、provisional role、source ref |
+| PARK boundary | sealed capture ID + immutable original 存于 Library-scoped sealed store，不进入 event catalogue；`park_released` 只含 release ID、capture ID、target Workspace、provisional role |
 
 Direction 的“暂不命名”必须用显式 proposition state 表示，不能用空字符串冒充命题。Event catalogue 是 Slice 1 开始前的 blocking artifact；application service 不得自行发明 payload。
 
@@ -401,14 +401,15 @@ POST /api/v2/evidence-candidates/{id}/reject
 POST /api/v2/evidence-candidates/{id}/withdraw
 POST /api/v2/workspaces/{id}/conclusions
 POST /api/v2/directions/{id}/crystallizations
-POST /api/v2/universes/{id}/park-captures
+POST /api/v2/park-captures
 POST /api/v2/park-captures/{id}/release
+POST /api/v2/workspaces/{id}/claims/forge-provenance
 ```
 
 每个 command request 都含 `command_id` 和所涉及 aggregate 的 `expected_sequence`；创建 command 使用“尚不存在”预期。`start-from-direction` 是 Start Station 的复合语义命令，必须在一个 commit 中原子创建 Direction、首个 question Workspace 与 attachment；任何一步失败都不能留下空 Direction。每个 command：
 
 - 从 server-side context 取得 actor／Library；
-- 校验所有 refs 同 Universe；
+- 校验所有 Research Universe refs 同 Universe；sealed capture ref 归属 server-side 当前 Library；
 - 校验 transition 与 actor 可作该语义动作；
 - 在一个 commit 中 append typed event(s)；
 - 返回 durable command/event IDs、commit position／sequence + 受影响 projection fragment。
@@ -420,6 +421,8 @@ GET /api/v2/universes/active
 GET /api/v2/universes/{id}/home
 GET /api/v2/workspaces/{id}
 GET /api/v2/review-rounds/{id}
+GET /api/v2/park-captures
+GET /api/v2/park-captures/{id}
 GET /api/v2/directions/{id}
 GET /api/v2/legacy-archive
 GET /api/v2/legacy-archive/artifacts/{id}
@@ -526,11 +529,13 @@ Challenge port 在本片只接受 immutable question/Claim snapshots，输出必
 - pending fact 在 Workspace 与 Universe 同源显示；
 - frontend 不自行推导领域状态。
 
-### Slice 2 — Sealed PARK / Release / Forge provenance
+### Slice 2 — Sealed PARK / Release / Forge provenance ✅
+
+> **完成状态（2026-08-04）**：Library-scoped 原件进入独立 sealed store，不写入 Research Universe event stream；列表 DTO 不含原文，只有显式 detail GET 可读原件。Release 仅把 capture/release ID、角色与目标 Workspace 写入谱系；Forge 只显示固定澄清问题，Claim 始终由用户从空白处写下，跳过 Forge 仍可从 Workspace 绑定权威 release ref。真实 PostgreSQL + Browser → Vite → FastAPI 旅程已贯通 capture → detail → release → Forge → Review；数据库断言 `sealed=1`、`ru_events` 原文泄漏 `0`，并存在 `park_released`、`claim_forged_from_capture`、`review_round_started`、`challenge_created`。最终回归：后端 `796 passed, 27 skipped`；安全临时 PostgreSQL `4 passed`；前端 Vitest `39 passed`、build 通过、mock Playwright `5 passed`、real PARK Playwright `1 passed`。
 
 **交付：**
 
-- sealed `park_captured`；
+- Library-scoped sealed capture record；
 - server-side context firewall；
 - explicit release roles；
 - Workspace release ref；

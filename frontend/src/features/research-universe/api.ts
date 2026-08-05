@@ -26,6 +26,7 @@ export const researchUniverse = {
   saveNote: (workspaceId: string, envelope: CommandEnvelope & { text: string }) => send<CommandResponse<{ note_id: string; note_revision_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/notes`, envelope),
   createAnchor: (workspaceId: string, envelope: CommandEnvelope & { note_id: string; note_revision_id: string; start: number; end: number; selected_text: string }) => send<CommandResponse<{ anchor_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/anchors`, envelope),
   createClaim: (workspaceId: string, envelope: CommandEnvelope & { text: string }) => send<CommandResponse<{ claim_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims`, envelope),
+  forgeProvenance: (workspaceId: string, envelope: CommandEnvelope & { claim_id: string; capture_id: string; release_id: string }) => send<CommandResponse<{ aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims/forge-provenance`, envelope),
   startReview: (claimId: string, envelope: CommandEnvelope) => send<CommandResponse<{ review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/claims/${claimId}/review-rounds`, envelope),
   reviewRound: (roundId: string) => read<ReviewRound>(`/review-rounds/${roundId}`),
 }

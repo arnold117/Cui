@@ -37,10 +37,11 @@ describe("production routes", () => {
     expect(screen.queryByRole("heading", { name: "从哪里开始？" })).not.toBeInTheDocument()
   })
 
-  it("explains retired, invalid archive, and unknown paths instead of falling through to root", () => {
+  it("renders the native PARK desk and keeps invalid paths explicit", () => {
     window.history.replaceState({}, "", "/park")
     const view = render(<App />)
-    expect(screen.getByRole("heading", { name: "这里不再是研究宇宙的入口。" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "先存放，不让 Cui 介入。" })).toBeInTheDocument()
+    expect(screen.getByText("密封：Cui 不会读取")).toBeInTheDocument()
     view.unmount()
     window.history.replaceState({}, "", "/archive/not-a-real-route")
     const invalidArchive = render(<App />)

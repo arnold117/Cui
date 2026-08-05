@@ -5,6 +5,7 @@ import { WorkspaceDesk } from "./features/research-universe/screens/WorkspaceDes
 import { ReviewRoundDesk } from "./features/research-universe/screens/ReviewRoundDesk"
 import { UniverseHome } from "./features/research-universe/screens/UniverseHome"
 import { LegacyArchive } from "./features/legacy-archive/LegacyArchive"
+import { ParkDesk } from "./features/finalized-assumption/ParkDesk"
 import { AppRouter, useNavigation } from "./router"
 
 const ResearchUniversePrototype = lazy(() => import("./prototypes/ResearchUniversePrototype"))
@@ -14,13 +15,17 @@ function NotFound({ pathname }: { pathname: string }) { return <UniverseShell><s
 function RoutedApp() {
   const { location } = useNavigation(); const { pathname, search } = location
   const artifactMatch = pathname.match(/^\/artifact\/([^/]+)$/); const archiveArtifactMatch = pathname.match(/^\/archive\/artifacts\/([^/]+)$/)
-  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
+  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const forgeMatch = pathname.match(/^\/workspaces\/([^/]+)\/forge\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
   if (pathname === "/__prototype/research-universe" && ["A", "B", "C", "D"].includes(prototypeVariant ?? "")) return <Suspense fallback={null}><ResearchUniversePrototype variant={prototypeVariant as "A" | "B" | "C" | "D"} /></Suspense>
   if (pathname === "/archive") return <LegacyArchive />
   if (archiveArtifactMatch) return <LegacyArchive artifactId={archiveArtifactMatch[1]} />
   if (artifactMatch) return <LegacyArchive artifactId={artifactMatch[1]} redirectedFrom={pathname} />
-  if (pathname === "/park" || /^\/library\/[^/]+\/graph$/.test(pathname) || pathname.startsWith("/claim/") || pathname.startsWith("/grill/")) return <RetiredPath pathname={pathname} />
-  if (workspaceMatch) return <UniverseShell trail={["问题工作区"]}><WorkspaceDesk workspaceId={workspaceMatch[1]} /></UniverseShell>
+  if (/^\/library\/[^/]+\/graph$/.test(pathname) || pathname.startsWith("/claim/") || pathname.startsWith("/grill/")) return <RetiredPath pathname={pathname} />
+  if (pathname === "/park") return <UniverseShell trail={["PARK"]}><ParkDesk /></UniverseShell>
+  const parkDetailMatch = pathname.match(/^\/park\/([^/]+)$/)
+  if (parkDetailMatch) return <UniverseShell trail={["PARK"]}><ParkDesk captureId={parkDetailMatch[1]} /></UniverseShell>
+  if (forgeMatch) return <UniverseShell trail={["问题工作区", "锻"]}><WorkspaceDesk workspaceId={forgeMatch[1]} forgeReleaseRefId={forgeMatch[2]} sourceReleaseId={new URLSearchParams(search).get("source-release") ?? undefined} /></UniverseShell>
+  if (workspaceMatch) return <UniverseShell trail={["问题工作区"]}><WorkspaceDesk workspaceId={workspaceMatch[1]} sourceReleaseId={new URLSearchParams(search).get("source-release") ?? undefined} /></UniverseShell>
   if (reviewMatch) return <UniverseShell trail={["问题工作区", "审查轮次"]}><ReviewRoundDesk roundId={reviewMatch[1]} /></UniverseShell>
   if (pathname === "/") return <UniverseShell><div className="ru-root"><StartStation /><UniverseHome /></div></UniverseShell>
   return <NotFound pathname={pathname} />

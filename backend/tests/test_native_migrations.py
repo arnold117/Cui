@@ -22,7 +22,11 @@ def test_fresh_upgrade_and_native_only_downgrade(tmp_path, monkeypatch):
     config = _config(url)
     command.upgrade(config, "head")
     engine = sa.create_engine(url)
-    assert {"research_universes", "ru_streams", "ru_commits", "ru_events"} <= set(sa.inspect(engine).get_table_names())
+    assert {"research_universes", "ru_streams", "ru_commits", "ru_events", "sealed_park_captures", "sealed_park_commands"} <= set(sa.inspect(engine).get_table_names())
+    command.downgrade(config, "native_v1")
+    names = set(sa.inspect(engine).get_table_names())
+    assert "libraries" in names and "research_universes" in names
+    assert not {"sealed_park_captures", "sealed_park_commands"} & names
     command.downgrade(config, "legacy_baseline")
     names = set(sa.inspect(engine).get_table_names())
     assert "libraries" in names

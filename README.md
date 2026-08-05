@@ -23,7 +23,7 @@ An AI-native research environment. Cui starts from questions, not documents: use
 
 ## Status
 
-Early development. Native Research Universe foundation and the first complete fact tracer are live: question Workspace → exploration revisions/anchors → self-authored Claim → immutable Review Round → structured LLM Challenge → contextual Universe readback. Next implementation slice: sealed PARK and explicit release provenance.
+Early development. Native Research Universe foundation, first complete fact tracer, and sealed PARK release lineage are live: question Workspace → exploration revisions/anchors → self-authored Claim → immutable Review Round → structured LLM Challenge → contextual Universe readback; plus Library-scoped sealed capture → explicit release → optional Forge clarification → self-authored Claim provenance. Next implementation slice: Review lifecycle and human verdict.
 
 ## License
 

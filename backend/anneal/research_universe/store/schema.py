@@ -73,6 +73,20 @@ ru_events = sa.Table(
 )
 
 
+sealed_park_captures = sa.Table(
+    "sealed_park_captures", metadata,
+    sa.Column("id", sa.Text, primary_key=True), sa.Column("library_id", sa.Text, nullable=False),
+    sa.Column("original_text", sa.Text, nullable=False), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+sealed_park_commands = sa.Table(
+    "sealed_park_commands", metadata,
+    sa.Column("library_id", sa.Text, nullable=False), sa.Column("command_id", sa.Text, nullable=False),
+    sa.Column("command_fingerprint", sa.Text, nullable=False), sa.Column("capture_id", sa.Text, nullable=False),
+    sa.Column("result_payload", sa.JSON, nullable=False), sa.Column("committed_at", sa.DateTime(timezone=True), nullable=False),
+    sa.PrimaryKeyConstraint("library_id", "command_id", name="pk_sealed_park_command"),
+    sa.ForeignKeyConstraint(["capture_id"], ["sealed_park_captures.id"], name="fk_sealed_park_command_capture"),
+)
+
 def bootstrap_test_schema(engine: sa.Engine) -> None:
     """Explicit test-only schema bootstrap; production uses Alembic migrations."""
     metadata.create_all(engine)

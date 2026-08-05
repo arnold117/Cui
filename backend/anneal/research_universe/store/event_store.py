@@ -44,6 +44,7 @@ def command_fingerprint(universe_id: str, command_type: str, payload: dict[str, 
 class NativeEventStore(Protocol):
     def create_active_universe(self, library_id: str, universe_id: str | None = None) -> str: ...
     def get_active_universe(self, library_id: str) -> str | None: ...
+    def list_universes_for_library(self, library_id: str, include_archived: bool = True) -> list[str]: ...
     def lookup_command(self, universe_id: str, command_id: str, fingerprint: str) -> CommitResult | None: ...
     def command_execution(self, universe_id: str, command_id: str): ...
     def append(self, *, universe_id: str, command_id: str, command_type: str, command_payload: dict[str, object], actor_kind: str, actor_id: str | None, expected_sequences: dict[tuple[str, str], int], events: list[PendingNativeEvent], result_payload: dict[str, object]) -> CommitResult: ...
@@ -69,6 +70,10 @@ class InMemoryNativeEventStore:
 
     def get_active_universe(self, library_id: str) -> str | None:
         return next((uid for uid, (lid, _, archived) in self._universes.items() if lid == library_id and archived is None), None)
+
+    def list_universes_for_library(self, library_id: str, include_archived: bool = True) -> list[str]:
+        with self._lock:
+            return [uid for uid, (lid, _, archived) in self._universes.items() if lid == library_id and (include_archived or archived is None)]
 
     @contextmanager
     def command_execution(self, universe_id: str, command_id: str):
@@ -157,6 +162,12 @@ class PostgresNativeEventStore:
     def get_active_universe(self, library_id: str) -> str | None:
         with self._engine.connect() as conn:
             return conn.execute(select(schema.research_universes.c.id).where(schema.research_universes.c.library_id == library_id, schema.research_universes.c.archived_at.is_(None))).scalar_one_or_none()
+
+    def list_universes_for_library(self, library_id: str, include_archived: bool = True) -> list[str]:
+        with self._engine.connect() as conn:
+            query = select(schema.research_universes.c.id).where(schema.research_universes.c.library_id == library_id)
+            if not include_archived: query = query.where(schema.research_universes.c.archived_at.is_(None))
+            return list(conn.execute(query.order_by(schema.research_universes.c.created_at)).scalars())
 
     def lookup_command(self, universe_id: str, command_id: str, fingerprint: str) -> CommitResult | None:
         with self._engine.connect() as conn:
