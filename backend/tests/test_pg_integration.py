@@ -29,6 +29,17 @@ from anneal.store import schema
 
 PG_URL = os.getenv("CUI_TEST_DATABASE_URL")
 
+# These tests TRUNCATE / DROP tables directly on the URL's database (they do
+# NOT use the guarded pg_temp_db helper). Refuse to run against the app DB or
+# any cluster database so an accidental CUI_TEST_DATABASE_URL=.../anneal can
+# never wipe real data again.
+_FORBIDDEN_DB = frozenset({"postgres", "template0", "template1", "anneal", "cui"})
+
+if PG_URL:
+    _target_db = (make_url(PG_URL).database or "").strip()
+    if _target_db in _FORBIDDEN_DB or _target_db.startswith("template"):
+        raise RuntimeError(f"refusing destructive PG test against database {_target_db!r}; use a disposable database")
+
 pytestmark = pytest.mark.skipif(not PG_URL, reason="No PG (set CUI_TEST_DATABASE_URL)")
 
 

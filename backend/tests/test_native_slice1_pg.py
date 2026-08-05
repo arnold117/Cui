@@ -5,6 +5,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from alembic import command
 from concurrent.futures import ThreadPoolExecutor
 
@@ -16,6 +17,18 @@ from anneal.research_universe.store import schema
 from tests.test_pg_integration import _alembic_config
 
 PG_URL = os.getenv("CUI_TEST_DATABASE_URL")
+
+# This test TRUNCATEs native tables + runs alembic directly on the URL's
+# database (it does NOT use the guarded pg_temp_db helper). Refuse to run
+# against the app DB or any cluster database so an accidental
+# CUI_TEST_DATABASE_URL=.../anneal can never wipe real data again.
+_FORBIDDEN_DB = frozenset({"postgres", "template0", "template1", "anneal", "cui"})
+
+if PG_URL:
+    _target_db = (make_url(PG_URL).database or "").strip()
+    if _target_db in _FORBIDDEN_DB or _target_db.startswith("template"):
+        raise RuntimeError(f"refusing destructive PG test against database {_target_db!r}; use a disposable database")
+
 pytestmark = pytest.mark.skipif(not PG_URL, reason="No PG (set CUI_TEST_DATABASE_URL)")
 
 class CountingGenerator:
