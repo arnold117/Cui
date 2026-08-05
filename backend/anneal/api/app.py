@@ -22,6 +22,7 @@ from anneal.research_universe.api.routes import LibraryContext, LocalPrincipal, 
 from anneal.research_universe.api.slice1 import create_slice1_router
 from anneal.research_universe.api.slice2 import create_slice2_router
 from anneal.research_universe.api.slice3 import create_slice3_router
+from anneal.research_universe.api.slice4 import create_slice4_router
 from anneal.research_universe.application import Slice1Service
 from anneal.research_universe.challenge_generator import RealChallengeGenerator
 from anneal.llm.client import create_client
@@ -87,6 +88,7 @@ def create_native_app(settings: object | None = None, native_store: NativeEventS
     app.include_router(create_slice1_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice2_router(challenge_service, store, PostgresSealedParkStore(engine), context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice3_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_slice4_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_archive_router(PostgresRepository(engine), PostgresEventStore(engine), context.library_id), prefix="/api/v2")
     return app
 
@@ -105,6 +107,7 @@ def create_native_test_app(native_store: InMemoryNativeEventStore, library_conte
     app.include_router(create_slice1_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice2_router(service, native_store, InMemorySealedParkStore(), resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice3_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_slice4_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_archive_router(), prefix="/api/v2")
     return app
 

@@ -100,4 +100,41 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-rereview h2, .ru-boundary h2 { font-size: 1.35rem; font-weight: 500; line-height: 1.35; }
 .ru-round-history { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: .45rem; }
 .ru-round-history li { display: flex; gap: 1rem; justify-content: space-between; padding: .45rem .7rem; border-left: 2px solid var(--line); color: var(--muted); font-size: .84rem; }
-@media (max-width: 800px) { .ru-root { grid-template-columns: 1fr; }.ru-root .ru-universe-home { padding-top: 0; }.ru-desk-grid { grid-template-columns: 1fr; }.ru-research-edge { border-left: 0; border-top: 1px solid var(--line); }.ru-exploration { min-height: auto; }.ru-snapshot-grid { grid-template-columns: 1fr; gap: 1rem; }.ru-focus-surface { top: auto; max-height: 72vh; border-top: 2px solid var(--edge); border-left: 0; }.ru-forge-layout { padding-right: 0; padding-bottom: 74vh; } }
+@media (max-width: 800px) { .ru-root { grid-template-columns: 1fr; }.ru-root .ru-universe-home { padding-top: 0; }.ru-desk-grid { grid-template-columns: 1fr; }.ru-research-edge { border-left: 0; border-top: 1px solid var(--line); }.ru-exploration { min-height: auto; }.ru-snapshot-grid { grid-template-columns: 1fr; gap: 1rem; }.ru-focus-surface { top: auto; max-height: 72vh; border-top: 2px solid var(--edge); border-left: 0; }.ru-forge-layout { padding-right: 0; padding-bottom: 74vh; }.ru-evidence-grid { grid-template-columns: 1fr; } }
+
+/* Slice 4 — manual material / evidence gate */
+.ru-material-entry { margin-top: 2.5rem; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--paper); border-top: 2px solid var(--edge); }
+.ru-material-entry h2, .ru-evidence h2, .ru-propose-form h3 { font-size: 1.4rem; font-weight: 500; line-height: 1.3; }
+.ru-material-form { display: grid; gap: .8rem; margin-top: 1.25rem; }
+.ru-material-form label, .ru-material-purpose legend, .ru-propose-form label, .ru-propose-form legend { display: block; font-size: .86rem; font-weight: 650; color: var(--muted); }
+.ru-material-form input[type="text"], .ru-material-form textarea, .ru-propose-form input, .ru-propose-form select { width: 100%; padding: .65rem .7rem; background: transparent; border: 1px solid var(--line); color: var(--ink); line-height: 1.6; }
+.ru-material-form textarea { min-height: 5rem; resize: vertical; }
+.ru-material-purpose { display: grid; gap: .55rem; margin: .4rem 0 0; padding: 0 0 1rem; border: 0; border-bottom: 1px solid var(--line); }
+.ru-material-purpose label, .ru-material-unparsable { display: flex; gap: .5rem; align-items: center; font-weight: 400; color: var(--ink); }
+.ru-material-unparsable { font-size: .86rem; color: var(--muted); }
+.ru-material-form .ru-ink-button { opacity: 1; cursor: pointer; justify-self: start; }
+.ru-materials-list { display: grid; gap: .7rem; margin-top: 1.5rem; }
+.ru-material-card { padding: .85rem 1rem; border-left: 2px solid var(--edge); background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
+.ru-material-card .ru-reading-copy { margin: 0; font-size: 1rem; }
+.ru-material-ineligible { border-left-color: var(--line); opacity: .78; }
+.ru-material-ineligible .ru-reading-copy { font-family: inherit; }
+
+.ru-evidence { margin: 2.5rem 0; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--paper); border-top: 2px solid var(--edge); }
+.ru-receipt { margin: 1rem 0; padding: .9rem 1.1rem; border-left: 3px solid var(--teal); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); font-family: "Charis SIL", "Source Han Serif", serif; line-height: 1.7; }
+.ru-evidence-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; margin: 1.5rem 0; align-items: start; }
+.ru-evidence-materials, .ru-evidence-candidates { display: grid; gap: .7rem; align-content: start; }
+.ru-candidate-card { padding: 1rem 1.1rem; border-left: 3px solid var(--line); background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
+.ru-candidate-pending { border-left-color: var(--rust); }
+.ru-candidate-confirmed, .ru-candidate-corrected { border-left-color: var(--teal); }
+.ru-candidate-card .ru-reading-copy { margin: 0 0 .35rem; font-size: 1rem; }
+.ru-candidate-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--line); }
+.ru-candidate-actions .ru-ink-button { opacity: 1; cursor: pointer; }
+.ru-confirmed-flag { margin: .6rem 0 0; padding: .35rem .6rem; border: 1px solid var(--teal); color: var(--teal); font-size: .8rem; font-weight: 650; }
+.ru-propose-form { margin-top: 1.5rem; padding: 1.25rem 1.4rem; border-top: 2px solid var(--edge); background: color-mix(in srgb, var(--stone) 30%, var(--paper)); display: grid; gap: .8rem; }
+.ru-propose-form fieldset { display: grid; gap: .5rem; margin: .3rem 0 0; padding: 0 0 .9rem; border: 0; border-bottom: 1px solid var(--line); }
+.ru-propose-form fieldset label { display: flex; gap: .5rem; align-items: baseline; font-weight: 400; color: var(--ink); }
+.ru-propose-form fieldset small { color: var(--muted); }
+.ru-propose-form .ru-ink-button { opacity: 1; cursor: pointer; justify-self: start; }
+.ru-disabled { opacity: .55; cursor: not-allowed; }
+.ru-confirmed-facts { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); display: grid; gap: .45rem; }
+.ru-confirmed-fact { margin: 0; font-family: "Charis SIL", "Source Han Serif", serif; line-height: 1.7; }

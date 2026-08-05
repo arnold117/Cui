@@ -15,6 +15,13 @@ vi.mock("../api", async () => {
     startReview: vi.fn(),
     active: vi.fn(),
     createWorkspace: vi.fn(),
+    desk: vi.fn(),
+    addMaterial: vi.fn(),
+    proposeEvidenceCandidate: vi.fn(),
+    confirmEvidence: vi.fn(),
+    correctEvidence: vi.fn(),
+    rejectEvidence: vi.fn(),
+    withdrawEvidence: vi.fn(),
   } }
 })
 

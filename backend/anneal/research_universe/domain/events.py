@@ -132,6 +132,66 @@ class VerdictConfirmedPayload(Payload):
         return self
 
 
+class MaterialAddedPayload(Payload):
+    material_id: str
+    workspace_id: str
+    excerpt: str = Field(min_length=1)
+    source_locator: str | None = None
+    parse_status: Literal["parsed", "failed"]
+    purpose: Literal["evidence", "reference"]
+    author: Literal["user"] = "user"
+
+
+class EvidenceRelationProposedPayload(Payload):
+    candidate_id: str
+    round_id: str
+    workspace_id: str
+    claim_id: str
+    claim_version_id: str
+    claim_text: str
+    material_id: str
+    material_excerpt: str
+    material_source_locator: str | None = None
+    relation: Literal["supports", "contradicts", "silent", "cannot_assess"]
+    uncertainty: str | None = None
+    generator_kind: Literal["user", "system"] = "user"
+    prompt_version: str | None = None
+    model_identifier: str | None = None
+    basis_refs: list[str] = Field(default_factory=list)
+    author: Literal["user"] = "user"
+
+
+class EvidenceRelationConfirmedPayload(Payload):
+    candidate_id: str
+    round_id: str
+    claim_id: str
+    relation: Literal["supports", "contradicts", "silent", "cannot_assess"]
+    user_reason: str | None = None
+
+
+class EvidenceRelationCorrectedPayload(Payload):
+    candidate_id: str
+    round_id: str
+    claim_id: str
+    prior_relation: Literal["supports", "contradicts", "silent", "cannot_assess"]
+    corrected_relation: Literal["supports", "contradicts", "silent", "cannot_assess"]
+    user_reason: str | None = None
+
+
+class EvidenceRelationRejectedPayload(Payload):
+    candidate_id: str
+    round_id: str
+    claim_id: str
+    user_reason: str | None = None
+
+
+class EvidenceRelationWithdrawnPayload(Payload):
+    candidate_id: str
+    round_id: str
+    claim_id: str
+    user_reason: str | None = None
+
+
 Slice1Payload: TypeAlias = Annotated[
     WorkspaceCreatedPayload
     | ExplorationNoteSavedPayload
@@ -157,6 +217,12 @@ EVENT_PAYLOAD_TYPES: dict[tuple[str, int], type[Payload]] = {
     ("challenge_deferred", 1): ChallengeDeferredPayload,
     ("challenge_withdrawn", 1): ChallengeWithdrawnPayload,
     ("verdict_confirmed", 1): VerdictConfirmedPayload,
+    ("material_added", 1): MaterialAddedPayload,
+    ("evidence_relation_proposed", 1): EvidenceRelationProposedPayload,
+    ("evidence_relation_confirmed", 1): EvidenceRelationConfirmedPayload,
+    ("evidence_relation_corrected", 1): EvidenceRelationCorrectedPayload,
+    ("evidence_relation_rejected", 1): EvidenceRelationRejectedPayload,
+    ("evidence_relation_withdrawn", 1): EvidenceRelationWithdrawnPayload,
 }
 
 

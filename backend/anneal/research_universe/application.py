@@ -8,7 +8,10 @@ from uuid import uuid4, uuid5, NAMESPACE_URL
 from anneal.research_universe.domain.events import (
     ChallengeAnsweredPayload, ChallengeCreatedPayload, ChallengeDeferredPayload,
     ChallengeWithdrawnPayload, ClaimCreatedPayload, ClaimForgedFromCapturePayload,
-    ExplorationAnchorCreatedPayload, ExplorationNoteSavedPayload,
+    EvidenceRelationConfirmedPayload, EvidenceRelationCorrectedPayload,
+    EvidenceRelationProposedPayload, EvidenceRelationRejectedPayload,
+    EvidenceRelationWithdrawnPayload, ExplorationAnchorCreatedPayload,
+    ExplorationNoteSavedPayload, MaterialAddedPayload,
     ParkReleasedPayload, PendingNativeEvent, ReviewRoundStartedPayload,
     VerdictConfirmedPayload, WorkspaceCreatedPayload,
 )
@@ -92,6 +95,56 @@ def _challenge_states(events) -> dict[str, dict]:
     return states
 
 
+def _evidence_candidate_states(events) -> dict[str, dict]:
+    """candidate_id -> full derived evidence candidate state.
+
+    A candidate is pending until exactly one immutable terminal decision
+    (confirmed / corrected / rejected / withdrawn).  Old decisions are never
+    rewritten; only a NEW candidate can re-open the question.
+    """
+    base: dict[str, dict] = {}
+    decisions: dict[str, dict] = {}
+    sequences: dict[str, int] = {}
+    for event in events:
+        p = event.validated_payload()
+        if event.aggregate_type == "evidence_candidate":
+            sequences[event.aggregate_id] = event.sequence + 1
+        if event.event_type == "evidence_relation_proposed":
+            base[p.candidate_id] = {
+                "id": p.candidate_id,
+                "round_id": p.round_id,
+                "workspace_id": p.workspace_id,
+                "claim_snapshot": {"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text},
+                "material_anchor": {"id": p.material_id, "excerpt": p.material_excerpt, "source_locator": p.material_source_locator},
+                "relation": p.relation,
+                "uncertainty": p.uncertainty,
+                "provenance": {"generator_kind": p.generator_kind, "prompt_version": p.prompt_version, "model_identifier": p.model_identifier, "basis_refs": p.basis_refs},
+            }
+        elif event.event_type == "evidence_relation_confirmed":
+            decisions[p.candidate_id] = {"status": "confirmed", "relation": p.relation, "reason": p.user_reason}
+        elif event.event_type == "evidence_relation_corrected":
+            decisions[p.candidate_id] = {"status": "corrected", "relation": p.corrected_relation, "prior_relation": p.prior_relation, "reason": p.user_reason}
+        elif event.event_type == "evidence_relation_rejected":
+            decisions[p.candidate_id] = {"status": "rejected", "reason": p.user_reason}
+        elif event.event_type == "evidence_relation_withdrawn":
+            decisions[p.candidate_id] = {"status": "withdrawn", "reason": p.user_reason}
+    states: dict[str, dict] = {}
+    for cid, info in base.items():
+        entry = {**info, "sequence": sequences.get(cid, 1)}
+        decision = decisions.get(cid)
+        if decision is not None:
+            entry["status"] = decision["status"]
+            entry["decision_reason"] = decision.get("reason")
+            if "relation" in decision:
+                entry["relation"] = decision["relation"]
+            if decision.get("prior_relation") is not None:
+                entry["prior_relation"] = decision["prior_relation"]
+        else:
+            entry["status"] = "pending"
+        states[cid] = entry
+    return states
+
+
 def _ledger(challenges: list[dict]) -> dict:
     """Verdict-time ledger shape: answered / deferred / pending / brought-but-unconfirmed."""
     return {
@@ -107,7 +160,7 @@ def _round_next_sequence(events, round_id: str) -> int:
 
 
 def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id: str) -> dict:
-    workspace = None; note_revisions = []; anchors = []; claims = []; rounds = []; park_release_refs = []; forged = []
+    workspace = None; note_revisions = []; anchors = []; claims = []; rounds = []; park_release_refs = []; forged = []; materials = []
     workspace_sequence = 0
     events = _events(store, universe_id)
     round_verdicts = _round_verdicts(events)
@@ -129,6 +182,8 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
             forged.append({"id": p.provenance_id, "claim_id": p.claim_id, "capture_id": p.capture_id, "release_id": p.release_id})
         elif event.event_type == "review_round_started" and p.workspace_id == workspace_id:
             rounds.append({"id": p.round_id, "claim_id": p.claim_id, "question_snapshot": {"version_id": p.question_version_id, "text": p.question_text}, "claim_snapshot": {"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text}, "verdict": round_verdicts.get(p.round_id), "sequence": _round_next_sequence(events, p.round_id)})
+        elif event.event_type == "material_added" and p.workspace_id == workspace_id:
+            materials.append({"id": p.material_id, "workspace_id": p.workspace_id, "excerpt": p.excerpt, "source_locator": p.source_locator, "parse_status": p.parse_status, "purpose": p.purpose, "sequence": event.sequence})
     if workspace is None: raise NotFound(workspace_id)
     latest_note = note_revisions[-1] if note_revisions else None
     challenge_states = _challenge_states(events)
@@ -143,6 +198,7 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
         park_release_refs=park_release_refs,
         claim_forge_provenance=forged,
         review_rounds=rounds,
+        materials=materials,
         pending_challenges=[x for x in workspace_challenges if x["status"] in ("pending", "answered")],
     )
     return workspace
@@ -155,8 +211,11 @@ def review_round_projection(store: NativeEventStore, universe_id: str, round_id:
             p = event.validated_payload()
             challenge_states = _challenge_states(events)
             challenges = [challenge_states[cid] for cid in challenge_states if challenge_states[cid]["review_round_id"] == round_id]
+            candidate_states = _evidence_candidate_states(events)
+            evidence_candidates = [candidate_states[cid] for cid in candidate_states if candidate_states[cid]["round_id"] == round_id]
+            confirmed_facts = [c for c in evidence_candidates if c["status"] in ("confirmed", "corrected")]
             rounds = [{"id": rp.round_id, "claim_id": rp.claim_id, "question_snapshot": {"version_id": rp.question_version_id, "text": rp.question_text}, "claim_snapshot": {"id": rp.claim_id, "version_id": rp.claim_version_id, "text": rp.claim_text}, "verdict": _round_verdicts(events).get(rp.round_id)} for e in events if e.event_type == "review_round_started" and (rp := e.validated_payload()).claim_id == p.claim_id]
-            return {"id": p.round_id, "workspace_id": p.workspace_id, "question_snapshot": {"version_id": p.question_version_id, "text": p.question_text}, "claim_snapshot": {"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text}, "verdict": _round_verdicts(events).get(round_id), "sequence": _round_next_sequence(events, round_id), "challenges": challenges, "ledger": _ledger(challenges), "rounds": rounds}
+            return {"id": p.round_id, "workspace_id": p.workspace_id, "question_snapshot": {"version_id": p.question_version_id, "text": p.question_text}, "claim_snapshot": {"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text}, "verdict": _round_verdicts(events).get(round_id), "sequence": _round_next_sequence(events, round_id), "challenges": challenges, "ledger": _ledger(challenges), "rounds": rounds, "evidence_candidates": evidence_candidates, "confirmed_facts": confirmed_facts}
     raise NotFound(round_id)
 
 
@@ -297,3 +356,119 @@ class Slice1Service:
         if round_id in _round_verdicts(events): raise BoundaryViolation("review round already has an immutable verdict")
         p = VerdictConfirmedPayload(round_id=round_id, workspace_id=round_payload.workspace_id, claim_id=round_payload.claim_id, verdict_type=verdict_type, user_reason=user_reason, revival_condition=revival_condition)
         return self._append(universe_id, command_id, "confirm_verdict", {"round_id": round_id, "verdict_type": verdict_type, "user_reason": user_reason, "revival_condition": revival_condition}, {("review_round", round_id): expected_sequence}, PendingNativeEvent(event_type="verdict_confirmed", payload=p.model_dump(), aggregate_type="review_round", aggregate_id=round_id), {"review_round_id": round_id, "verdict_type": verdict_type, "aggregate_sequences": {"review_round": expected_sequence + 1}})
+
+    # --- Slice 4: manual material / evidence gate --------------------------------
+
+    def _contradiction_challenge(self, state: dict, challenge_id: str) -> ChallengeCreatedPayload:
+        """Deterministic pending challenge for a confirmed contradiction.  NO LLM."""
+        excerpt = state["material_anchor"]["excerpt"]
+        claim_text = state["claim_snapshot"]["text"]
+        return ChallengeCreatedPayload(
+            challenge_id=challenge_id,
+            round_id=state["round_id"],
+            claim_id=state["claim_snapshot"]["id"],
+            claim_version_id=state["claim_snapshot"]["version_id"],
+            claim_text=claim_text,
+            attack_surface=f"已确认反证：{excerpt}",
+            why_it_matters=f"这段材料已被确认与 claim「{claim_text}」构成反证；审查必须正面处理它，不能绕过。",
+            self_check_method="面对这段已确认反证，写下你的回应：它是否成立、是否被解释，或 claim 是否需要划界。",
+            generator_kind="system",
+            prompt_version="deterministic-evidence-contradiction-v1",
+            model_identifier=None,
+            basis_refs=[state["material_anchor"]["id"], state["id"]],
+            uncertainty="已确认取证事实",
+        )
+
+    def _evidence_candidate_state(self, universe_id: str, candidate_id: str) -> dict:
+        state = _evidence_candidate_states(_events(self.store, universe_id)).get(candidate_id)
+        if state is None: raise NotFound(candidate_id)
+        return state
+
+    def _evidence_decision_targets(self, universe_id: str, command_id: str, state: dict, expected_sequence: int, *, with_challenge: bool) -> dict[tuple[str, str], int]:
+        """Decision-command target streams.  A confirmed/corrected contradiction also
+        creates a deterministic challenge in the SAME commit; reject/withdraw never do."""
+        expected = {("evidence_candidate", state["id"]): expected_sequence}
+        if with_challenge:
+            challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
+            expected[("challenge", challenge_id)] = 0
+        return expected
+
+    def _require_pending(self, state: dict) -> None:
+        if state["status"] != "pending":
+            raise BoundaryViolation(f"evidence candidate is already {state['status']}; old decisions are never reopened")
+
+    def add_material(self, universe_id: str, workspace_id: str, excerpt: str, source_locator: str | None, parse_status: str, purpose: str, command_id: str, expected_sequence: int) -> CommitResult:
+        workspace_projection(self.store, universe_id, workspace_id)
+        material_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:material:{command_id}"))
+        p = MaterialAddedPayload(material_id=material_id, workspace_id=workspace_id, excerpt=excerpt, source_locator=source_locator, parse_status=parse_status, purpose=purpose)
+        return self._append(universe_id, command_id, "add_material", {"workspace_id": workspace_id, "excerpt": excerpt, "source_locator": source_locator, "parse_status": parse_status, "purpose": purpose}, {("material", material_id): expected_sequence}, PendingNativeEvent(event_type="material_added", payload=p.model_dump(), aggregate_type="material", aggregate_id=material_id), {"material_id": material_id, "workspace_id": workspace_id, "aggregate_sequences": {"material": expected_sequence + 1}})
+
+    def propose_evidence_candidate(self, universe_id: str, round_id: str, material_id: str, relation: str, uncertainty: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        events = _events(self.store, universe_id)
+        round_payload = next((e.validated_payload() for e in events if e.event_type == "review_round_started" and e.validated_payload().round_id == round_id), None)
+        if round_payload is None: raise NotFound(round_id)
+        material_payload = next((e.validated_payload() for e in events if e.event_type == "material_added" and e.validated_payload().material_id == material_id), None)
+        if material_payload is None: raise NotFound(material_id)
+        if material_payload.workspace_id != round_payload.workspace_id: raise BoundaryViolation("material does not belong to the round's workspace")
+        if material_payload.purpose != "evidence": raise BoundaryViolation("reference material never enters the evidence candidate flow")
+        if relation == "silent" and material_payload.parse_status != "parsed": raise BoundaryViolation("parse failure can never masquerade as silent; use cannot_assess")
+        candidate_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:evidence-candidate:{command_id}"))
+        p = EvidenceRelationProposedPayload(candidate_id=candidate_id, round_id=round_id, workspace_id=round_payload.workspace_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, material_id=material_payload.material_id, material_excerpt=material_payload.excerpt, material_source_locator=material_payload.source_locator, relation=relation, uncertainty=uncertainty)
+        return self._append(universe_id, command_id, "propose_evidence_candidate", {"round_id": round_id, "material_id": material_id, "relation": relation, "uncertainty": uncertainty}, {("evidence_candidate", candidate_id): expected_sequence}, PendingNativeEvent(event_type="evidence_relation_proposed", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id), {"candidate_id": candidate_id, "round_id": round_id, "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}})
+
+    def confirm_evidence_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._evidence_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "user_reason": user_reason}
+        expected = self._evidence_decision_targets(universe_id, command_id, state, expected_sequence, with_challenge=state["relation"] == "contradicts")
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "confirm_evidence_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior: return prior
+        self._require_pending(state)
+        p = EvidenceRelationConfirmedPayload(candidate_id=candidate_id, round_id=state["round_id"], claim_id=state["claim_snapshot"]["id"], relation=state["relation"], user_reason=user_reason)
+        events = [PendingNativeEvent(event_type="evidence_relation_confirmed", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id)]
+        result = {"candidate_id": candidate_id, "round_id": state["round_id"], "relation": state["relation"], "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}}
+        if state["relation"] == "contradicts":
+            challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
+            challenge_payload = self._contradiction_challenge(state, challenge_id)
+            events.append(PendingNativeEvent(event_type="challenge_created", payload=challenge_payload.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id))
+            result["challenge_id"] = challenge_id
+            result["aggregate_sequences"]["challenge"] = 1
+        return self._append_many(universe_id, command_id, "confirm_evidence_candidate", command_payload, expected, events, result)
+
+    def correct_evidence_candidate(self, universe_id: str, candidate_id: str, corrected_relation: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._evidence_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "corrected_relation": corrected_relation, "user_reason": user_reason}
+        expected = self._evidence_decision_targets(universe_id, command_id, {**state, "relation": corrected_relation}, expected_sequence, with_challenge=corrected_relation == "contradicts")
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "correct_evidence_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior: return prior
+        self._require_pending(state)
+        if corrected_relation == state["relation"]: raise BoundaryViolation("correct must change the relation")
+        p = EvidenceRelationCorrectedPayload(candidate_id=candidate_id, round_id=state["round_id"], claim_id=state["claim_snapshot"]["id"], prior_relation=state["relation"], corrected_relation=corrected_relation, user_reason=user_reason)
+        events = [PendingNativeEvent(event_type="evidence_relation_corrected", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id)]
+        result = {"candidate_id": candidate_id, "round_id": state["round_id"], "relation": corrected_relation, "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}}
+        if corrected_relation == "contradicts":
+            challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
+            challenge_payload = self._contradiction_challenge({**state, "relation": corrected_relation}, challenge_id)
+            events.append(PendingNativeEvent(event_type="challenge_created", payload=challenge_payload.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id))
+            result["challenge_id"] = challenge_id
+            result["aggregate_sequences"]["challenge"] = 1
+        return self._append_many(universe_id, command_id, "correct_evidence_candidate", command_payload, expected, events, result)
+
+    def reject_evidence_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._evidence_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "user_reason": user_reason}
+        expected = self._evidence_decision_targets(universe_id, command_id, state, expected_sequence, with_challenge=False)
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "reject_evidence_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior: return prior
+        self._require_pending(state)
+        p = EvidenceRelationRejectedPayload(candidate_id=candidate_id, round_id=state["round_id"], claim_id=state["claim_snapshot"]["id"], user_reason=user_reason)
+        return self._append_many(universe_id, command_id, "reject_evidence_candidate", command_payload, expected, [PendingNativeEvent(event_type="evidence_relation_rejected", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id)], {"candidate_id": candidate_id, "round_id": state["round_id"], "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}})
+
+    def withdraw_evidence_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._evidence_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "user_reason": user_reason}
+        expected = self._evidence_decision_targets(universe_id, command_id, state, expected_sequence, with_challenge=False)
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "withdraw_evidence_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior: return prior
+        self._require_pending(state)
+        p = EvidenceRelationWithdrawnPayload(candidate_id=candidate_id, round_id=state["round_id"], claim_id=state["claim_snapshot"]["id"], user_reason=user_reason)
+        return self._append_many(universe_id, command_id, "withdraw_evidence_candidate", command_payload, expected, [PendingNativeEvent(event_type="evidence_relation_withdrawn", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id)], {"candidate_id": candidate_id, "round_id": state["round_id"], "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}})

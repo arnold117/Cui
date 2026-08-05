@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { command, researchUniverse } from "../api"
 import type { Challenge, ReviewRound, VerdictType } from "../types"
+import { EvidenceSurface } from "./EvidenceSurface"
 import { useNavigation } from "../../../router"
 
 const VERDICT_OPTIONS: { type: VerdictType; label: string; note?: string }[] = [
@@ -26,6 +27,7 @@ export function ReviewRoundDesk({ roundId }: { roundId: string }) {
   const closed = Boolean(round.verdict)
   return <section className="ru-review" aria-labelledby="review-title"><p className="ru-kicker">审查轮次 · 不可变快照</p><h1 id="review-title">审查这一条 claim</h1><div className="ru-snapshot-grid"><article><h2>当时的问题</h2><p className="ru-reading-copy">{round.question_snapshot.text}</p><small>问题快照 {round.question_snapshot.version_id ?? round.question_snapshot.id ?? "已记录"}</small></article><article><h2>当时的 claim</h2><p className="ru-reading-copy">{round.claim_snapshot.text}</p><small>Claim 快照 {round.claim_snapshot.version_id ?? round.claim_snapshot.id ?? "已记录"}</small></article></div>
     {round.challenges.length === 0 ? <p className="ru-state">这个审查轮次尚无 challenge。</p> : <div className="ru-challenge-list">{round.challenges.map((challenge) => <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} onChanged={() => void load()} />)}</div>}
+    <EvidenceSurface round={round} onChanged={() => void load()} />
     {!closed && <div className="ru-verdict-actions"><p className="ru-reading-copy">挑战可以暂缓、撤回或带回未确认上下文；本轮结束时，由你作出裁决。</p><button className="ru-ink-button ru-active" onClick={() => setJudging(true)}>作出本轮裁决</button></div>}
     {judging && !closed && <VerdictForge round={round} onChanged={() => void load()} onClose={() => setJudging(false)} />}
     {closed && <ReReview round={round} onError={(message) => setError(message)} />}

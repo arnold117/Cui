@@ -1,4 +1,4 @@
-import type { AnswerChallengeEnvelope, Claim, CommandEnvelope, CommandResponse, ConfirmVerdictEnvelope, DeferChallengeEnvelope, ExplorationAnchor, ExplorationNote, HomeProjection, ReviewRound, WithdrawChallengeEnvelope, WorkspaceDesk } from "./types"
+import type { AddMaterialEnvelope, AnswerChallengeEnvelope, Claim, CommandEnvelope, CommandResponse, ConfirmVerdictEnvelope, CorrectEvidenceEnvelope, DecideEvidenceEnvelope, DeferChallengeEnvelope, ExplorationAnchor, ExplorationNote, HomeProjection, ProposeEvidenceCandidateEnvelope, ReviewRound, WithdrawChallengeEnvelope, WorkspaceDesk } from "./types"
 
 const BASE = "/api/v2"
 function commandId() { return globalThis.crypto?.randomUUID?.() ?? `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}` }
@@ -33,5 +33,11 @@ export const researchUniverse = {
   deferChallenge: (challengeId: string, envelope: DeferChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/defer`, envelope),
   withdrawChallenge: (challengeId: string, envelope: WithdrawChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/withdraw`, envelope),
   confirmVerdict: (roundId: string, envelope: ConfirmVerdictEnvelope) => send<CommandResponse<{ review_round_id: string; verdict_type: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/verdicts`, envelope),
+  addMaterial: (workspaceId: string, envelope: AddMaterialEnvelope) => send<CommandResponse<{ material_id: string; workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/materials`, envelope),
+  proposeEvidenceCandidate: (roundId: string, envelope: ProposeEvidenceCandidateEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/evidence-candidates`, envelope),
+  confirmEvidence: (candidateId: string, envelope: DecideEvidenceEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; relation: string; challenge_id?: string; aggregate_sequences?: Record<string, number> }>>(`/evidence-candidates/${candidateId}/confirm`, envelope),
+  correctEvidence: (candidateId: string, envelope: CorrectEvidenceEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; relation: string; challenge_id?: string; aggregate_sequences?: Record<string, number> }>>(`/evidence-candidates/${candidateId}/correct`, envelope),
+  rejectEvidence: (candidateId: string, envelope: DecideEvidenceEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/evidence-candidates/${candidateId}/reject`, envelope),
+  withdrawEvidence: (candidateId: string, envelope: DecideEvidenceEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/evidence-candidates/${candidateId}/withdraw`, envelope),
 }
 export type { Claim, ExplorationAnchor, ExplorationNote }
