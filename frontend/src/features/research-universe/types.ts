@@ -67,6 +67,9 @@ export interface EvidenceCandidate {
   decision_reason?: string | null
   prior_relation?: EvidenceRelation
   sequence?: number
+  // Slice 6 — LLM-generated candidates carry the model's 为何 / 证据高亮
+  rationale?: string | null
+  evidence_highlight?: string | null
 }
 export interface ConfirmedFact { id: string; relation: EvidenceRelation; material_anchor: MaterialAnchor; claim_snapshot: Snapshot }
 
@@ -76,6 +79,7 @@ export interface WithdrawChallengeEnvelope extends CommandEnvelope { reason: str
 export interface ConfirmVerdictEnvelope extends CommandEnvelope { verdict_type: VerdictType; user_reason: string; revival_condition?: string | null }
 export interface AddMaterialEnvelope extends CommandEnvelope { excerpt: string; source_locator?: string | null; parse_status: MaterialParseStatus; purpose: MaterialPurpose }
 export interface ProposeEvidenceCandidateEnvelope extends CommandEnvelope { material_id: string; relation: EvidenceRelation; uncertainty?: string | null }
+export interface GenerateEvidenceCandidateEnvelope extends CommandEnvelope { material_id: string }
 export interface DecideEvidenceEnvelope extends CommandEnvelope { user_reason?: string | null }
 export interface CorrectEvidenceEnvelope extends DecideEvidenceEnvelope { corrected_relation: EvidenceRelation }
 

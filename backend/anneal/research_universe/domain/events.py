@@ -158,6 +158,11 @@ class EvidenceRelationProposedPayload(Payload):
     prompt_version: str | None = None
     model_identifier: str | None = None
     basis_refs: list[str] = Field(default_factory=list)
+    # Slice 6: LLM-generated candidates carry the model's 为何 (rationale) and
+    # 证据高亮 (evidence_highlight).  Optional so Slice 4 stored events (without
+    # these fields) still validate; schema version is intentionally NOT bumped.
+    rationale: str | None = None
+    evidence_highlight: str | None = None
     author: Literal["user"] = "user"
 
 

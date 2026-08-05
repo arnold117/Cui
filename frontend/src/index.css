@@ -118,6 +118,8 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-material-card .ru-reading-copy { margin: 0; font-size: 1rem; }
 .ru-material-ineligible { border-left-color: var(--line); opacity: .78; }
 .ru-material-ineligible .ru-reading-copy { font-family: inherit; }
+.ru-material-generate { margin-top: .55rem; }
+.ru-material-generate .ru-quiet-button { color: var(--teal); }
 
 .ru-evidence { margin: 2.5rem 0; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--paper); border-top: 2px solid var(--edge); }
 .ru-receipt { margin: 1rem 0; padding: .9rem 1.1rem; border-left: 3px solid var(--teal); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); font-family: "Charis SIL", "Source Han Serif", serif; line-height: 1.7; }
@@ -129,6 +131,13 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-candidate-card .ru-reading-copy { margin: 0 0 .35rem; font-size: 1rem; }
 .ru-candidate-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--line); }
 .ru-candidate-actions .ru-ink-button { opacity: 1; cursor: pointer; }
+.ru-generated-analysis { margin: .55rem 0 0; padding: .6rem .8rem; border-left: 2px solid var(--teal); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); display: grid; gap: .4rem; }
+.ru-generated-analysis p { margin: 0; font-family: "Charis SIL", "Source Han Serif", serif; line-height: 1.7; }
+.ru-analysis-label { display: inline-block; margin-right: .55rem; color: var(--muted); font-family: inherit; font-size: .76rem; font-weight: 650; letter-spacing: .06em; }
+.ru-highlight { padding: .05rem .25rem; background: color-mix(in srgb, var(--teal) 18%, transparent); color: var(--ink); }
+.ru-generate-more { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin: 1.5rem 0 0; }
+.ru-generate-more .ru-ink-button { opacity: 1; cursor: pointer; }
+.ru-generate-more .ru-challenge-note { border: 0; padding: 0; }
 .ru-confirmed-flag { margin: .6rem 0 0; padding: .35rem .6rem; border: 1px solid var(--teal); color: var(--teal); font-size: .8rem; font-weight: 650; }
 .ru-propose-form { margin-top: 1.5rem; padding: 1.25rem 1.4rem; border-top: 2px solid var(--edge); background: color-mix(in srgb, var(--stone) 30%, var(--paper)); display: grid; gap: .8rem; }
 .ru-propose-form fieldset { display: grid; gap: .5rem; margin: .3rem 0 0; padding: 0 0 .9rem; border: 0; border-bottom: 1px solid var(--line); }

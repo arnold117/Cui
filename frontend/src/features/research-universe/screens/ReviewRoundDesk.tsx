@@ -16,17 +16,24 @@ export function ReviewRoundDesk({ roundId }: { roundId: string }) {
   const [round, setRound] = useState<ReviewRound | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [judging, setJudging] = useState(false)
+  const [generatingChallenge, setGeneratingChallenge] = useState(false)
   const generation = useRef(0)
   async function load() {
     const current = ++generation.current
     try { const value = await researchUniverse.reviewRound(roundId); if (current === generation.current) { setError(null); setRound(value) } } catch (reason) { if (current === generation.current) setError(reason instanceof Error ? reason.message : "未能读取审查轮次。") }
   }
   useEffect(() => { void load(); return () => { generation.current++ } }, [roundId])
+  async function generateMoreChallenge() {
+    if (generatingChallenge || round?.verdict) return
+    setGeneratingChallenge(true); setError(null)
+    try { await researchUniverse.generateAdditionalChallenge(roundId, command({}, 0)); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : "生成更多挑战失败。") } finally { setGeneratingChallenge(false) }
+  }
   if (error) return <section className="ru-state" role="alert"><p>未能打开审查轮次：{error}</p><button className="ru-ink-button" onClick={() => void load()}>重试</button></section>
   if (!round) return <section className="ru-state" aria-live="polite">正在读取审查快照…</section>
   const closed = Boolean(round.verdict)
   return <section className="ru-review" aria-labelledby="review-title"><p className="ru-kicker">审查轮次 · 不可变快照</p><h1 id="review-title">审查这一条 claim</h1><div className="ru-snapshot-grid"><article><h2>当时的问题</h2><p className="ru-reading-copy">{round.question_snapshot.text}</p><small>问题快照 {round.question_snapshot.version_id ?? round.question_snapshot.id ?? "已记录"}</small></article><article><h2>当时的 claim</h2><p className="ru-reading-copy">{round.claim_snapshot.text}</p><small>Claim 快照 {round.claim_snapshot.version_id ?? round.claim_snapshot.id ?? "已记录"}</small></article></div>
-    {round.challenges.length === 0 ? <p className="ru-state">这个审查轮次尚无 challenge。</p> : <div className="ru-challenge-list">{round.challenges.map((challenge) => <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} onChanged={() => void load()} />)}</div>}
+    <div className="ru-challenge-list">{round.challenges.map((challenge) => <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} onChanged={() => void load()} />)}</div>
+    {!closed && <div className="ru-generate-more"><button className="ru-ink-button ru-active" disabled={generatingChallenge} onClick={() => void generateMoreChallenge()}>{generatingChallenge ? "正在生成更多挑战…" : "生成更多挑战"}</button><p className="ru-challenge-note">让 Cui 攻击一个尚未覆盖的角度；新的挑战会进入同一轮审查。</p></div>}
     <EvidenceSurface round={round} onChanged={() => void load()} />
     {!closed && <div className="ru-verdict-actions"><p className="ru-reading-copy">挑战可以暂缓、撤回或带回未确认上下文；本轮结束时，由你作出裁决。</p><button className="ru-ink-button ru-active" onClick={() => setJudging(true)}>作出本轮裁决</button></div>}
     {judging && !closed && <VerdictForge round={round} onChanged={() => void load()} onClose={() => setJudging(false)} />}

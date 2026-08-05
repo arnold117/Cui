@@ -35,11 +35,28 @@ class ChallengeDraft:
     uncertainty: str
 
 
+@dataclass(frozen=True)
+class EvidenceCandidateDraft:
+    relation: str
+    rationale: str | None
+    evidence_highlight: str | None
+    uncertainty: str | None
+    prompt_version: str
+    model_identifier: str | None
+    basis_refs: list[str]
+
+
 class ChallengeGenerator(Protocol):
     def generate(self, *, question: str, claim: str) -> ChallengeDraft: ...
+    def generate_additional(self, *, question: str, claim: str, prior_attack_surfaces: list[str]) -> ChallengeDraft: ...
+
+
+class EvidenceCandidateGenerator(Protocol):
+    def generate(self, *, claim: str, material_excerpt: str, parse_status: str) -> EvidenceCandidateDraft: ...
 
 
 class ChallengeGenerationFailed(Exception): pass
+class EvidenceGenerationFailed(Exception): pass
 class NotFound(Exception): pass
 class BoundaryViolation(Exception): pass
 
@@ -123,6 +140,8 @@ def _evidence_candidate_states(events) -> dict[str, dict]:
                 "material_anchor": {"id": p.material_id, "excerpt": p.material_excerpt, "source_locator": p.material_source_locator},
                 "relation": p.relation,
                 "uncertainty": p.uncertainty,
+                "rationale": p.rationale,
+                "evidence_highlight": p.evidence_highlight,
                 "provenance": {"generator_kind": p.generator_kind, "prompt_version": p.prompt_version, "model_identifier": p.model_identifier, "basis_refs": p.basis_refs},
             }
         elif event.event_type == "evidence_relation_confirmed":
@@ -375,8 +394,8 @@ def park_release_refs(store: NativeEventStore, universe_id: str, capture_id: str
 
 
 class Slice1Service:
-    def __init__(self, store: NativeEventStore, actor_id: str | None, generator: ChallengeGenerator, guard: CommandExecutionGuard | None = None) -> None:
-        self.store, self.actor_id, self.generator, self.guard = store, actor_id, generator, guard
+    def __init__(self, store: NativeEventStore, actor_id: str | None, generator: ChallengeGenerator, evidence_generator: EvidenceCandidateGenerator | None = None, guard: CommandExecutionGuard | None = None) -> None:
+        self.store, self.actor_id, self.generator, self.evidence_generator, self.guard = store, actor_id, generator, evidence_generator, guard
 
     def _id(self, command_id: str, kind: str) -> str:
         return str(uuid5(NAMESPACE_URL, f"slice1:{kind}:{command_id}"))
@@ -463,6 +482,56 @@ class Slice1Service:
 
     def generate_challenge(self, universe_id: str, round_id: str, command_id: str, expected_sequence: int) -> CommitResult:
         raise BoundaryViolation("Slice 1 creates the initial challenge atomically with its review round")
+
+    def generate_additional_challenge(self, universe_id: str, round_id: str, command_id: str, expected_sequence: int) -> CommitResult:
+        """Explicit user command: ask the LLM for one MORE challenge on this round.
+
+        The generated challenge attacks a DIFFERENT angle (the already-used
+        attack_surfaces are handed to the generator so it never repeats).  The
+        new challenge is a fresh aggregate at expected_sequence 0.  No verdict,
+        claim, direction or workspace is ever auto-created here.
+        """
+        round_data = review_round_projection(self.store, universe_id, round_id)
+        question = round_data["question_snapshot"]["text"]
+        claim = round_data["claim_snapshot"]
+        existing_surfaces = [c["attack_surface"] for c in round_data["challenges"]]
+        existing_ids = [c["id"] for c in round_data["challenges"]]
+        try:
+            draft = self.generator.generate_additional(question=question, claim=claim["text"], prior_attack_surfaces=existing_surfaces)
+        except Exception as exc:
+            raise ChallengeGenerationFailed(str(exc)) from exc
+        challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
+        p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=claim["id"], claim_version_id=claim["version_id"], claim_text=claim["text"], attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=[*draft.basis_refs, *existing_ids], uncertainty=draft.uncertainty)
+        return self._append(universe_id, command_id, "generate_additional_challenge", {"round_id": round_id}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
+
+    def generate_evidence_candidate(self, universe_id: str, round_id: str, material_id: str, command_id: str, expected_sequence: int) -> CommitResult:
+        """Explicit user command: ask the LLM to propose an evidence relation.
+
+        Iron rule from Slice 4: a material whose parse failed can NEVER
+        masquerade as silent (or any other assessable relation) — the relation
+        is forced to cannot_assess regardless of what the LLM returned.  The
+        candidate enters the SAME pending -> confirm/correct/reject/withdraw
+        lifecycle as a manual candidate.
+        """
+        events = _events(self.store, universe_id)
+        round_payload = next((e.validated_payload() for e in events if e.event_type == "review_round_started" and e.validated_payload().round_id == round_id), None)
+        if round_payload is None: raise NotFound(round_id)
+        material_payload = next((e.validated_payload() for e in events if e.event_type == "material_added" and e.validated_payload().material_id == material_id), None)
+        if material_payload is None: raise NotFound(material_id)
+        if material_payload.workspace_id != round_payload.workspace_id: raise BoundaryViolation("material does not belong to the round's workspace")
+        if material_payload.purpose != "evidence": raise BoundaryViolation("reference material never enters the evidence candidate flow")
+        if self.evidence_generator is None:
+            raise EvidenceGenerationFailed("no evidence candidate generator is configured")
+        try:
+            draft = self.evidence_generator.generate(claim=round_payload.claim_text, material_excerpt=material_payload.excerpt, parse_status=material_payload.parse_status)
+        except Exception as exc:
+            raise EvidenceGenerationFailed(str(exc)) from exc
+        relation = draft.relation
+        if material_payload.parse_status == "failed":
+            relation = "cannot_assess"
+        candidate_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:evidence-candidate:{command_id}"))
+        p = EvidenceRelationProposedPayload(candidate_id=candidate_id, round_id=round_id, workspace_id=round_payload.workspace_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, material_id=material_payload.material_id, material_excerpt=material_payload.excerpt, material_source_locator=material_payload.source_locator, relation=relation, uncertainty=draft.uncertainty, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=[material_id], rationale=draft.rationale, evidence_highlight=draft.evidence_highlight)
+        return self._append(universe_id, command_id, "generate_evidence_candidate", {"round_id": round_id, "material_id": material_id}, {("evidence_candidate", candidate_id): expected_sequence}, PendingNativeEvent(event_type="evidence_relation_proposed", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id), {"candidate_id": candidate_id, "round_id": round_id, "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}})
 
     def _challenge_state_or_raise(self, universe_id: str, challenge_id: str) -> dict:
         events = _events(self.store, universe_id)

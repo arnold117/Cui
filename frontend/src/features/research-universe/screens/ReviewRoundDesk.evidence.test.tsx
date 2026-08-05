@@ -41,8 +41,10 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
     vi.mocked(researchUniverse.desk).mockResolvedValue(desk)
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
-    expect(await screen.findByText("Paper A contradicts X")).toBeInTheDocument()
-    expect(screen.getByText("Reference note")).toBeInTheDocument()
+    // Wait for the desk explicitly ("Reference note" only comes from the desk),
+    // then the excerpt may appear in both the material card and the candidate.
+    expect(await screen.findByText("Reference note")).toBeInTheDocument()
+    expect((await screen.findAllByText("Paper A contradicts X")).length).toBeGreaterThan(0)
     expect(screen.getByText(/只作探索参考，不进入候选/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "确认是反证" })).toBeInTheDocument()
   })

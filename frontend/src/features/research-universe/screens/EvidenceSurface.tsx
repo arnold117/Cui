@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { command, researchUniverse } from "../api"
-import type { EvidenceCandidate, EvidenceRelation, ReviewRound, WorkspaceDesk } from "../types"
+import type { EvidenceCandidate, EvidenceRelation, Material, ReviewRound, WorkspaceDesk } from "../types"
 
 const RELATIONS: EvidenceRelation[] = ["supports", "contradicts", "silent", "cannot_assess"]
 const RELATION_LABELS: Record<EvidenceRelation, string> = { supports: "支持", contradicts: "反证", silent: "查无", cannot_assess: "无法判断" }
@@ -13,6 +13,7 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
   const [proposeUncertainty, setProposeUncertainty] = useState("")
   const [busy, setBusy] = useState(false)
   const [decisionBusy, setDecisionBusy] = useState<string | null>(null)
+  const [generatingMaterial, setGeneratingMaterial] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<string | null>(null)
   const [reasons, setReasons] = useState<Record<string, string>>({})
@@ -42,6 +43,15 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
       setProposeMaterial(""); setProposeRelation("supports"); setProposeUncertainty("")
       onChanged()
     } catch (reason) { setError(reason instanceof Error ? reason.message : "提出取证候选失败。") } finally { setBusy(false) }
+  }
+
+  async function generateEvidence(material: Material) {
+    if (generatingMaterial) return
+    setGeneratingMaterial(material.id); setError(null)
+    try {
+      await researchUniverse.generateEvidenceCandidate(round.id, command({ material_id: material.id }, 0))
+      onChanged()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "让 Cui 提出取证候选失败。") } finally { setGeneratingMaterial(null) }
   }
 
   async function decide(candidate: EvidenceCandidate, action: "confirm" | "reject" | "withdraw") {
@@ -92,6 +102,7 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
           return <article key={m.id} className={`ru-material-card${ineligible ? " ru-material-ineligible" : ""}`}>
             <p className="ru-reading-copy">{m.excerpt}</p>
             <p className="ru-provenance">{m.source_locator ?? "无来源定位"} · {ineligible ? "只作探索参考，不进入候选" : "待取证材料"}{m.parse_status === "failed" ? " · 无法判断" : ""}</p>
+            {!ineligible && <div className="ru-material-generate"><button className="ru-quiet-button" disabled={generatingMaterial !== null} onClick={() => void generateEvidence(m)}>{generatingMaterial === m.id ? "Cui 正在取证…" : "让 Cui 提出取证候选"}</button></div>}
           </article>
         })}
       </div>
@@ -102,6 +113,11 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
             <p className="ru-kicker">{candidate.status === "pending" ? "Cui 的取证候选（未确认）" : `已${STATUS_LABELS[candidate.status]}`}</p>
             <p className="ru-reading-copy">{candidate.material_anchor.excerpt}</p>
             <p className="ru-provenance">来源：{candidate.material_anchor.source_locator ?? "无"} · 可能：{RELATION_LABELS[candidate.relation]}{candidate.uncertainty ? ` · 不确定性：${candidate.uncertainty}` : ""}</p>
+            {candidate.provenance?.generator_kind === "system" && (candidate.rationale || candidate.evidence_highlight) && <div className="ru-generated-analysis">
+              {candidate.rationale ? <p><span className="ru-analysis-label">为何</span>{candidate.rationale}</p> : null}
+              {candidate.evidence_highlight ? <p><span className="ru-analysis-label">证据高亮</span><mark className="ru-highlight">{candidate.evidence_highlight}</mark></p> : null}
+              {candidate.provenance.prompt_version ? <p className="ru-provenance">生成依据：{candidate.provenance.basis_refs?.join(" · ") ?? "已记录"} · {candidate.provenance.prompt_version}</p> : null}
+            </div>}
             {candidate.status === "pending" && <div className="ru-candidate-actions">
               <button className="ru-ink-button ru-active" disabled={decisionBusy !== null} onClick={() => void decide(candidate, "confirm")}>{candidate.relation === "contradicts" ? "确认是反证" : candidate.relation === "supports" ? "确认支持" : candidate.relation === "silent" ? "确认查无" : "确认无法判断"}</button>
               <button className="ru-quiet-button" onClick={() => toggleInline(candidate.id, "correct")}>改为…</button>

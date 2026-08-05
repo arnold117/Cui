@@ -24,8 +24,9 @@ from anneal.research_universe.api.slice2 import create_slice2_router
 from anneal.research_universe.api.slice3 import create_slice3_router
 from anneal.research_universe.api.slice4 import create_slice4_router
 from anneal.research_universe.api.slice5 import create_slice5_router
+from anneal.research_universe.api.slice6 import create_slice6_router
 from anneal.research_universe.application import Slice1Service
-from anneal.research_universe.challenge_generator import RealChallengeGenerator
+from anneal.research_universe.challenge_generator import RealChallengeGenerator, RealEvidenceCandidateGenerator
 from anneal.llm.client import create_client
 from anneal.llm.config import load_llm_config
 from anneal.research_universe.store.event_store import InMemoryNativeEventStore, NativeEventStore, PostgresNativeEventStore, UniverseAlreadyActive
@@ -84,18 +85,20 @@ def create_native_app(settings: object | None = None, native_store: NativeEventS
     config = load_llm_config()
     if config is None:
         raise RuntimeError("CUI_LLM_KEY and CUI_LLM_MODEL are required for native Slice 1 challenge generation")
-    challenge_service = Slice1Service(store, resolved_principal.id, RealChallengeGenerator(create_client(config), config.model))
+    client = create_client(config)
+    challenge_service = Slice1Service(store, resolved_principal.id, RealChallengeGenerator(client, config.model), RealEvidenceCandidateGenerator(client, config.model))
     app.include_router(create_native_router(store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice1_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice2_router(challenge_service, store, PostgresSealedParkStore(engine), context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice3_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice4_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice5_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_slice6_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_archive_router(PostgresRepository(engine), PostgresEventStore(engine), context.library_id), prefix="/api/v2")
     return app
 
 
-def create_native_test_app(native_store: InMemoryNativeEventStore, library_context: LibraryContext | None = None, principal: LocalPrincipal | None = None, challenge_generator=None) -> FastAPI:
+def create_native_test_app(native_store: InMemoryNativeEventStore, library_context: LibraryContext | None = None, principal: LocalPrincipal | None = None, challenge_generator=None, evidence_generator=None) -> FastAPI:
     """Explicit in-memory factory; never selected by missing configuration."""
     app = _cors(FastAPI(title="Cui native test"))
     resolved_context = library_context or LibraryContext("default")
@@ -104,13 +107,18 @@ def create_native_test_app(native_store: InMemoryNativeEventStore, library_conte
         class _UnavailableGenerator:
             def generate(self, **kwargs): raise RuntimeError("test must inject a challenge generator")
         challenge_generator = _UnavailableGenerator()
-    service = Slice1Service(native_store, resolved_principal.id, challenge_generator)
+    if evidence_generator is None:
+        class _UnavailableEvidenceGenerator:
+            def generate(self, **kwargs): raise RuntimeError("test must inject an evidence candidate generator")
+        evidence_generator = _UnavailableEvidenceGenerator()
+    service = Slice1Service(native_store, resolved_principal.id, challenge_generator, evidence_generator)
     app.include_router(create_native_router(native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice1_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice2_router(service, native_store, InMemorySealedParkStore(), resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice3_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice4_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice5_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_slice6_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_archive_router(), prefix="/api/v2")
     return app
 
