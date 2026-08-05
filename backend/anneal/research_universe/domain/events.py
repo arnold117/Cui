@@ -192,6 +192,114 @@ class EvidenceRelationWithdrawnPayload(Payload):
     user_reason: str | None = None
 
 
+# --- Slice 5: workspace crystallization / direction impact --------------------
+
+WorkspacePosition: TypeAlias = Literal["exploring", "paused", "concluded", "branched", "absorbed"]
+ConclusionType: TypeAlias = Literal["tentative_answer", "negated_path", "boundary", "key_unknown", "deferred", "split_or_turn"]
+
+
+class WorkspacePausedPayload(Payload):
+    workspace_id: str
+    user_reason: str | None = None
+
+
+class WorkspaceReopenedPayload(Payload):
+    workspace_id: str
+    user_reason: str | None = None
+
+
+class WorkspaceConcludedPayload(Payload):
+    workspace_id: str
+    conclusion_id: str
+    conclusion_type: ConclusionType
+    conclusion_text: str = Field(min_length=1)
+    user_reason: str | None = None
+    basis_refs: list[str] = Field(default_factory=list)
+    revival_condition: str | None = None
+    new_user_position: Literal["concluded"] = "concluded"
+
+    @model_validator(mode="after")
+    def _revival_condition_rule(self) -> "WorkspaceConcludedPayload":
+        if self.conclusion_type == "deferred":
+            if not self.revival_condition or not self.revival_condition.strip():
+                raise ValueError("deferred conclusion requires a non-empty revival_condition")
+        elif self.revival_condition is not None:
+            raise ValueError("revival_condition is only valid for deferred conclusions")
+        return self
+
+
+class WorkspaceBranchedPayload(Payload):
+    workspace_id: str
+    successor_workspace_id: str
+    user_reason: str = Field(min_length=1)
+    new_user_position: Literal["branched"] = "branched"
+
+
+class WorkspaceAbsorbedPayload(Payload):
+    workspace_id: str
+    target_workspace_id: str
+    user_reason: str = Field(min_length=1)
+    new_user_position: Literal["absorbed"] = "absorbed"
+
+
+class DirectionCreatedPayload(Payload):
+    direction_id: str
+    proposition_version_id: str
+    proposition_text: str = Field(min_length=1)
+    declared_status: Literal["active"] = "active"
+    author: Literal["user"] = "user"
+
+
+class DirectionStatusDeclaredPayload(Payload):
+    direction_id: str
+    status: Literal["active", "on_hold", "retired"]
+    user_reason: str = Field(min_length=1)
+
+
+class DirectionPropositionRephrasedPayload(Payload):
+    direction_id: str
+    prior_proposition_version_id: str
+    prior_proposition_text: str
+    new_proposition_version_id: str
+    new_proposition_text: str | None = None
+    change_type: Literal["clarify", "narrow_or_widen", "turning", "unnamed"]
+    user_reason: str = Field(min_length=1)
+    source_conclusion_ref: str | None = None
+
+    @model_validator(mode="after")
+    def _unnamed_rule(self) -> "DirectionPropositionRephrasedPayload":
+        if self.change_type == "unnamed":
+            if self.new_proposition_text is not None:
+                raise ValueError("unnamed rephrase must carry an explicit null proposition")
+        elif not self.new_proposition_text or not self.new_proposition_text.strip():
+            raise ValueError("non-unnamed rephrase requires a non-empty proposition")
+        return self
+
+
+class WorkspaceDirectionAttachedPayload(Payload):
+    direction_link_id: str
+    workspace_id: str
+    direction_id: str
+    user_reason: str | None = None
+
+
+class WorkspaceDirectionDetachedPayload(Payload):
+    direction_link_id: str
+    workspace_id: str
+    direction_id: str
+    user_reason: str | None = None
+
+
+class WorkspaceCrystallizationAttachedPayload(Payload):
+    crystallization_id: str
+    direction_id: str
+    workspace_id: str
+    conclusion_id: str
+    conclusion_text: str
+    conclusion_type: ConclusionType
+    user_reason: str | None = None
+
+
 Slice1Payload: TypeAlias = Annotated[
     WorkspaceCreatedPayload
     | ExplorationNoteSavedPayload
@@ -223,6 +331,17 @@ EVENT_PAYLOAD_TYPES: dict[tuple[str, int], type[Payload]] = {
     ("evidence_relation_corrected", 1): EvidenceRelationCorrectedPayload,
     ("evidence_relation_rejected", 1): EvidenceRelationRejectedPayload,
     ("evidence_relation_withdrawn", 1): EvidenceRelationWithdrawnPayload,
+    ("workspace_paused", 1): WorkspacePausedPayload,
+    ("workspace_reopened", 1): WorkspaceReopenedPayload,
+    ("workspace_concluded", 1): WorkspaceConcludedPayload,
+    ("workspace_branched", 1): WorkspaceBranchedPayload,
+    ("workspace_absorbed", 1): WorkspaceAbsorbedPayload,
+    ("direction_created", 1): DirectionCreatedPayload,
+    ("direction_status_declared", 1): DirectionStatusDeclaredPayload,
+    ("direction_proposition_rephrased", 1): DirectionPropositionRephrasedPayload,
+    ("workspace_direction_attached", 1): WorkspaceDirectionAttachedPayload,
+    ("workspace_direction_detached", 1): WorkspaceDirectionDetachedPayload,
+    ("workspace_crystallization_attached", 1): WorkspaceCrystallizationAttachedPayload,
 }
 
 

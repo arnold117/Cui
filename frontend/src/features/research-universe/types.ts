@@ -44,9 +44,9 @@ export interface ReviewRound {
   evidence_candidates?: EvidenceCandidate[]
   confirmed_facts?: ConfirmedFact[]
 }
-export interface WorkspaceDesk { id: string; question: Snapshot; sequence: number; note?: ExplorationNote | null; note_revisions: NoteRevision[]; anchors: ExplorationAnchor[]; claims: Claim[]; review_rounds: ReviewRoundSummary[]; pending_challenges: Challenge[]; park_release_refs?: ParkReleaseRef[]; materials?: Material[] }
+export interface WorkspaceDesk { id: string; question: Snapshot; sequence: number; note?: ExplorationNote | null; note_revisions: NoteRevision[]; anchors: ExplorationAnchor[]; claims: Claim[]; review_rounds: ReviewRoundSummary[]; pending_challenges: Challenge[]; park_release_refs?: ParkReleaseRef[]; materials?: Material[]; confirmed_facts?: ConfirmedFact[]; user_position?: WorkspacePosition; conclusion?: Conclusion | null; direction_links?: DirectionLink[]; successor_workspace_id?: string | null; absorb_target_workspace_id?: string | null }
 export interface HomePendingFact extends Challenge { workspace_id: string; question: string }
-export interface HomeProjection { universe_id: string; workspaces: WorkspaceDesk[]; pending_facts: HomePendingFact[] }
+export interface HomeProjection { universe_id: string; workspaces: WorkspaceDesk[]; pending_facts: HomePendingFact[]; directions?: HomeDirection[] }
 
 export type MaterialPurpose = "evidence" | "reference"
 export type MaterialParseStatus = "parsed" | "failed"
@@ -78,3 +78,28 @@ export interface AddMaterialEnvelope extends CommandEnvelope { excerpt: string; 
 export interface ProposeEvidenceCandidateEnvelope extends CommandEnvelope { material_id: string; relation: EvidenceRelation; uncertainty?: string | null }
 export interface DecideEvidenceEnvelope extends CommandEnvelope { user_reason?: string | null }
 export interface CorrectEvidenceEnvelope extends DecideEvidenceEnvelope { corrected_relation: EvidenceRelation }
+
+// Slice 5 — crystallization / direction impact
+export type WorkspacePosition = "exploring" | "paused" | "concluded" | "branched" | "absorbed"
+export type ConclusionType = "tentative_answer" | "negated_path" | "boundary" | "key_unknown" | "deferred" | "split_or_turn"
+export interface Conclusion { id: string; type: ConclusionType; text: string; reason?: string | null; basis_refs?: string[]; revival_condition?: string | null; sequence?: number }
+export interface DirectionLink { link_id: string; direction_id: string; direction_proposition?: string | null; status?: string }
+export type DirectionStatus = "active" | "on_hold" | "retired"
+export type DirectionChangeType = "clarify" | "narrow_or_widen" | "turning" | "unnamed"
+export interface DirectionRephraseEntry { prior_proposition_version_id: string; prior_proposition_text: string; new_proposition_version_id: string; new_proposition_text?: string | null; change_type: DirectionChangeType; user_reason: string; source_conclusion_ref?: string | null; sequence?: number }
+export interface DirectionAttachedWorkspace { link_id: string; workspace_id: string; question?: string | null; position: WorkspacePosition; pending_fact_count: number }
+export interface Crystallization { crystallization_id: string; direction_id?: string; workspace_id: string; conclusion_id: string; conclusion_text: string; conclusion_type: ConclusionType }
+export interface Direction { id: string; proposition: { version_id: string; text: string | null }; status: DirectionStatus; sequence?: number; rephrase_history: DirectionRephraseEntry[]; attached_workspaces: DirectionAttachedWorkspace[]; crystallizations: Crystallization[] }
+export interface HomeDirection { id: string; proposition: string; status: DirectionStatus; crystallizations: Crystallization[]; crystallizations_count: number; attached_workspaces_count: number }
+
+export interface PauseWorkspaceEnvelope extends CommandEnvelope { user_reason?: string | null }
+export interface ReopenWorkspaceEnvelope extends CommandEnvelope { user_reason?: string | null }
+export interface ConcludeWorkspaceEnvelope extends CommandEnvelope { conclusion_type: ConclusionType; conclusion_text: string; user_reason?: string | null; basis_refs?: string[]; revival_condition?: string | null }
+export interface BranchWorkspaceEnvelope extends CommandEnvelope { new_question: string; user_reason: string }
+export interface AbsorbWorkspaceEnvelope extends CommandEnvelope { target_workspace_id: string; user_reason: string }
+export interface AttachDirectionEnvelope extends CommandEnvelope { direction_id: string; user_reason?: string | null }
+export interface DetachDirectionLinkEnvelope extends CommandEnvelope { user_reason?: string | null }
+export interface CreateDirectionEnvelope extends CommandEnvelope { proposition: string }
+export interface DeclareDirectionStatusEnvelope extends CommandEnvelope { status: DirectionStatus; user_reason: string }
+export interface RephraseDirectionEnvelope extends CommandEnvelope { new_proposition?: string | null; change_type: DirectionChangeType; user_reason: string; source_conclusion_ref?: string | null }
+export interface AttachCrystallizationEnvelope extends CommandEnvelope { workspace_id: string; conclusion_id: string; user_reason?: string | null }

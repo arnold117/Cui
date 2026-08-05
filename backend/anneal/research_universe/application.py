@@ -8,12 +8,17 @@ from uuid import uuid4, uuid5, NAMESPACE_URL
 from anneal.research_universe.domain.events import (
     ChallengeAnsweredPayload, ChallengeCreatedPayload, ChallengeDeferredPayload,
     ChallengeWithdrawnPayload, ClaimCreatedPayload, ClaimForgedFromCapturePayload,
+    DirectionCreatedPayload, DirectionPropositionRephrasedPayload,
+    DirectionStatusDeclaredPayload,
     EvidenceRelationConfirmedPayload, EvidenceRelationCorrectedPayload,
     EvidenceRelationProposedPayload, EvidenceRelationRejectedPayload,
     EvidenceRelationWithdrawnPayload, ExplorationAnchorCreatedPayload,
     ExplorationNoteSavedPayload, MaterialAddedPayload,
     ParkReleasedPayload, PendingNativeEvent, ReviewRoundStartedPayload,
-    VerdictConfirmedPayload, WorkspaceCreatedPayload,
+    VerdictConfirmedPayload, WorkspaceAbsorbedPayload, WorkspaceBranchedPayload,
+    WorkspaceConcludedPayload, WorkspaceCreatedPayload,
+    WorkspaceCrystallizationAttachedPayload, WorkspaceDirectionAttachedPayload,
+    WorkspaceDirectionDetachedPayload, WorkspacePausedPayload, WorkspaceReopenedPayload,
 )
 from anneal.research_universe.store.event_store import CommitResult, NativeEventStore, command_fingerprint
 from anneal.research_universe.command_guard import CommandExecutionGuard
@@ -159,9 +164,64 @@ def _round_next_sequence(events, round_id: str) -> int:
     return max((e.sequence + 1 for e in events if e.aggregate_type == "review_round" and e.aggregate_id == round_id), default=1)
 
 
+# --- Slice 5 position / direction helpers -------------------------------------
+
+_ALLOWED_POSITION_TRANSITIONS: dict[str, set[str]] = {
+    "pause": {"exploring"},
+    "reopen": {"paused", "concluded"},
+    "conclude": {"exploring"},
+    "branch": {"exploring", "concluded"},
+    "absorb": {"exploring", "concluded"},
+}
+
+
+def _workspace_position(events, workspace_id: str) -> str:
+    """Derive the current workspace user_position by replaying position events."""
+    position = "exploring"
+    for event in events:
+        if event.aggregate_type != "workspace" or event.aggregate_id != workspace_id:
+            continue
+        if event.event_type == "workspace_paused":
+            position = "paused"
+        elif event.event_type == "workspace_reopened":
+            position = "exploring"
+        elif event.event_type == "workspace_concluded":
+            position = "concluded"
+        elif event.event_type == "workspace_branched":
+            position = "branched"
+        elif event.event_type == "workspace_absorbed":
+            position = "absorbed"
+    return position
+
+
+def _direction_current(events, direction_id: str) -> dict | None:
+    """Current proposition snapshot and declared status for a direction, or None."""
+    proposition: dict | None = None
+    status = "active"
+    for event in events:
+        p = event.validated_payload()
+        if event.event_type == "direction_created" and p.direction_id == direction_id:
+            proposition = {"version_id": p.proposition_version_id, "text": p.proposition_text}
+        elif event.event_type == "direction_status_declared" and p.direction_id == direction_id:
+            status = p.status
+        elif event.event_type == "direction_proposition_rephrased" and p.direction_id == direction_id:
+            proposition = {"version_id": p.new_proposition_version_id, "text": p.new_proposition_text}
+    return {"proposition": proposition, "status": status} if proposition is not None else None
+
+
+def _workspace_pending_count(events, workspace_id: str) -> int:
+    """Number of open (pending/answered) challenges across this workspace's rounds."""
+    round_ids = [p.round_id for e in events if e.event_type == "review_round_started" and (p := e.validated_payload()).workspace_id == workspace_id]
+    challenge_states = _challenge_states(events)
+    return len([c for c in challenge_states.values() if c["review_round_id"] in round_ids and c["status"] in ("pending", "answered")])
+
+
 def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id: str) -> dict:
     workspace = None; note_revisions = []; anchors = []; claims = []; rounds = []; park_release_refs = []; forged = []; materials = []
     workspace_sequence = 0
+    position = "exploring"; conclusion: dict | None = None
+    direction_links: list[dict] = []; detached_links: set[str] = set()
+    successor_workspace_id: str | None = None; absorb_target_workspace_id: str | None = None
     events = _events(store, universe_id)
     round_verdicts = _round_verdicts(events)
     for event in events:
@@ -184,11 +244,37 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
             rounds.append({"id": p.round_id, "claim_id": p.claim_id, "question_snapshot": {"version_id": p.question_version_id, "text": p.question_text}, "claim_snapshot": {"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text}, "verdict": round_verdicts.get(p.round_id), "sequence": _round_next_sequence(events, p.round_id)})
         elif event.event_type == "material_added" and p.workspace_id == workspace_id:
             materials.append({"id": p.material_id, "workspace_id": p.workspace_id, "excerpt": p.excerpt, "source_locator": p.source_locator, "parse_status": p.parse_status, "purpose": p.purpose, "sequence": event.sequence})
+        elif event.event_type == "workspace_paused" and p.workspace_id == workspace_id:
+            position = "paused"
+        elif event.event_type == "workspace_reopened" and p.workspace_id == workspace_id:
+            position = "exploring"
+        elif event.event_type == "workspace_concluded" and p.workspace_id == workspace_id:
+            position = "concluded"
+            conclusion = {"id": p.conclusion_id, "type": p.conclusion_type, "text": p.conclusion_text, "reason": p.user_reason, "basis_refs": p.basis_refs, "revival_condition": p.revival_condition, "sequence": event.sequence}
+        elif event.event_type == "workspace_branched" and p.workspace_id == workspace_id:
+            position = "branched"; successor_workspace_id = p.successor_workspace_id
+        elif event.event_type == "workspace_absorbed" and p.workspace_id == workspace_id:
+            position = "absorbed"; absorb_target_workspace_id = p.target_workspace_id
+        elif event.event_type == "workspace_direction_attached" and p.workspace_id == workspace_id:
+            direction_links.append({"link_id": p.direction_link_id, "direction_id": p.direction_id})
+        elif event.event_type == "workspace_direction_detached" and p.workspace_id == workspace_id:
+            detached_links.add(p.direction_link_id)
     if workspace is None: raise NotFound(workspace_id)
     latest_note = note_revisions[-1] if note_revisions else None
     challenge_states = _challenge_states(events)
     workspace_round_ids = {r["id"] for r in rounds}
     workspace_challenges = [challenge_states[cid] for cid in challenge_states if challenge_states[cid]["review_round_id"] in workspace_round_ids]
+    candidate_states = _evidence_candidate_states(events)
+    workspace_candidates = [candidate_states[cid] for cid in candidate_states if candidate_states[cid]["workspace_id"] == workspace_id]
+    workspace_confirmed_facts = [c for c in workspace_candidates if c["status"] in ("confirmed", "corrected")]
+    resolved_links: list[dict] = []
+    for link in direction_links:
+        if link["link_id"] in detached_links:
+            continue
+        current = _direction_current(events, link["direction_id"])
+        if current is None:
+            continue
+        resolved_links.append({**link, "direction_proposition": current["proposition"]["text"], "status": current["status"]})
     workspace.update(
         sequence=workspace_sequence,
         note=latest_note,
@@ -200,6 +286,12 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
         review_rounds=rounds,
         materials=materials,
         pending_challenges=[x for x in workspace_challenges if x["status"] in ("pending", "answered")],
+        confirmed_facts=workspace_confirmed_facts,
+        user_position=position,
+        conclusion=conclusion,
+        direction_links=resolved_links,
+        successor_workspace_id=successor_workspace_id,
+        absorb_target_workspace_id=absorb_target_workspace_id,
     )
     return workspace
 
@@ -219,13 +311,62 @@ def review_round_projection(store: NativeEventStore, universe_id: str, round_id:
     raise NotFound(round_id)
 
 
+def direction_projection(store: NativeEventStore, universe_id: str, direction_id: str) -> dict:
+    """Direction with current proposition, declared status, rephrase history,
+    attached workspaces, and crystallizations. Raises NotFound if absent."""
+    events = _events(store, universe_id)
+    current = _direction_current(events, direction_id)
+    if current is None:
+        raise NotFound(direction_id)
+    direction_sequence = max((e.sequence + 1 for e in events if e.aggregate_type == "direction" and e.aggregate_id == direction_id), default=1)
+    history: list[dict] = []
+    link_workspaces: dict[str, str] = {}
+    crystallizations: list[dict] = []
+    for event in events:
+        p = event.validated_payload()
+        if event.event_type == "direction_proposition_rephrased" and p.direction_id == direction_id:
+            history.append({"prior_proposition_version_id": p.prior_proposition_version_id, "prior_proposition_text": p.prior_proposition_text, "new_proposition_version_id": p.new_proposition_version_id, "new_proposition_text": p.new_proposition_text, "change_type": p.change_type, "user_reason": p.user_reason, "source_conclusion_ref": p.source_conclusion_ref, "sequence": event.sequence})
+        elif event.event_type == "workspace_direction_attached" and p.direction_id == direction_id:
+            link_workspaces[p.direction_link_id] = p.workspace_id
+        elif event.event_type == "workspace_direction_detached" and p.direction_id == direction_id:
+            link_workspaces.pop(p.direction_link_id, None)
+        elif event.event_type == "workspace_crystallization_attached" and p.direction_id == direction_id:
+            crystallizations.append({"crystallization_id": p.crystallization_id, "workspace_id": p.workspace_id, "conclusion_id": p.conclusion_id, "conclusion_text": p.conclusion_text, "conclusion_type": p.conclusion_type})
+    attached: list[dict] = []
+    for link_id, wid in link_workspaces.items():
+        question = next((e.validated_payload().initial_question_text for e in events if e.event_type == "workspace_created" and e.validated_payload().workspace_id == wid), None)
+        attached.append({"link_id": link_id, "workspace_id": wid, "question": question, "position": _workspace_position(events, wid), "pending_fact_count": _workspace_pending_count(events, wid)})
+    return {"id": direction_id, "proposition": current["proposition"], "status": current["status"], "sequence": direction_sequence, "rephrase_history": history, "attached_workspaces": attached, "crystallizations": crystallizations}
+
+
 def universe_home_projection(store: NativeEventStore, universe_id: str) -> dict:
     workspaces = []
     for event in _events(store, universe_id):
         if event.event_type == "workspace_created":
             workspaces.append(workspace_projection(store, universe_id, event.validated_payload().workspace_id))
     pending = [{**c, "workspace_id": w["id"], "question": w["question"]["text"]} for w in workspaces for c in w["pending_challenges"]]
-    return {"universe_id": universe_id, "workspaces": workspaces, "pending_facts": pending}
+    directions: list[dict] = []
+    seen: set[str] = set()
+    for event in _events(store, universe_id):
+        if event.event_type != "direction_created":
+            continue
+        direction_id = event.validated_payload().direction_id
+        if direction_id in seen:
+            continue
+        seen.add(direction_id)
+        try:
+            dp = direction_projection(store, universe_id, direction_id)
+        except NotFound:
+            continue
+        directions.append({
+            "id": dp["id"],
+            "proposition": dp["proposition"]["text"] if dp["proposition"]["text"] is not None else "暂不命名",
+            "status": dp["status"],
+            "crystallizations": dp["crystallizations"],
+            "crystallizations_count": len(dp["crystallizations"]),
+            "attached_workspaces_count": len(dp["attached_workspaces"]),
+        })
+    return {"universe_id": universe_id, "workspaces": workspaces, "pending_facts": pending, "directions": directions}
 
 
 
@@ -472,3 +613,88 @@ class Slice1Service:
         self._require_pending(state)
         p = EvidenceRelationWithdrawnPayload(candidate_id=candidate_id, round_id=state["round_id"], claim_id=state["claim_snapshot"]["id"], user_reason=user_reason)
         return self._append_many(universe_id, command_id, "withdraw_evidence_candidate", command_payload, expected, [PendingNativeEvent(event_type="evidence_relation_withdrawn", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id)], {"candidate_id": candidate_id, "round_id": state["round_id"], "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}})
+
+    # --- Slice 5: workspace crystallization / direction impact ----------------
+
+    def _assert_position_transition(self, universe_id: str, workspace_id: str, action: str) -> None:
+        workspace_projection(self.store, universe_id, workspace_id)
+        position = _workspace_position(_events(self.store, universe_id), workspace_id)
+        if position not in _ALLOWED_POSITION_TRANSITIONS[action]:
+            raise BoundaryViolation(f"cannot {action} a workspace in position {position}")
+
+    def pause_workspace(self, universe_id: str, workspace_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        self._assert_position_transition(universe_id, workspace_id, "pause")
+        p = WorkspacePausedPayload(workspace_id=workspace_id, user_reason=user_reason)
+        return self._append(universe_id, command_id, "pause_workspace", {"workspace_id": workspace_id, "user_reason": user_reason}, {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="workspace_paused", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"workspace_id": workspace_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
+
+    def reopen_workspace(self, universe_id: str, workspace_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        self._assert_position_transition(universe_id, workspace_id, "reopen")
+        p = WorkspaceReopenedPayload(workspace_id=workspace_id, user_reason=user_reason)
+        return self._append(universe_id, command_id, "reopen_workspace", {"workspace_id": workspace_id, "user_reason": user_reason}, {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="workspace_reopened", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"workspace_id": workspace_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
+
+    def conclude_workspace(self, universe_id: str, workspace_id: str, conclusion_type: str, conclusion_text: str, user_reason: str | None, basis_refs: list[str], revival_condition: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        self._assert_position_transition(universe_id, workspace_id, "conclude")
+        conclusion_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:conclusion:{command_id}"))
+        p = WorkspaceConcludedPayload(workspace_id=workspace_id, conclusion_id=conclusion_id, conclusion_type=conclusion_type, conclusion_text=conclusion_text, user_reason=user_reason, basis_refs=basis_refs, revival_condition=revival_condition)  # type: ignore[arg-type]
+        return self._append(universe_id, command_id, "conclude_workspace", {"workspace_id": workspace_id, "conclusion_type": conclusion_type, "conclusion_text": conclusion_text, "user_reason": user_reason, "basis_refs": basis_refs, "revival_condition": revival_condition}, {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="workspace_concluded", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"workspace_id": workspace_id, "conclusion_id": conclusion_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
+
+    def branch_workspace(self, universe_id: str, workspace_id: str, new_question: str, user_reason: str, command_id: str, expected_sequence: int) -> CommitResult:
+        """Atomically create the successor workspace AND record the branch in one commit."""
+        self._assert_position_transition(universe_id, workspace_id, "branch")
+        successor_id, qid = self._id(command_id, "workspace"), self._id(command_id, "question")
+        wp = WorkspaceCreatedPayload(workspace_id=successor_id, initial_question_version_id=qid, initial_question_text=new_question)
+        bp = WorkspaceBranchedPayload(workspace_id=workspace_id, successor_workspace_id=successor_id, user_reason=user_reason)
+        expected = {("workspace", workspace_id): expected_sequence, ("workspace", successor_id): 0}
+        events = [PendingNativeEvent(event_type="workspace_created", payload=wp.model_dump(), aggregate_type="workspace", aggregate_id=successor_id), PendingNativeEvent(event_type="workspace_branched", payload=bp.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id)]
+        return self._append_many(universe_id, command_id, "branch_workspace", {"workspace_id": workspace_id, "new_question": new_question, "user_reason": user_reason}, expected, events, {"workspace_id": workspace_id, "successor_workspace_id": successor_id, "aggregate_sequences": {"workspace": expected_sequence + 1, "successor": 1}})
+
+    def absorb_workspace(self, universe_id: str, workspace_id: str, target_workspace_id: str, user_reason: str, command_id: str, expected_sequence: int) -> CommitResult:
+        self._assert_position_transition(universe_id, workspace_id, "absorb")
+        if target_workspace_id == workspace_id:
+            raise BoundaryViolation("absorb target must be a different workspace")
+        workspace_projection(self.store, universe_id, target_workspace_id)
+        p = WorkspaceAbsorbedPayload(workspace_id=workspace_id, target_workspace_id=target_workspace_id, user_reason=user_reason)
+        return self._append(universe_id, command_id, "absorb_workspace", {"workspace_id": workspace_id, "target_workspace_id": target_workspace_id, "user_reason": user_reason}, {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="workspace_absorbed", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"workspace_id": workspace_id, "target_workspace_id": target_workspace_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
+
+    def create_direction(self, universe_id: str, proposition: str, command_id: str, expected_sequence: int) -> CommitResult:
+        direction_id, vid = self._id(command_id, "direction"), self._id(command_id, "direction-proposition")
+        p = DirectionCreatedPayload(direction_id=direction_id, proposition_version_id=vid, proposition_text=proposition)
+        return self._append(universe_id, command_id, "create_direction", {"proposition": proposition}, {("direction", direction_id): expected_sequence}, PendingNativeEvent(event_type="direction_created", payload=p.model_dump(), aggregate_type="direction", aggregate_id=direction_id), {"direction_id": direction_id, "proposition_version_id": vid, "aggregate_sequences": {"direction": expected_sequence + 1}})
+
+    def declare_direction_status(self, universe_id: str, direction_id: str, status: str, user_reason: str, command_id: str, expected_sequence: int) -> CommitResult:
+        direction_projection(self.store, universe_id, direction_id)
+        p = DirectionStatusDeclaredPayload(direction_id=direction_id, status=status, user_reason=user_reason)  # type: ignore[arg-type]
+        return self._append(universe_id, command_id, "declare_direction_status", {"direction_id": direction_id, "status": status, "user_reason": user_reason}, {("direction", direction_id): expected_sequence}, PendingNativeEvent(event_type="direction_status_declared", payload=p.model_dump(), aggregate_type="direction", aggregate_id=direction_id), {"direction_id": direction_id, "status": status, "aggregate_sequences": {"direction": expected_sequence + 1}})
+
+    def rephrase_direction(self, universe_id: str, direction_id: str, new_proposition: str | None, change_type: str, user_reason: str, source_conclusion_ref: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        current = direction_projection(self.store, universe_id, direction_id)
+        new_vid = self._id(command_id, "direction-proposition")
+        p = DirectionPropositionRephrasedPayload(direction_id=direction_id, prior_proposition_version_id=current["proposition"]["version_id"], prior_proposition_text=current["proposition"]["text"] or "", new_proposition_version_id=new_vid, new_proposition_text=new_proposition, change_type=change_type, user_reason=user_reason, source_conclusion_ref=source_conclusion_ref)  # type: ignore[arg-type]
+        return self._append(universe_id, command_id, "rephrase_direction", {"direction_id": direction_id, "new_proposition": new_proposition, "change_type": change_type, "user_reason": user_reason, "source_conclusion_ref": source_conclusion_ref}, {("direction", direction_id): expected_sequence}, PendingNativeEvent(event_type="direction_proposition_rephrased", payload=p.model_dump(), aggregate_type="direction", aggregate_id=direction_id), {"direction_id": direction_id, "new_proposition_version_id": new_vid, "aggregate_sequences": {"direction": expected_sequence + 1}})
+
+    def attach_direction(self, universe_id: str, workspace_id: str, direction_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        workspace_projection(self.store, universe_id, workspace_id)
+        direction_projection(self.store, universe_id, direction_id)
+        link_id = self._id(command_id, "direction-link")
+        p = WorkspaceDirectionAttachedPayload(direction_link_id=link_id, workspace_id=workspace_id, direction_id=direction_id, user_reason=user_reason)
+        return self._append(universe_id, command_id, "attach_direction", {"workspace_id": workspace_id, "direction_id": direction_id, "user_reason": user_reason}, {("workspace_direction_link", link_id): expected_sequence}, PendingNativeEvent(event_type="workspace_direction_attached", payload=p.model_dump(), aggregate_type="workspace_direction_link", aggregate_id=link_id), {"direction_link_id": link_id, "workspace_id": workspace_id, "direction_id": direction_id, "aggregate_sequences": {"workspace_direction_link": expected_sequence + 1}})
+
+    def detach_direction_link(self, universe_id: str, link_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        events = _events(self.store, universe_id)
+        attached = next((e.validated_payload() for e in events if e.event_type == "workspace_direction_attached" and e.validated_payload().direction_link_id == link_id), None)
+        if attached is None:
+            raise NotFound(link_id)
+        if any(e.event_type == "workspace_direction_detached" and e.validated_payload().direction_link_id == link_id for e in events):
+            raise BoundaryViolation("direction link is already detached")
+        p = WorkspaceDirectionDetachedPayload(direction_link_id=link_id, workspace_id=attached.workspace_id, direction_id=attached.direction_id, user_reason=user_reason)
+        return self._append(universe_id, command_id, "detach_direction_link", {"direction_link_id": link_id, "user_reason": user_reason}, {("workspace_direction_link", link_id): expected_sequence}, PendingNativeEvent(event_type="workspace_direction_detached", payload=p.model_dump(), aggregate_type="workspace_direction_link", aggregate_id=link_id), {"direction_link_id": link_id, "workspace_id": attached.workspace_id, "direction_id": attached.direction_id, "aggregate_sequences": {"workspace_direction_link": expected_sequence + 1}})
+
+    def attach_crystallization(self, universe_id: str, direction_id: str, workspace_id: str, conclusion_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        ws = workspace_projection(self.store, universe_id, workspace_id)
+        direction_projection(self.store, universe_id, direction_id)
+        if ws.get("conclusion") is None or ws["conclusion"]["id"] != conclusion_id:
+            raise BoundaryViolation("workspace has no such conclusion")
+        conclusion = ws["conclusion"]
+        crystallization_id = self._id(command_id, "crystallization")
+        p = WorkspaceCrystallizationAttachedPayload(crystallization_id=crystallization_id, direction_id=direction_id, workspace_id=workspace_id, conclusion_id=conclusion_id, conclusion_text=conclusion["text"], conclusion_type=conclusion["type"], user_reason=user_reason)  # type: ignore[arg-type]
+        return self._append(universe_id, command_id, "attach_crystallization", {"direction_id": direction_id, "workspace_id": workspace_id, "conclusion_id": conclusion_id, "user_reason": user_reason}, {("workspace_crystallization", crystallization_id): expected_sequence}, PendingNativeEvent(event_type="workspace_crystallization_attached", payload=p.model_dump(), aggregate_type="workspace_crystallization", aggregate_id=crystallization_id), {"crystallization_id": crystallization_id, "direction_id": direction_id, "workspace_id": workspace_id, "aggregate_sequences": {"workspace_crystallization": expected_sequence + 1}})

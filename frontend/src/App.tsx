@@ -3,6 +3,7 @@ import { UniverseShell } from "./features/research-universe/shell/UniverseShell"
 import { StartStation } from "./features/research-universe/screens/StartStation"
 import { WorkspaceDesk } from "./features/research-universe/screens/WorkspaceDesk"
 import { ReviewRoundDesk } from "./features/research-universe/screens/ReviewRoundDesk"
+import { DirectionViewport } from "./features/research-universe/screens/DirectionViewport"
 import { UniverseHome } from "./features/research-universe/screens/UniverseHome"
 import { LegacyArchive } from "./features/legacy-archive/LegacyArchive"
 import { ParkDesk } from "./features/finalized-assumption/ParkDesk"
@@ -15,7 +16,7 @@ function NotFound({ pathname }: { pathname: string }) { return <UniverseShell><s
 function RoutedApp() {
   const { location } = useNavigation(); const { pathname, search } = location
   const artifactMatch = pathname.match(/^\/artifact\/([^/]+)$/); const archiveArtifactMatch = pathname.match(/^\/archive\/artifacts\/([^/]+)$/)
-  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const forgeMatch = pathname.match(/^\/workspaces\/([^/]+)\/forge\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
+  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const forgeMatch = pathname.match(/^\/workspaces\/([^/]+)\/forge\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const directionMatch = pathname.match(/^\/directions\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
   if (pathname === "/__prototype/research-universe" && ["A", "B", "C", "D"].includes(prototypeVariant ?? "")) return <Suspense fallback={null}><ResearchUniversePrototype variant={prototypeVariant as "A" | "B" | "C" | "D"} /></Suspense>
   if (pathname === "/archive") return <LegacyArchive />
   if (archiveArtifactMatch) return <LegacyArchive artifactId={archiveArtifactMatch[1]} />
@@ -27,6 +28,7 @@ function RoutedApp() {
   if (forgeMatch) return <UniverseShell trail={["问题工作区", "锻"]}><WorkspaceDesk workspaceId={forgeMatch[1]} forgeReleaseRefId={forgeMatch[2]} sourceReleaseId={new URLSearchParams(search).get("source-release") ?? undefined} /></UniverseShell>
   if (workspaceMatch) return <UniverseShell trail={["问题工作区"]}><WorkspaceDesk workspaceId={workspaceMatch[1]} sourceReleaseId={new URLSearchParams(search).get("source-release") ?? undefined} /></UniverseShell>
   if (reviewMatch) return <UniverseShell trail={["问题工作区", "审查轮次"]}><ReviewRoundDesk roundId={reviewMatch[1]} /></UniverseShell>
+  if (directionMatch) return <UniverseShell trail={["方向"]}><DirectionViewport directionId={directionMatch[1]} rephraseIntent={new URLSearchParams(search).get("rephrase") === "1"} sourceConclusionRef={new URLSearchParams(search).get("source_conclusion") ?? undefined} /></UniverseShell>
   if (pathname === "/") return <UniverseShell><div className="ru-root"><StartStation /><UniverseHome /></div></UniverseShell>
   return <NotFound pathname={pathname} />
 }
