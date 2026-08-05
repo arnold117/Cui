@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal, TypeAlias
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Payload(BaseModel):
@@ -89,6 +89,49 @@ class ClaimForgedFromCapturePayload(Payload):
     author: Literal["user"] = "user"
 
 
+class ChallengeAnsweredPayload(Payload):
+    challenge_id: str
+    round_id: str
+    claim_id: str
+    answer_version_id: str
+    answer_text: str = Field(min_length=1)
+    author: Literal["user"] = "user"
+    provisional_anchor_refs: list[str] = Field(default_factory=list)
+
+
+class ChallengeDeferredPayload(Payload):
+    challenge_id: str
+    round_id: str
+    claim_id: str
+    reason: str = Field(min_length=1)
+    condition: str = Field(min_length=1)
+
+
+class ChallengeWithdrawnPayload(Payload):
+    challenge_id: str
+    round_id: str
+    claim_id: str
+    reason: str = Field(min_length=1)
+
+
+class VerdictConfirmedPayload(Payload):
+    round_id: str
+    workspace_id: str
+    claim_id: str
+    verdict_type: Literal["survived", "refuted", "not_worth", "boundary", "circumstantial"]
+    user_reason: str = Field(min_length=1)
+    revival_condition: str | None = None
+
+    @model_validator(mode="after")
+    def _revival_condition_rule(self) -> "VerdictConfirmedPayload":
+        if self.verdict_type == "circumstantial":
+            if not self.revival_condition or not self.revival_condition.strip():
+                raise ValueError("circumstantial verdict requires a non-empty revival_condition")
+        elif self.revival_condition is not None:
+            raise ValueError("revival_condition is only valid for circumstantial verdicts")
+        return self
+
+
 Slice1Payload: TypeAlias = Annotated[
     WorkspaceCreatedPayload
     | ExplorationNoteSavedPayload
@@ -110,6 +153,10 @@ EVENT_PAYLOAD_TYPES: dict[tuple[str, int], type[Payload]] = {
     ("challenge_created", 1): ChallengeCreatedPayload,
     ("park_released", 1): ParkReleasedPayload,
     ("claim_forged_from_capture", 1): ClaimForgedFromCapturePayload,
+    ("challenge_answered", 1): ChallengeAnsweredPayload,
+    ("challenge_deferred", 1): ChallengeDeferredPayload,
+    ("challenge_withdrawn", 1): ChallengeWithdrawnPayload,
+    ("verdict_confirmed", 1): VerdictConfirmedPayload,
 }
 
 

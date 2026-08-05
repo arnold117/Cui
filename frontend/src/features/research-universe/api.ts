@@ -1,4 +1,4 @@
-import type { Claim, CommandEnvelope, CommandResponse, ExplorationAnchor, ExplorationNote, HomeProjection, ReviewRound, WorkspaceDesk } from "./types"
+import type { AnswerChallengeEnvelope, Claim, CommandEnvelope, CommandResponse, ConfirmVerdictEnvelope, DeferChallengeEnvelope, ExplorationAnchor, ExplorationNote, HomeProjection, ReviewRound, WithdrawChallengeEnvelope, WorkspaceDesk } from "./types"
 
 const BASE = "/api/v2"
 function commandId() { return globalThis.crypto?.randomUUID?.() ?? `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}` }
@@ -29,5 +29,9 @@ export const researchUniverse = {
   forgeProvenance: (workspaceId: string, envelope: CommandEnvelope & { claim_id: string; capture_id: string; release_id: string }) => send<CommandResponse<{ aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims/forge-provenance`, envelope),
   startReview: (claimId: string, envelope: CommandEnvelope) => send<CommandResponse<{ review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/claims/${claimId}/review-rounds`, envelope),
   reviewRound: (roundId: string) => read<ReviewRound>(`/review-rounds/${roundId}`),
+  answerChallenge: (challengeId: string, envelope: AnswerChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; answer_version_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/answers`, envelope),
+  deferChallenge: (challengeId: string, envelope: DeferChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/defer`, envelope),
+  withdrawChallenge: (challengeId: string, envelope: WithdrawChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/withdraw`, envelope),
+  confirmVerdict: (roundId: string, envelope: ConfirmVerdictEnvelope) => send<CommandResponse<{ review_round_id: string; verdict_type: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/verdicts`, envelope),
 }
 export type { Claim, ExplorationAnchor, ExplorationNote }

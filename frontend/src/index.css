@@ -67,4 +67,37 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-focus-surface blockquote { margin: 2rem 0; padding-left: 1rem; border-left: 2px solid var(--edge); font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1.15rem; line-height: 1.7; }.ru-focus-surface > p:not(.ru-kicker) { color: var(--muted); line-height: 1.7; }.ru-focus-surface .ru-ink-button { opacity: 1; cursor: pointer; margin-top: 1rem; }.ru-forge-layout { padding-right: 440px; }
 .ru-review { background: var(--paper); padding: clamp(1.5rem, 5vw, 4rem); border-top: 3px solid var(--edge); }.ru-snapshot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; margin: 2.5rem 0; }.ru-snapshot-grid article { border-top: 1px solid var(--line); padding-top: 1rem; }.ru-snapshot-grid h2 { font-size: .85rem; }.ru-snapshot-grid small, .ru-provenance { color: var(--muted); font-size: .78rem; }.ru-challenge { border-left: 3px solid var(--rust); padding: 1.25rem 1.5rem; background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }.ru-challenge h2 { color: var(--rust); font-size: 1.4rem; font-weight: 500; }.ru-challenge dl { display: grid; gap: 1rem; }.ru-challenge dt { color: var(--muted); font-size: .78rem; }.ru-challenge dd { margin: .25rem 0 0; font-family: "Charis SIL", "Source Han Serif", serif; line-height: 1.7; }.ru-challenge-note { border-top: 1px solid var(--line); padding-top: 1rem; color: var(--muted); font-size: .85rem; line-height: 1.6; }.ru-review-exits { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: 1.25rem; }.ru-review-exits a { text-decoration: none; }.ru-claim-progress { color: var(--muted); font-size: .82rem; line-height: 1.6; }
 .ru-universe-home { border-top: 1px solid var(--line); }.ru-universe-home h1 { font-size: 1.35rem; font-weight: 500; line-height: 1.4; }.ru-home-facts { display: grid; gap: .75rem; }.ru-home-facts a { display: grid; gap: .25rem; padding: .75rem 0 .75rem .7rem; border-left: 2px solid var(--rust); color: var(--ink); text-decoration: none; }.ru-home-facts a:hover strong { color: var(--rust); }.ru-home-facts span, .ru-home-facts small { color: var(--muted); font-size: .75rem; }.ru-home-facts strong { font-size: .9rem; font-weight: 600; line-height: 1.45; }
+.ru-ink-button.ru-active { opacity: 1; cursor: pointer; }
+.ru-challenge-list { display: grid; gap: 1.5rem; margin: 2rem 0; }
+.ru-challenge-closed { border-left-color: var(--line); background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
+.ru-challenge-closed h2 { color: var(--ink); }
+.ru-answer-log { margin: 1.25rem 0; padding: 1rem 1.25rem; border-left: 2px solid var(--teal); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); }
+.ru-answer-entry { margin: .4rem 0; font-family: "Charis SIL", "Source Han Serif", serif; line-height: 1.7; }
+.ru-answer-form { margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.ru-answer-form label, .ru-verdict-form label { display: block; font-size: .88rem; font-weight: 650; }
+.ru-answer-form textarea, .ru-verdict-form textarea, .ru-verdict-form input { width: 100%; margin: .7rem 0; padding: .7rem; background: transparent; border: 1px solid var(--line); color: var(--ink); line-height: 1.6; }
+.ru-answer-form .ru-ink-button { opacity: 1; cursor: pointer; }
+.ru-cant-answer { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--line); display: grid; gap: .55rem; justify-items: start; }
+.ru-cant-answer-menu { list-style: none; margin: .25rem 0 0; padding: .5rem .9rem; border-left: 2px solid var(--edge); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); display: grid; gap: .5rem; justify-items: start; }
+.ru-cant-answer-menu a { text-decoration: none; }
+.ru-inline-action { display: grid; gap: .4rem; justify-items: start; }
+.ru-inline-action label { font-size: .82rem; color: var(--muted); }
+.ru-inline-action input { padding: .4rem .55rem; border: 1px solid var(--line); background: transparent; color: var(--ink); }
+.ru-danger { color: var(--rust); }
+.ru-verdict { margin: 2rem 0; padding: clamp(1.25rem, 3vw, 2rem); border-top: 2px solid var(--edge); background: var(--paper); }
+.ru-verdict h2 { font-size: 1.5rem; font-weight: 500; }
+.ru-ledger-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin: 1rem 0; }
+.ru-ledger-grid section { margin: 0; padding: .7rem .9rem; border-left: 2px solid var(--line); background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
+.ru-ledger-grid h3 { margin: 0 0 .4rem; color: var(--muted); font-size: .78rem; font-weight: 650; }
+.ru-ledger-item { margin: .2rem 0; font-size: .84rem; line-height: 1.45; }
+.ru-ledger-empty { margin: .2rem 0; color: var(--muted); font-size: .84rem; }
+.ru-verdict-form fieldset { display: grid; gap: .6rem; margin: 1.25rem 0; padding: 0 0 1.1rem; border: 0; border-bottom: 1px solid var(--line); }
+.ru-verdict-form legend { color: var(--muted); font-size: .83rem; margin-bottom: .25rem; }
+.ru-verdict-form fieldset label { display: flex; gap: .5rem; align-items: baseline; font-weight: 400; }
+.ru-verdict-form fieldset small { color: var(--muted); }
+.ru-verdict-actions { display: flex; gap: 1rem; align-items: center; margin-top: 1rem; }
+.ru-rereview, .ru-boundary { margin: 2rem 0; padding: clamp(1.25rem, 3vw, 2rem); border-top: 2px solid var(--edge); background: var(--paper); }
+.ru-rereview h2, .ru-boundary h2 { font-size: 1.35rem; font-weight: 500; line-height: 1.35; }
+.ru-round-history { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: .45rem; }
+.ru-round-history li { display: flex; gap: 1rem; justify-content: space-between; padding: .45rem .7rem; border-left: 2px solid var(--line); color: var(--muted); font-size: .84rem; }
 @media (max-width: 800px) { .ru-root { grid-template-columns: 1fr; }.ru-root .ru-universe-home { padding-top: 0; }.ru-desk-grid { grid-template-columns: 1fr; }.ru-research-edge { border-left: 0; border-top: 1px solid var(--line); }.ru-exploration { min-height: auto; }.ru-snapshot-grid { grid-template-columns: 1fr; gap: 1rem; }.ru-focus-surface { top: auto; max-height: 72vh; border-top: 2px solid var(--edge); border-left: 0; }.ru-forge-layout { padding-right: 0; padding-bottom: 74vh; } }
