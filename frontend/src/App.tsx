@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react"
 import { UniverseShell } from "./features/research-universe/shell/UniverseShell"
 import { StartStation } from "./features/research-universe/screens/StartStation"
 import { WorkspaceDesk } from "./features/research-universe/screens/WorkspaceDesk"
+import { DialogueDesk } from "./features/research-universe/screens/DialogueDesk"
 import { ReviewRoundDesk } from "./features/research-universe/screens/ReviewRoundDesk"
 import { DirectionViewport } from "./features/research-universe/screens/DirectionViewport"
 import { UniverseHome } from "./features/research-universe/screens/UniverseHome"
@@ -16,8 +17,9 @@ function NotFound({ pathname }: { pathname: string }) { return <UniverseShell><s
 function RoutedApp() {
   const { location } = useNavigation(); const { pathname, search } = location
   const artifactMatch = pathname.match(/^\/artifact\/([^/]+)$/); const archiveArtifactMatch = pathname.match(/^\/archive\/artifacts\/([^/]+)$/)
-  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const forgeMatch = pathname.match(/^\/workspaces\/([^/]+)\/forge\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const directionMatch = pathname.match(/^\/directions\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
+  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)$/); const dialogueMatch = pathname.match(/^\/workspaces\/([^/]+)\/dialogue$/); const forgeMatch = pathname.match(/^\/workspaces\/([^/]+)\/forge\/([^/]+)$/); const reviewMatch = pathname.match(/^\/review-rounds\/([^/]+)$/); const directionMatch = pathname.match(/^\/directions\/([^/]+)$/); const prototypeVariant = new URLSearchParams(search).get("variant")
   if (pathname === "/__prototype/research-universe" && ["A", "B", "C", "D"].includes(prototypeVariant ?? "")) return <Suspense fallback={null}><ResearchUniversePrototype variant={prototypeVariant as "A" | "B" | "C" | "D"} /></Suspense>
+  if (dialogueMatch) return <UniverseShell trail={["问题工作区", "文献探讨"]}><DialogueDesk workspaceId={dialogueMatch[1]} /></UniverseShell>
   if (pathname === "/archive") return <LegacyArchive />
   if (archiveArtifactMatch) return <LegacyArchive artifactId={archiveArtifactMatch[1]} />
   if (artifactMatch) return <LegacyArchive artifactId={artifactMatch[1]} redirectedFrom={pathname} />

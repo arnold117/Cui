@@ -158,3 +158,4 @@ def test_literature_search_endpoint_picks_valid_locators_only():
     body = resp.json()
     locators = [c["locator"] for c in body["candidates"]]
     assert locators == ["arxiv:2401.00009"]
+    assert body["candidates"][0]["material_id"]

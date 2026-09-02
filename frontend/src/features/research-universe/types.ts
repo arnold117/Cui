@@ -136,3 +136,9 @@ export interface CorpusSearchHit { material_id: string; source_locator: string; 
 export interface CorpusSearchResponse { query: string; group: string; total: number; results: CorpusSearchHit[] }
 export interface GapProposeEnvelope extends CommandEnvelope { coverage_statement: string; search_query: string; search_scope: "active" | "legacy"; matched_locators: string[]; searched_at?: string | null; counterexample_invitation: string }
 export interface GapDecisionEnvelope extends CommandEnvelope { user_reason?: string | null }
+
+// slice1 second cut — literature dialogue surface
+export interface LiteratureChallengeEnvelope extends CommandEnvelope { material_ids: string[] }
+export interface DialogueCandidate { material_id: string; locator: string; title: string; reason: string }
+export interface LiteratureSearchResponse { query: string; candidates: DialogueCandidate[] }
+export interface GapDraftFields { coverage_statement: string; search_query: string; counterexample_invitation: string }

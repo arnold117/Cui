@@ -146,7 +146,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             locator = item.get("locator") if isinstance(item, dict) else None
             if locator in allowed:
                 hit = next(h for h in ranked if h.source_locator == locator)
-                picks.append({"locator": locator, "title": hit.title, "reason": (item.get("reason") or "")[:200]})
+                picks.append({"material_id": hit.material_id, "locator": locator, "title": hit.title, "reason": (item.get("reason") or "")[:200]})
             if len(picks) >= 6:
                 break
         return {"query": (text.get("query") if isinstance(text, dict) else None) or body.query or body.question, "candidates": picks}
