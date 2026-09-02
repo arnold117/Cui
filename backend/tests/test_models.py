@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from anneal.domain.models import (
+from cui.domain.models import (
     Artifact,
     Claim,
     Conversation,

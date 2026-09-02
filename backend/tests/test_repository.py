@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from anneal.domain.models import Artifact, Claim, Conversation, Library, Material, Project
-from anneal.store.repository import InMemoryRepository
+from cui.domain.models import Artifact, Claim, Conversation, Library, Material, Project
+from cui.store.repository import InMemoryRepository
 
 
 def _make_library(lid: str = "lib-1") -> Library:

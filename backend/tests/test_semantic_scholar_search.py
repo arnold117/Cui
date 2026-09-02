@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from anneal.search import semantic_scholar
-from anneal.search.semantic_scholar import (
+from cui.search import semantic_scholar
+from cui.search.semantic_scholar import (
     map_semantic_scholar,
     search_semantic_scholar,
 )

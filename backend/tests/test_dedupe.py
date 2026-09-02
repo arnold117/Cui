@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from anneal.search.dedupe import dedupe
+from cui.search.dedupe import dedupe
 
 
 def _paper(**kw) -> dict:

@@ -6,14 +6,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
-from anneal.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router
-from anneal.research_universe.api.slice1 import create_slice1_router
-from anneal.research_universe.api.slice2 import create_slice2_router
-from anneal.research_universe.api.slice3 import create_slice3_router
-from anneal.research_universe.api.slice4 import create_slice4_router
-from anneal.research_universe.application import ChallengeDraft, Slice1Service
-from anneal.research_universe.store.event_store import PostgresNativeEventStore
-from anneal.research_universe.store.sealed_park_store import PostgresSealedParkStore
+from cui.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router
+from cui.research_universe.api.slice1 import create_slice1_router
+from cui.research_universe.api.slice2 import create_slice2_router
+from cui.research_universe.api.slice3 import create_slice3_router
+from cui.research_universe.api.slice4 import create_slice4_router
+from cui.research_universe.application import ChallengeDraft, Slice1Service
+from cui.research_universe.store.event_store import PostgresNativeEventStore
+from cui.research_universe.store.sealed_park_store import PostgresSealedParkStore
 from tests.pg_temp_db import temporary_database_url, drop_temporary_database
 from pathlib import Path
 from alembic.config import Config
@@ -75,7 +75,7 @@ def test_pg_material_to_confirmed_contradiction_persists_and_replays(pg_slice4):
     events = fresh.read_events(uid)
     types = [e.event_type for e in events]
     assert types == ["workspace_created", "claim_created", "review_round_started", "challenge_created", "material_added", "evidence_relation_proposed", "evidence_relation_confirmed", "challenge_created"]
-    from anneal.research_universe.application import review_round_projection, workspace_projection, universe_home_projection
+    from cui.research_universe.application import review_round_projection, workspace_projection, universe_home_projection
     frag = review_round_projection(fresh, uid, rid)
     assert frag["evidence_candidates"][0]["status"] == "confirmed"
     assert frag["evidence_candidates"][0]["material_anchor"]["excerpt"] == "Paper A observes Z."
@@ -97,7 +97,7 @@ def test_pg_reject_leaves_candidate_out_of_confirmed_facts(pg_slice4):
     cand = c.post(f"/api/v2/review-rounds/{rid}/evidence-candidates", json={"command_id":"propose","expected_sequence":0,"material_id":mid,"relation":"supports"}).json()["result"]["candidate_id"]
     assert c.post(f"/api/v2/evidence-candidates/{cand}/reject", json={"command_id":"reject","expected_sequence":1,"user_reason":"misread"}).status_code == 200
     fresh = PostgresNativeEventStore(engine)
-    from anneal.research_universe.application import review_round_projection
+    from cui.research_universe.application import review_round_projection
     frag = review_round_projection(fresh, uid, rid)
     assert frag["evidence_candidates"][0]["status"] == "rejected" and frag["evidence_candidates"][0]["decision_reason"] == "misread"
     assert frag["confirmed_facts"] == []

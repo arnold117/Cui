@@ -6,8 +6,8 @@ from alembic import command
 from alembic.config import Config
 import pytest
 
-from anneal.migrations_preflight_legacy import verify_legacy_schema
-from anneal.store.schema import metadata as legacy_metadata
+from cui.migrations_preflight_legacy import verify_legacy_schema
+from cui.store.schema import metadata as legacy_metadata
 
 
 def _config(url: str) -> Config:

@@ -11,8 +11,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from anneal.api.app import create_legacy_regression_app
-from anneal.api.deps import _state
+from cui.api.app import create_legacy_regression_app
+from cui.api.deps import _state
 from tests.fakes import FakeLLMClient
 
 
@@ -1148,7 +1148,7 @@ class TestLensAssessTasteAPI:
             return [_fake_paper("W1", "Anesthesia and pain: a review")]
 
         monkeypatch.setattr(
-            "anneal.services.lens_service.search_openalex", _fake_openalex
+            "cui.services.lens_service.search_openalex", _fake_openalex
         )
 
         # Wire a fake LLM returning a taste verdict anchored to real anchors.
@@ -1255,7 +1255,7 @@ def _patch_search(monkeypatch, papers: list[dict]) -> None:
         return papers[:max_per_source]
 
     monkeypatch.setattr(
-        "anneal.services.collect_service.search_all", _fake_search
+        "cui.services.collect_service.search_all", _fake_search
     )
 
 
@@ -1677,10 +1677,10 @@ class TestEnvLoadOrder:
         """dotenv 提供的 URL 必须能决定存储选型（顺序对了才可能）。"""
         import os
 
-        from anneal.api import deps
-        from anneal.services.lens_feed_service import InMemoryLensFeedStore
-        from anneal.store.event_store import InMemoryEventStore
-        from anneal.store.repository import InMemoryRepository
+        from cui.api import deps
+        from cui.services.lens_feed_service import InMemoryLensFeedStore
+        from cui.store.event_store import InMemoryEventStore
+        from cui.store.repository import InMemoryRepository
 
         # 模拟 .env 的效果：load_dotenv 把变量注入环境。
         def fake_load_dotenv(*_args, **_kwargs):
@@ -1710,12 +1710,12 @@ class TestEnvLoadOrder:
         """没有 URL 时必须大声说出来 —— 静默回退正是事故本身。"""
         import logging
 
-        from anneal.api import deps
+        from cui.api import deps
 
         monkeypatch.setenv("CUI_DATABASE_URL", "")
         monkeypatch.setattr(deps, "load_dotenv", lambda *a, **k: True)
 
-        with caplog.at_level(logging.WARNING, logger="anneal.api.deps"):
+        with caplog.at_level(logging.WARNING, logger="cui.api.deps"):
             deps._init_state()
         deps._state.clear()
 

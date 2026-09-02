@@ -1,8 +1,8 @@
-"""Tests for anneal.services.promote_service — promote survived claims into DOC."""
+"""Tests for cui.services.promote_service — promote survived claims into DOC."""
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     CONFIRM,
@@ -13,14 +13,14 @@ from anneal.domain.events import (
     VERDICT,
     make_event,
 )
-from anneal.domain.invariants import DebtBlockError, KilledClaimError, UngrilledError
-from anneal.domain.projections import claim_status
-from anneal.services.event_service import EventService
-from anneal.services.grill_service import GrillService
-from anneal.services.park_service import ParkService
-from anneal.services.promote_service import PromoteService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.invariants import DebtBlockError, KilledClaimError, UngrilledError
+from cui.domain.projections import claim_status
+from cui.services.event_service import EventService
+from cui.services.grill_service import GrillService
+from cui.services.park_service import ParkService
+from cui.services.promote_service import PromoteService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 
 
 # ---------------------------------------------------------------------------

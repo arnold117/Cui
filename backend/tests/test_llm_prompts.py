@@ -1,5 +1,5 @@
-from anneal.domain.events import GROUND, make_event
-from anneal.llm.prompts import (
+from cui.domain.events import GROUND, make_event
+from cui.llm.prompts import (
     OUTPUT_LANGUAGE_INSTRUCTION,
     ClaimPrecedent,
     build_challenge_prompt,

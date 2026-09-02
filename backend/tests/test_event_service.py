@@ -1,8 +1,8 @@
-"""Tests for anneal.services.event_service — human confirmation gate."""
+"""Tests for cui.services.event_service — human confirmation gate."""
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     CONFIRM,
@@ -11,8 +11,8 @@ from anneal.domain.events import (
     VERDICT,
     make_event,
 )
-from anneal.services.event_service import EventService
-from anneal.store.event_store import InMemoryEventStore
+from cui.services.event_service import EventService
+from cui.store.event_store import InMemoryEventStore
 
 
 # ---------------------------------------------------------------------------

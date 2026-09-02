@@ -9,11 +9,11 @@ from sqlalchemy.engine import make_url
 from alembic import command
 from concurrent.futures import ThreadPoolExecutor
 
-from anneal.research_universe.api.routes import LibraryContext
-from anneal.api.app import create_native_test_app
-from anneal.research_universe.application import ChallengeDraft
-from anneal.research_universe.store.event_store import PostgresNativeEventStore
-from anneal.research_universe.store import schema
+from cui.research_universe.api.routes import LibraryContext
+from cui.api.app import create_native_test_app
+from cui.research_universe.application import ChallengeDraft
+from cui.research_universe.store.event_store import PostgresNativeEventStore
+from cui.research_universe.store import schema
 from tests.test_pg_integration import _alembic_config
 
 PG_URL = os.getenv("CUI_TEST_DATABASE_URL")
@@ -85,7 +85,7 @@ def test_pg_slice1_concurrent_same_round_generates_once(pg_slice1):
 def test_pg_slice1_independent_workers_generate_once(pg_slice1):
     store,uid,c,_=pg_slice1; _,cid=_tracer(store,uid,c)
     # Two stores/services simulate separate workers: only the DB session advisory guard is shared.
-    from anneal.research_universe.application import Slice1Service
+    from cui.research_universe.application import Slice1Service
     from sqlalchemy import create_engine
     g1,g2=CountingGenerator(),CountingGenerator()
     s1=Slice1Service(PostgresNativeEventStore(create_engine(PG_URL)), "worker-1", g1)

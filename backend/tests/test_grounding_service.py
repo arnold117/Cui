@@ -1,17 +1,17 @@
-"""Tests for anneal.services.grounding_service — literature grounding step."""
+"""Tests for cui.services.grounding_service — literature grounding step."""
 
 import json
 
 import pytest
 
-from anneal.domain.events import CHALLENGE, GROUND, PARK, make_event
-from anneal.domain.models import Material
-from anneal.domain.projections import lens_feed_projection
-from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
-from anneal.services.event_service import EventService
-from anneal.services.grounding_service import GroundingService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.events import CHALLENGE, GROUND, PARK, make_event
+from cui.domain.models import Material
+from cui.domain.projections import lens_feed_projection
+from cui.llm.errors import LLMNotConfiguredError, LLMResponseError
+from cui.services.event_service import EventService
+from cui.services.grounding_service import GroundingService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 from tests.fakes import FakeLLMClient
 
 
@@ -273,7 +273,7 @@ class TestGroundFeedsLens:
         we add a confirmed CHALLENGE so the feed is non-empty, then ground
         and confirm — the ground event must appear in the feed.
         """
-        from anneal.domain.events import CHALLENGE
+        from cui.domain.events import CHALLENGE
 
         _park(store)
         material = _seed_material(repo)
@@ -303,7 +303,7 @@ class TestGroundFeedsLens:
 
     def test_pending_ground_not_in_lens_feed(self, store, event_svc, repo):
         """An unconfirmed GROUND event does NOT feed the Lens (Fix 5)."""
-        from anneal.domain.events import CHALLENGE
+        from cui.domain.events import CHALLENGE
 
         _park(store)
         material = _seed_material(repo)
@@ -436,7 +436,7 @@ class TestNegativeEvidenceFeedback:
         self, svc, store, event_svc, repo
     ):
         """取证不定见: the反哺 produces ONLY a challenge — never a verdict."""
-        from anneal.domain.events import VERDICT
+        from cui.domain.events import VERDICT
 
         _park(store)
         material = _seed_material(repo)

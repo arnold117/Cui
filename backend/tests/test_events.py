@@ -3,7 +3,7 @@ from datetime import datetime
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ALL_EVENT_TYPES,
     ANSWER,
     CHALLENGE,

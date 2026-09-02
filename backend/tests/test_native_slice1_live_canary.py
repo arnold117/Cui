@@ -2,9 +2,9 @@
 from __future__ import annotations
 import os
 import pytest
-from anneal.llm.client import create_client
-from anneal.llm.config import LLMConfig
-from anneal.research_universe.challenge_generator import RealChallengeGenerator
+from cui.llm.client import create_client
+from cui.llm.config import LLMConfig
+from cui.research_universe.challenge_generator import RealChallengeGenerator
 
 _REQUIRED=("CUI_LLM_KEY","CUI_LLM_MODEL")
 pytestmark=pytest.mark.skipif(not all(os.getenv(k) for k in _REQUIRED), reason="live canary skipped: CUI_LLM_KEY or CUI_LLM_MODEL absent from inherited environment")

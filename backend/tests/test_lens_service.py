@@ -1,4 +1,4 @@
-"""Tests for anneal.services.lens_service — cross-idea contradiction (L3 tracer).
+"""Tests for cui.services.lens_service — cross-idea contradiction (L3 tracer).
 
 Past claims are grilled the realistic way (challenge + verdict, then confirm via
 EventService) so ``claim_status`` actually returns survived/killed. The LLM is
@@ -11,13 +11,13 @@ import json
 
 import pytest
 
-from anneal.domain.events import CHALLENGE, PARK, make_event
-from anneal.domain.models import Artifact, Claim
-from anneal.llm.errors import LLMNotConfiguredError
-from anneal.services.event_service import EventService
-from anneal.services.lens_service import LensService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.events import CHALLENGE, PARK, make_event
+from cui.domain.models import Artifact, Claim
+from cui.llm.errors import LLMNotConfiguredError
+from cui.services.event_service import EventService
+from cui.services.lens_service import LensService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 from tests.fakes import CapturingLLMClient, FakeLLMClient
 
 
@@ -91,7 +91,7 @@ def _seed_grilled_claim(
         artifact_id,
         make_event(type=CHALLENGE, actor="system", confirmed=True, target_ref=claim_id, payload={"question": "q"}),
     )
-    from anneal.domain.events import VERDICT
+    from cui.domain.events import VERDICT
     payload: dict = {
         "outcome": "survive" if outcome == "survived" else "kill",
         "rationale": rationale,
@@ -200,7 +200,7 @@ class TestScanContradictions:
             CUR_ARTIFACT,
             make_event(type=PARK, actor="user", confirmed=True, target_ref=CUR_CLAIM, payload={"kind": "idea"}),
         )
-        from anneal.domain.events import VERDICT
+        from cui.domain.events import VERDICT
         v = make_event(type=VERDICT, actor="system", confirmed=False, target_ref=CUR_CLAIM,
                        payload={"outcome": "survive", "rationale": "r"})
         event_svc.append_event(CUR_ARTIFACT, v)
@@ -220,7 +220,7 @@ class TestScanContradictions:
             CUR_ARTIFACT,
             make_event(type=PARK, actor="user", confirmed=True, target_ref="sibling", payload={"kind": "idea"}),
         )
-        from anneal.domain.events import VERDICT
+        from cui.domain.events import VERDICT
         v = make_event(type=VERDICT, actor="system", confirmed=False, target_ref="sibling",
                        payload={"outcome": "survive", "rationale": "r"})
         event_svc.append_event(CUR_ARTIFACT, v)

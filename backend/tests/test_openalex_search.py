@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from anneal.search import openalex
-from anneal.search.openalex import (
+from cui.search import openalex
+from cui.search.openalex import (
     map_work,
     reconstruct_abstract,
     search_openalex,

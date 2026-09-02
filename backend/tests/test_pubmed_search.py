@@ -18,8 +18,8 @@ from xml.etree import ElementTree as ET
 import httpx
 import pytest
 
-from anneal.search import pubmed
-from anneal.search.pubmed import map_pubmed_article, search_pubmed
+from cui.search import pubmed
+from cui.search.pubmed import map_pubmed_article, search_pubmed
 
 
 # esearch JSON returning two PMIDs.

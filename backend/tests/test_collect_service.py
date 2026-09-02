@@ -1,4 +1,4 @@
-"""Tests for anneal.services.collect_service — native dict->Material mapping.
+"""Tests for cui.services.collect_service — native dict->Material mapping.
 
 No real network: we monkeypatch ``collect_service.search_all`` (the multi-source
 orchestrator) with a fake async function that returns canned neutral dicts. The
@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import pytest
 
-from anneal.domain.events import COLLECT_MATERIAL
-from anneal.services import collect_service as collect_mod
-from anneal.services.collect_service import CollectService
-from anneal.services.event_service import EventService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.events import COLLECT_MATERIAL
+from cui.services import collect_service as collect_mod
+from cui.services.collect_service import CollectService
+from cui.services.event_service import EventService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 
 LIBRARY = "lib-1"
 ARTIFACT = "artifact-1"

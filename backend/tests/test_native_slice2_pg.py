@@ -4,11 +4,11 @@ import pytest
 from alembic import command
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
-from anneal.api.app import create_native_test_app
-from anneal.research_universe.api.routes import LibraryContext
-from anneal.research_universe.application import ChallengeDraft
-from anneal.research_universe.store.event_store import PostgresNativeEventStore, CommandFingerprintConflict
-from anneal.research_universe.store.sealed_park_store import PostgresSealedParkStore
+from cui.api.app import create_native_test_app
+from cui.research_universe.api.routes import LibraryContext
+from cui.research_universe.application import ChallengeDraft
+from cui.research_universe.store.event_store import PostgresNativeEventStore, CommandFingerprintConflict
+from cui.research_universe.store.sealed_park_store import PostgresSealedParkStore
 from tests.pg_temp_db import temporary_database_url, drop_temporary_database
 PG_URL=os.getenv("CUI_TEST_DATABASE_URL")
 pytestmark=pytest.mark.skipif(not PG_URL,reason="No PG (set CUI_TEST_DATABASE_URL)")
@@ -32,11 +32,11 @@ def pg(monkeypatch):
  # explicit adapters are intentionally injected into test app's router after factory construction is not available;
  # construct through production-equivalent API router wiring.
  from fastapi import FastAPI
- from anneal.research_universe.api.routes import create_router
- from anneal.research_universe.api.slice1 import create_slice1_router
- from anneal.research_universe.api.slice2 import create_slice2_router
- from anneal.research_universe.application import Slice1Service
- from anneal.research_universe.api.routes import LocalPrincipal
+ from cui.research_universe.api.routes import create_router
+ from cui.research_universe.api.slice1 import create_slice1_router
+ from cui.research_universe.api.slice2 import create_slice2_router
+ from cui.research_universe.application import Slice1Service
+ from cui.research_universe.api.routes import LocalPrincipal
  app=FastAPI(); principal=LocalPrincipal(); service=Slice1Service(store,principal.id,g); ctx=LibraryContext("park-pg")
  app.include_router(create_router(store,ctx,principal),prefix="/api/v2"); app.include_router(create_slice1_router(service,store,ctx,principal),prefix="/api/v2"); app.include_router(create_slice2_router(service,store,sealed,ctx,principal),prefix="/api/v2")
  yield engine,store,sealed,uid,TestClient(app),g,database

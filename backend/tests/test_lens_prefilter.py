@@ -1,10 +1,10 @@
-"""Pure tests for anneal.lens.topic_terms + anneal.lens.prefilter."""
+"""Pure tests for cui.lens.topic_terms + cui.lens.prefilter."""
 
 from __future__ import annotations
 
-from anneal.domain.models import Claim
-from anneal.lens.prefilter import prefilter_candidates
-from anneal.lens.topic_terms import topic_terms
+from cui.domain.models import Claim
+from cui.lens.prefilter import prefilter_candidates
+from cui.lens.topic_terms import topic_terms
 
 
 # ---------------------------------------------------------------------------

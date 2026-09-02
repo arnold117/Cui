@@ -17,15 +17,15 @@ from alembic.config import Config
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-from anneal.domain.events import Event, make_event
-from anneal.domain.models import Artifact, Claim, Library, Project, Material
-from anneal.services.lens_feed_service import LensFeedEntry, PostgresLensFeedStore
-from anneal.store.database import create_all_tables
-from anneal.store.event_store import DuplicateEventError, PostgresEventStore
-from anneal.store.repository import PostgresRepository
-from anneal.store.schema import metadata
-from anneal.store.schema import metadata as legacy_metadata
-from anneal.store import schema
+from cui.domain.events import Event, make_event
+from cui.domain.models import Artifact, Claim, Library, Project, Material
+from cui.services.lens_feed_service import LensFeedEntry, PostgresLensFeedStore
+from cui.store.database import create_all_tables
+from cui.store.event_store import DuplicateEventError, PostgresEventStore
+from cui.store.repository import PostgresRepository
+from cui.store.schema import metadata
+from cui.store.schema import metadata as legacy_metadata
+from cui.store import schema
 
 PG_URL = os.getenv("CUI_TEST_DATABASE_URL")
 
@@ -243,9 +243,9 @@ class TestPostgresLensFeedStore:
 # ------------------------------------------------------------------
 
 from concurrent.futures import ThreadPoolExecutor
-from anneal.research_universe.store import schema as native_schema
-from anneal.research_universe.store.event_store import ExpectedSequenceConflict, PostgresNativeEventStore
-from anneal.research_universe.domain.events import PendingNativeEvent
+from cui.research_universe.store import schema as native_schema
+from cui.research_universe.store.event_store import ExpectedSequenceConflict, PostgresNativeEventStore
+from cui.research_universe.domain.events import PendingNativeEvent
 
 def _alembic_config(url: str) -> Config:
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
@@ -314,7 +314,7 @@ def test_native_migration_schema_matches_runtime_metadata(native_engine):
         assert actual_fks == expected_fks
 
 def test_populated_legacy_preflight_stamp_upgrade_preserves_rows():
-    from anneal.migrations_preflight_legacy import verify_legacy_schema
+    from cui.migrations_preflight_legacy import verify_legacy_schema
     source = make_url(PG_URL)
     database = f"anneal_cutover_{uuid4().hex[:12]}"
     admin = create_engine(str(source.set(database="postgres")), isolation_level="AUTOCOMMIT")
@@ -355,7 +355,7 @@ def test_native_concurrent_absent_same_stream_returns_replay(native_engine):
     assert sum(x.replayed for x in outcomes) == 1
 
 def test_native_production_factory_smoke_on_migrated_database(native_engine, monkeypatch):
-    from anneal.api.app import create_native_app
+    from cui.api.app import create_native_app
     monkeypatch.setenv("CUI_DATABASE_URL", PG_URL)
     app = create_native_app()
     with TestClient(app) as client:

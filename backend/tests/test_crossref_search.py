@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from anneal.search import crossref
-from anneal.search.crossref import map_crossref, search_crossref
+from cui.search import crossref
+from cui.search.crossref import map_crossref, search_crossref
 
 
 SAMPLE_ITEM = {

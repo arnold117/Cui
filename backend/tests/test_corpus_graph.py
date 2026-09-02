@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from anneal.domain.events import CHALLENGE, GROUND, PARK, VERDICT, make_event
-from anneal.domain.models import Artifact, Claim, Material
-from anneal.services.event_service import EventService
-from anneal.services.lens_service import LensService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.events import CHALLENGE, GROUND, PARK, VERDICT, make_event
+from cui.domain.models import Artifact, Claim, Material
+from cui.services.event_service import EventService
+from cui.services.lens_service import LensService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 
 
 LIB = "lib-1"

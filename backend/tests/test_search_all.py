@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from anneal.search import multi
-from anneal.search.multi import search_all
+from cui.search import multi
+from cui.search.multi import search_all
 
 
 def _paper(source, source_id, doi="", **kw) -> dict:

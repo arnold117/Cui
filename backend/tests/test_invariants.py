@@ -1,8 +1,8 @@
-"""Tests for anneal.domain.invariants — business-rule guards."""
+"""Tests for cui.domain.invariants — business-rule guards."""
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     CHALLENGE,
     CONFIRM,
     ANSWER,
@@ -12,7 +12,7 @@ from anneal.domain.events import (
     VERDICT,
     make_event,
 )
-from anneal.domain.invariants import (
+from cui.domain.invariants import (
     DebtBlockError,
     KilledClaimError,
     ParkIsolationViolation,

@@ -1,6 +1,6 @@
 import pytest
-from anneal.llm.client import _strip_markdown_fences
-from anneal.llm.errors import LLMResponseError
+from cui.llm.client import _strip_markdown_fences
+from cui.llm.errors import LLMResponseError
 from tests.fakes import FakeLLMClient
 
 

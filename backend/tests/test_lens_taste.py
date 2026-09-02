@@ -11,15 +11,15 @@ import json
 
 import pytest
 
-from anneal.domain.events import CHALLENGE, PARK, VERDICT, make_event
-from anneal.domain.models import Artifact, Claim
-from anneal.llm.errors import LLMNotConfiguredError
-from anneal.llm.prompts import ClaimPrecedent, build_taste_prompt
-from anneal.services import lens_service as lens_module
-from anneal.services.event_service import EventService
-from anneal.services.lens_service import LensService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.events import CHALLENGE, PARK, VERDICT, make_event
+from cui.domain.models import Artifact, Claim
+from cui.llm.errors import LLMNotConfiguredError
+from cui.llm.prompts import ClaimPrecedent, build_taste_prompt
+from cui.services import lens_service as lens_module
+from cui.services.event_service import EventService
+from cui.services.lens_service import LensService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 from tests.fakes import CapturingLLMClient, FakeLLMClient
 
 

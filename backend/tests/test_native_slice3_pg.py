@@ -6,13 +6,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
-from anneal.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router
-from anneal.research_universe.api.slice1 import create_slice1_router
-from anneal.research_universe.api.slice2 import create_slice2_router
-from anneal.research_universe.api.slice3 import create_slice3_router
-from anneal.research_universe.application import ChallengeDraft, Slice1Service
-from anneal.research_universe.store.event_store import PostgresNativeEventStore
-from anneal.research_universe.store.sealed_park_store import PostgresSealedParkStore
+from cui.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router
+from cui.research_universe.api.slice1 import create_slice1_router
+from cui.research_universe.api.slice2 import create_slice2_router
+from cui.research_universe.api.slice3 import create_slice3_router
+from cui.research_universe.application import ChallengeDraft, Slice1Service
+from cui.research_universe.store.event_store import PostgresNativeEventStore
+from cui.research_universe.store.sealed_park_store import PostgresSealedParkStore
 from tests.pg_temp_db import temporary_database_url, drop_temporary_database
 from pathlib import Path
 from alembic.config import Config
@@ -68,7 +68,7 @@ def test_pg_review_lifecycle_persists_and_replays(pg_slice3):
     fresh_store = PostgresNativeEventStore(engine)
     events = fresh_store.read_events(uid)
     assert [e.event_type for e in events] == ["workspace_created", "claim_created", "review_round_started", "challenge_created", "challenge_answered", "challenge_answered", "verdict_confirmed"]
-    from anneal.research_universe.application import review_round_projection, workspace_projection, universe_home_projection
+    from cui.research_universe.application import review_round_projection, workspace_projection, universe_home_projection
     frag = review_round_projection(fresh_store, uid, rid)
     assert frag["verdict"]["verdict_type"] == "circumstantial" and frag["verdict"]["revival_condition"] == "when measured"
     assert frag["challenges"][0]["status"] == "resolved_by_verdict"
@@ -83,7 +83,7 @@ def test_pg_defer_withdraw_terminal_and_workspace_home(pg_slice3):
     assert c.post(f"/api/v2/challenges/{chid}/defer", json={"command_id":"d","expected_sequence":1,"reason":"r","condition":"c"}).status_code == 200
     assert c.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a","expected_sequence":2,"answer_text":"x"}).status_code == 409
     fresh = PostgresNativeEventStore(engine)
-    from anneal.research_universe.application import workspace_projection, universe_home_projection, review_round_projection
+    from cui.research_universe.application import workspace_projection, universe_home_projection, review_round_projection
     assert chid not in [x["id"] for x in workspace_projection(fresh, uid, wid)["pending_challenges"]]
     assert chid not in [f["id"] for f in universe_home_projection(fresh, uid)["pending_facts"]]
     assert review_round_projection(fresh, uid, rid)["challenges"][0]["status"] == "deferred"

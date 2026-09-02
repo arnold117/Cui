@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from anneal.domain.events import CHALLENGE, PARK, VERDICT, Event, make_event
-from anneal.store.event_store import DuplicateEventError, InMemoryEventStore, SqliteEventStore
+from cui.domain.events import CHALLENGE, PARK, VERDICT, Event, make_event
+from cui.store.event_store import DuplicateEventError, InMemoryEventStore, SqliteEventStore
 
 
 @pytest.fixture()

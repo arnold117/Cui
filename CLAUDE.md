@@ -17,7 +17,7 @@ AI-native writing engine. Grills ideas, accumulates trajectories, forges drafts 
 
 ## Development
 
-- Use `conda activate anneal` (never install into base)
+- Use `conda activate cui` (never install into base)
 - `.env` is sacred — only edit `.env.example`
 - Never use `EnterPlanMode` — it loses context
 ## v5 (2026-09-02)

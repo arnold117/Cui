@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from anneal.lens.precedent import (
+from cui.lens.precedent import (
     PRECEDENT_BUDGET,
     DatedPrecedent,
     select_kill_precedents,
 )
-from anneal.llm.prompts import ClaimPrecedent
+from cui.llm.prompts import ClaimPrecedent
 
 T0 = datetime(2026, 1, 1)
 

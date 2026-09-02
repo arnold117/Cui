@@ -10,7 +10,7 @@ Plan reference: docs/plan-trajectory-spine.md PR #12
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     CONFIRM,
@@ -22,23 +22,23 @@ from anneal.domain.events import (
     Event,
     make_event,
 )
-from anneal.domain.invariants import DebtBlockError, UngrilledError
-from anneal.domain.projections import (
+from cui.domain.invariants import DebtBlockError, UngrilledError
+from cui.domain.projections import (
     claim_status,
     doc_projection,
     is_parked,
     lens_feed_projection,
 )
-from anneal.services.event_service import EventService
-from anneal.services.grill_service import GrillService
-from anneal.services.lens_feed_service import (
+from cui.services.event_service import EventService
+from cui.services.grill_service import GrillService
+from cui.services.lens_feed_service import (
     InMemoryLensFeedStore,
     LensFeedService,
 )
-from anneal.services.park_service import ParkService
-from anneal.services.promote_service import PromoteService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.services.park_service import ParkService
+from cui.services.promote_service import PromoteService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 
 
 # ---------------------------------------------------------------------------

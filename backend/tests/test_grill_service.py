@@ -1,10 +1,10 @@
-"""Tests for anneal.services.grill_service — adversarial questioning loop."""
+"""Tests for cui.services.grill_service — adversarial questioning loop."""
 
 import json
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     CONFIRM,
@@ -12,13 +12,13 @@ from anneal.domain.events import (
     VERDICT,
     make_event,
 )
-from anneal.domain.projections import claim_status, lens_feed_projection
-from anneal.llm.errors import LLMNotConfiguredError, LLMResponseError
-from anneal.services.event_service import EventService
-from anneal.services.grill_service import GrillService
-from anneal.services.park_service import ParkService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.projections import claim_status, lens_feed_projection
+from cui.llm.errors import LLMNotConfiguredError, LLMResponseError
+from cui.services.event_service import EventService
+from cui.services.grill_service import GrillService
+from cui.services.park_service import ParkService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 from tests.fakes import FakeLLMClient
 
 
@@ -666,9 +666,9 @@ class TestAutoVerdict:
 # ===========================================================================
 
 
-from anneal.domain.models import Material
-from anneal.services.grounding_service import GroundingService
-from anneal.store.repository import InMemoryRepository
+from cui.domain.models import Material
+from cui.services.grounding_service import GroundingService
+from cui.store.repository import InMemoryRepository
 from tests.fakes import CapturingLLMClient
 
 
@@ -1028,9 +1028,9 @@ class TestAutoVerdictDeathTriage:
 
 from datetime import datetime, timedelta
 
-from anneal.domain.events import Event
-from anneal.domain.models import Artifact, Claim
-from anneal.llm.prompts import build_challenge_prompt, build_verdict_prompt
+from cui.domain.events import Event
+from cui.domain.models import Artifact, Claim
+from cui.llm.prompts import build_challenge_prompt, build_verdict_prompt
 
 LIBRARY = "lib-1"
 CHALLENGE_RESPONSE = json.dumps({"question": "Q?", "target_aspect": "scope"})

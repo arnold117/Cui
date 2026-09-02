@@ -19,12 +19,12 @@
 - **一次只推一个 task(T0 复查 → T1 基线 → T2 rename → T3 legacy → T4 边界 → T5 importer → T6 cherry-pick → T7 收尾),做完停下汇报,别一口气跑飞。**
 - T1 基线是硬前提:环境不绿不许动刀。
 
-## 4. 环境与命令(精确,rename 前现状)
+## 4. 环境与命令(精确;T2 rename 后终态)
 
-- conda env:**`anneal`**(T2 执行后才 rename 成 `cui`;rename 后本段要更新)。永远不往 base 装。
-- 测试:`conda run -n anneal pytest`(backend/ 下;基线 ~850 passed/34 skipped;**legacy 摘除后数字下降属预期**)。
+- conda env:**`cui`**(T2 由 `anneal` rename 而来;本节已是终态)。永远不往 base 装。
+- 测试:`conda run -n cui pytest`(backend/ 下;基线 ~850 passed/34 skipped;**legacy 摘除后数字下降属预期**)。
 - canary(真 key,双绿才算环境好):`python scripts/canary_l3.py`、`python scripts/canary_native_slice6.py`。失败要先区分环境/网络 vs 实现。
-- 后端起服:`cd backend && conda run -n anneal uvicorn "anneal.api.app:create_app" --factory --port 8000`(**是 factory 不是 app:app**);路由:`/api/v2` native(7 组 router)+ `/api/v1` legacy(待摘)。
+- 后端起服:`cd backend && conda run -n cui uvicorn "cui.api.app:create_app" --factory --port 8000`(**是 factory 不是 app:app**);路由:`/api/v2` native(7 组 router)+ `/api/v1` legacy(待摘)。
 - PG:`localhost:5432/anneal`,alembic head `sealed_park_v1`。**绝不用测试碰 app 库**——保险 `5c35bf4` 已在 collect 阶段拦(URL 指向 anneal/cui 即 raise);PG contract 测试一律走 `backend/tests/pg_temp_db.py` 临时库。共享 `postgres` 管理库不碰。
 - `.env`:CUI_* 变量;**只改 `.env.example`,`.env` sacred**。
 - 前端:`frontend/`;vite proxy → 8000;`tsc`/`vitest`/`vite build`;Playwright 走缓存 chromium(记忆:需指 `~/Library/Caches/ms-playwright/chromium-1228/...`)。

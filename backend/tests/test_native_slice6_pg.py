@@ -9,16 +9,16 @@ from sqlalchemy import create_engine, text
 from pathlib import Path
 from alembic.config import Config
 
-from anneal.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router
-from anneal.research_universe.api.slice1 import create_slice1_router
-from anneal.research_universe.api.slice2 import create_slice2_router
-from anneal.research_universe.api.slice3 import create_slice3_router
-from anneal.research_universe.api.slice4 import create_slice4_router
-from anneal.research_universe.api.slice5 import create_slice5_router
-from anneal.research_universe.api.slice6 import create_slice6_router
-from anneal.research_universe.application import ChallengeDraft, EvidenceCandidateDraft, Slice1Service, review_round_projection
-from anneal.research_universe.store.event_store import PostgresNativeEventStore
-from anneal.research_universe.store.sealed_park_store import PostgresSealedParkStore
+from cui.research_universe.api.routes import LibraryContext, LocalPrincipal, create_router
+from cui.research_universe.api.slice1 import create_slice1_router
+from cui.research_universe.api.slice2 import create_slice2_router
+from cui.research_universe.api.slice3 import create_slice3_router
+from cui.research_universe.api.slice4 import create_slice4_router
+from cui.research_universe.api.slice5 import create_slice5_router
+from cui.research_universe.api.slice6 import create_slice6_router
+from cui.research_universe.application import ChallengeDraft, EvidenceCandidateDraft, Slice1Service, review_round_projection
+from cui.research_universe.store.event_store import PostgresNativeEventStore
+from cui.research_universe.store.sealed_park_store import PostgresSealedParkStore
 from tests.pg_temp_db import temporary_database_url, drop_temporary_database
 
 PG_URL = os.getenv("CUI_TEST_DATABASE_URL")

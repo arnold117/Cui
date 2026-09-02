@@ -8,8 +8,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from anneal.search import europe_pmc
-from anneal.search.europe_pmc import map_europepmc, search_europepmc
+from cui.search import europe_pmc
+from cui.search.europe_pmc import map_europepmc, search_europepmc
 
 
 SAMPLE_HIT = {

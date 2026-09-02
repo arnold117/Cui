@@ -1,5 +1,5 @@
-import anneal.llm.config as config_mod
-from anneal.llm.config import load_llm_config
+import cui.llm.config as config_mod
+from cui.llm.config import load_llm_config
 
 
 def _noop_load_dotenv():

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from anneal.llm.prompts import build_contradiction_prompt
+from cui.llm.prompts import build_contradiction_prompt
 
 
 class TestBuildContradictionPrompt:

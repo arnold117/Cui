@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
-from anneal.api.app import create_native_test_app
-from anneal.research_universe.application import ChallengeDraft
-from anneal.research_universe.store.event_store import InMemoryNativeEventStore
+from cui.api.app import create_native_test_app
+from cui.research_universe.application import ChallengeDraft
+from cui.research_universe.store.event_store import InMemoryNativeEventStore
 
 class NoModel:
     def generate(self, **kwargs): raise AssertionError("PARK must not call a model")

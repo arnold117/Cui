@@ -1,17 +1,17 @@
 from fastapi.testclient import TestClient
 import pytest
 
-from anneal.api.app import create_native_app, create_native_test_app
-from anneal.research_universe.api.routes import LibraryContext
-from anneal.research_universe.domain.events import NativeEvent, PendingNativeEvent
+from cui.api.app import create_native_app, create_native_test_app
+from cui.research_universe.api.routes import LibraryContext
+from cui.research_universe.domain.events import NativeEvent, PendingNativeEvent
 from pydantic import ValidationError
-from anneal.legacy_archive.api.routes import create_router as create_archive_router
-from anneal.store.repository import InMemoryRepository
-from anneal.store.event_store import InMemoryEventStore
-from anneal.domain.models import Artifact, Claim, Material, Project, Conversation
-from anneal.domain.events import make_event
+from cui.legacy_archive.api.routes import create_router as create_archive_router
+from cui.store.repository import InMemoryRepository
+from cui.store.event_store import InMemoryEventStore
+from cui.domain.models import Artifact, Claim, Material, Project, Conversation
+from cui.domain.events import make_event
 from fastapi import FastAPI
-from anneal.research_universe.store.event_store import (
+from cui.research_universe.store.event_store import (
     CommandFingerprintConflict,
     ExpectedSequenceConflict,
     InMemoryNativeEventStore,

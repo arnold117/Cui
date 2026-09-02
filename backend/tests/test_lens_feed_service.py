@@ -1,4 +1,4 @@
-"""Tests for anneal.services.lens_feed_service — Lens feed ingestion.
+"""Tests for cui.services.lens_feed_service — Lens feed ingestion.
 
 Spec §5 line 5: "这条完整 trajectory 能被写入 Lens 投喂点
 （哪怕下游只是落库、不学习）。"
@@ -9,23 +9,23 @@ test fixtures (real service interactions, not hand-rolled events).
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     EDIT,
     VERDICT,
     make_event,
 )
-from anneal.domain.invariants import ParkIsolationViolation
-from anneal.services.event_service import EventService
-from anneal.services.grill_service import GrillService
-from anneal.services.lens_feed_service import (
+from cui.domain.invariants import ParkIsolationViolation
+from cui.services.event_service import EventService
+from cui.services.grill_service import GrillService
+from cui.services.lens_feed_service import (
     InMemoryLensFeedStore,
     LensFeedService,
 )
-from anneal.services.park_service import ParkService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.services.park_service import ParkService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 
 
 # ---------------------------------------------------------------------------

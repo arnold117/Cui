@@ -1,8 +1,8 @@
-"""Tests for anneal.services.park_service — sealed isolation zone."""
+"""Tests for cui.services.park_service — sealed isolation zone."""
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     PARK,
@@ -10,11 +10,11 @@ from anneal.domain.events import (
     Event,
     make_event,
 )
-from anneal.domain.projections import is_parked, lens_feed_projection
-from anneal.services.event_service import EventService
-from anneal.services.park_service import ParkService
-from anneal.store.event_store import InMemoryEventStore
-from anneal.store.repository import InMemoryRepository
+from cui.domain.projections import is_parked, lens_feed_projection
+from cui.services.event_service import EventService
+from cui.services.park_service import ParkService
+from cui.store.event_store import InMemoryEventStore
+from cui.store.repository import InMemoryRepository
 
 
 # ---------------------------------------------------------------------------

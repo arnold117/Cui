@@ -1,10 +1,10 @@
-"""Tests for anneal.domain.projections — pure projection functions."""
+"""Tests for cui.domain.projections — pure projection functions."""
 
 from datetime import datetime, timedelta
 
 import pytest
 
-from anneal.domain.events import (
+from cui.domain.events import (
     ANSWER,
     CHALLENGE,
     COLLECT_MATERIAL,
@@ -19,7 +19,7 @@ from anneal.domain.events import (
     VERDICT,
     make_event,
 )
-from anneal.domain.projections import (
+from cui.domain.projections import (
     DocVersion,
     _killed_claim_ids,
     _survived_claim_ids,

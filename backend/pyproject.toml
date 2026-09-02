@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "anneal"
+name = "cui"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
@@ -33,3 +33,6 @@ asyncio_mode = "auto"
 markers = [
   "live: requires explicit external LLM credentials and makes live provider calls",
 ]
+
+[tool.setuptools.packages.find]
+include = ["cui*"]

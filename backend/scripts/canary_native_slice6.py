@@ -12,7 +12,7 @@ legal evidence relations with provenance, the failed-parse iron rule, and the
 no-auto-verdict/no-auto-claim/no-auto-direction invariant.
 
 TRIGGER DISCIPLINE — RUN THIS AFTER ANY OF:
-  * any edit to anneal/research_universe/challenge_generator.py
+  * any edit to cui/research_universe/challenge_generator.py
   * an LLM model / provider swap (CUI_LLM_MODEL / _PROVIDER / _BASE_URL)
   * before every Phase 1 release.
 
@@ -26,7 +26,7 @@ network): run it explicitly.
 
 USAGE
 -----
-    conda activate anneal
+    conda activate cui
     cd backend && python scripts/canary_native_slice6.py
 
 CASES
@@ -67,7 +67,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # --- Import bootstrap -------------------------------------------------------
-# Force THIS tree's `anneal` package to the front of sys.path. The conda env
+# Force THIS tree's `cui` package to the front of sys.path. The conda env
 # carries an editable install that may point at another checkout; a canary
 # must test the code it sits next to.
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -77,17 +77,17 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
-from anneal.research_universe.application import (  # noqa: E402
+from cui.research_universe.application import (  # noqa: E402
     Slice1Service,
     review_round_projection,
 )
-from anneal.research_universe.challenge_generator import (  # noqa: E402
+from cui.research_universe.challenge_generator import (  # noqa: E402
     RealChallengeGenerator,
     RealEvidenceCandidateGenerator,
 )
-from anneal.research_universe.store.event_store import InMemoryNativeEventStore  # noqa: E402
-from anneal.llm.client import create_client  # noqa: E402
-from anneal.llm.config import load_llm_config  # noqa: E402
+from cui.research_universe.store.event_store import InMemoryNativeEventStore  # noqa: E402
+from cui.llm.client import create_client  # noqa: E402
+from cui.llm.config import load_llm_config  # noqa: E402
 
 
 def _has_cjk(text: str) -> bool:
@@ -352,7 +352,7 @@ def main() -> int:
     if config is None:
         print(
             "SETUP ERROR: no LLM config. Expected CUI_LLM_KEY / CUI_LLM_MODEL "
-            "in backend/.env (see anneal/llm/config.py).",
+            "in backend/.env (see cui/llm/config.py).",
             file=sys.stderr,
         )
         return 2
@@ -366,7 +366,7 @@ def main() -> int:
 
     print("=" * 78)
     print("NATIVE SLICE 6 CANARY — expanded LLM challenge + evidence candidates")
-    print(f"  anneal package : {BACKEND_DIR}")
+    print(f"  cui package : {BACKEND_DIR}")
     print(f"  provider/model : {config.provider} / {config.model}"
           f" (base_url={config.base_url})")
     print(f"  storage        : throwaway InMemory store per case")

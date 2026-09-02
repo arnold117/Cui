@@ -1,4 +1,4 @@
-from anneal.llm.client import _complete_json_with_retry
+from cui.llm.client import _complete_json_with_retry
 
 class FakeLLMClient:
     def __init__(self, responses: list[str]) -> None:

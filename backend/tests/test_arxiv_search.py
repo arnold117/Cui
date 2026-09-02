@@ -12,8 +12,8 @@ from xml.etree import ElementTree as ET
 import httpx
 import pytest
 
-from anneal.search import arxiv
-from anneal.search.arxiv import map_arxiv, search_arxiv
+from cui.search import arxiv
+from cui.search.arxiv import map_arxiv, search_arxiv
 
 
 # A realistic arXiv Atom feed: one entry with a DOI and a pdf link.

@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from anneal.research_universe.challenge_generator import RealChallengeGenerator
+from cui.research_universe.challenge_generator import RealChallengeGenerator
 from tests.fakes import FakeLLMClient
 
 

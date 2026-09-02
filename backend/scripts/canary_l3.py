@@ -11,10 +11,10 @@ samples and verifies that what should scream screams and what should stay
 silent stays silent.
 
 TRIGGER DISCIPLINE — RUN THIS AFTER ANY OF:
-  * any edit to anneal/llm/prompts.py (contradiction / taste / semantic-edges
+  * any edit to cui/llm/prompts.py (contradiction / taste / semantic-edges
     prompts);
   * an LLM model / provider swap (CUI_LLM_MODEL / _PROVIDER / _BASE_URL);
-  * any change to anneal/lens/prefilter.py or anneal/lens/topic_terms.py;
+  * any change to cui/lens/prefilter.py or cui/lens/topic_terms.py;
   * before every release.
 
 WHAT IT COSTS / TOUCHES
@@ -28,7 +28,7 @@ read or written. This is exactly why it is NOT part of the default pytest run
 
 USAGE
 -----
-    conda activate anneal
+    conda activate cui
     cd backend && python scripts/canary_l3.py
 
 CASES (each detector gets a "must fire" and a "must stay silent" end)
@@ -74,7 +74,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # --- Import bootstrap -------------------------------------------------------
-# Force THIS tree's `anneal` package to the front of sys.path. The conda env
+# Force THIS tree's `cui` package to the front of sys.path. The conda env
 # carries an editable install that may point at another checkout; a canary
 # must test the code it sits next to.
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -84,21 +84,21 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
-import anneal  # noqa: E402
-from anneal.domain.events import CHALLENGE, PARK, VERDICT, make_event  # noqa: E402
-from anneal.domain.models import Artifact, Claim  # noqa: E402
-from anneal.lens.prefilter import prefilter_candidates  # noqa: E402
-from anneal.llm.client import create_client  # noqa: E402
-from anneal.llm.config import load_llm_config  # noqa: E402
-from anneal.services.event_service import EventService  # noqa: E402
-from anneal.services.grill_service import GrillService  # noqa: E402
-from anneal.services.lens_service import (  # noqa: E402
+import cui  # noqa: E402
+from cui.domain.events import CHALLENGE, PARK, VERDICT, make_event  # noqa: E402
+from cui.domain.models import Artifact, Claim  # noqa: E402
+from cui.lens.prefilter import prefilter_candidates  # noqa: E402
+from cui.llm.client import create_client  # noqa: E402
+from cui.llm.config import load_llm_config  # noqa: E402
+from cui.services.event_service import EventService  # noqa: E402
+from cui.services.grill_service import GrillService  # noqa: E402
+from cui.services.lens_service import (  # noqa: E402
     _SEMANTIC_EDGE_TYPES,
     _TASTE_TIERS,
     LensService,
 )
-from anneal.store.event_store import InMemoryEventStore  # noqa: E402
-from anneal.store.repository import InMemoryRepository  # noqa: E402
+from cui.store.event_store import InMemoryEventStore  # noqa: E402
+from cui.store.repository import InMemoryRepository  # noqa: E402
 
 LIB = "canary-lib"
 
@@ -685,7 +685,7 @@ def main() -> int:
     if config is None:
         print(
             "SETUP ERROR: no LLM config. Expected CUI_LLM_KEY / "
-            "CUI_LLM_MODEL in backend/.env (see anneal/llm/config.py).",
+            "CUI_LLM_MODEL in backend/.env (see cui/llm/config.py).",
             file=sys.stderr,
         )
         return 2
@@ -697,7 +697,7 @@ def main() -> int:
 
     print("=" * 78)
     print("L3 LENS CANARY — known-sample sentinel challenge")
-    print(f"  anneal package : {Path(anneal.__file__).resolve()}")
+    print(f"  cui package : {Path(cui.__file__).resolve()}")
     print(f"  provider/model : {config.provider} / {config.model}"
           f" (base_url={config.base_url})")
     print(f"  storage        : throwaway InMemory store+repo per case")

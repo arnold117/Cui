@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 import pytest
 from pydantic import ValidationError
 
-from anneal.api.app import create_native_test_app
-from anneal.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
-from anneal.research_universe.domain.events import validate_payload
-from anneal.research_universe.store.event_store import InMemoryNativeEventStore
+from cui.api.app import create_native_test_app
+from cui.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
+from cui.research_universe.domain.events import validate_payload
+from cui.research_universe.store.event_store import InMemoryNativeEventStore
 
 
 def _has_cjk(text: str) -> bool:
