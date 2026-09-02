@@ -185,3 +185,10 @@ T7 收尾验收(依赖全部)
 - **真库 e2e(HTTP slice4 端点)**:active 材料 arxiv:2303.12651 → claim → review round(round 启动原子生成真 LLM challenge)→ propose supports → confirm **confirmed** ✓(期间修正:e2e 里 confirm 的 expected_sequence 应为候选当前序列 1;confirm 端点成功码为 200 非 201)。
 - **记录在案的遗留**:① v4 SQLite 只读归档改名 `*.db.legacy-v4`(plan 退役步,**未执行**,待 Arnold 点头——会动 LitScribe 目录);② 元数据联网回填(OpenAlex/arXiv)未跑——DB papers 元数据表实测近空,标题取 markdown 首行;回填留给 slice1 语料检索元数据层;③ e2e 调试轮在语料 workspace 留下少量 probe claims/rounds(事件流不可删,可视为 demo 数据)。
 - 全量 pytest **409 passed / 15 skipped**(+6 importer 单测);gate 3/3;canary 未受影响。下一步:T6 v4 cherry-pick 清单(逐件小步)。
+
+**T5 补记(2026-09-02 同日收尾)**
+
+- **空条目填充**:8 条空文本中 3 条盘上有 PDF(0901.0512 ATLAS 报告 1852 页 5MB、0910.5089、DOI 10.1055/s-0042-109271)→ pypdf 抽全文入厂 → **语料 163 条**;另 5 条无源保持跳过清单(2310.07276 + 4 local)。
+- **NUL 清洗(踩坑记录)**:PDF/v4 原文含 \u0000 等控制字符——PG jsonb 能存但 SQL 文本转换即炸。修复:importer `sanitize_text` 总闸 + 已入库 2 行(0901.0512、1601.06764)定点清洗;单测补覆盖。
+- **v4 SQLite 已归档**:`cache/litscribe.db` → `cache/litscribe.db.legacy-v4`(只读,不删);importer 对 db 缺失容错(仅 JSON 源可重算)。
+- 相关 commit:`1902c95`(填充+tolerance)、`ebce931`(sanitize)。
