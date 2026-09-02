@@ -1,4 +1,21 @@
-import type { Artifact, Event } from "../../types"
+// Archive-only view over the frozen legacy tables. The old v1 UI is gone (T3);
+// these minimal shapes mirror the fields the read-only archive endpoints return.
+export interface ArchiveArtifact {
+  id: string
+  kind: string
+  goal: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+export interface ArchiveEvent {
+  id: string
+  ts: string
+  type: string
+  actor: "user" | "system"
+  confirmed: boolean
+  payload: Record<string, unknown>
+}
 
 const BASE = "/api/v2/legacy-archive"
 
@@ -10,9 +27,6 @@ async function read<T>(path: string): Promise<T> {
   }
   return response.json()
 }
-
-export interface ArchiveArtifact extends Pick<Artifact, "id" | "kind" | "goal" | "title" | "created_at" | "updated_at"> {}
-export interface ArchiveEvent extends Pick<Event, "id" | "ts" | "type" | "actor" | "confirmed" | "payload"> {}
 
 export const legacyArchive = {
   list: () => read<{ artifacts: ArchiveArtifact[] }>(""),
