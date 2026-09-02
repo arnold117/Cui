@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     _assert_database_at_head(url)
     engine = create_db_engine(url)
-    context = _resolve_library_context(engine)
+    context = _resolve_library_context(engine, None)
     store = PostgresNativeEventStore(engine)
     universe = store.get_active_universe(context.library_id)
     if universe is None:

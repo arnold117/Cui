@@ -128,7 +128,11 @@ def load_json_extras(parsed_dir: Path) -> dict[str, tuple[str, str]]:
 
 
 def build_plan(lit_dir: Path) -> tuple[list[Entry], list[str]]:
-    """Merge DB + JSON sources into the ordered plan (active first)."""
+    """Merge DB + JSON sources into the ordered plan (active first).
+
+    Entries whose text is empty are skipped (a native material requires a
+    non-empty excerpt) and reported in the notes.
+    """
     db = load_db_rows(lit_dir / "cache" / "litscribe.db")
     extras = load_json_extras(lit_dir / "cache" / "parsed")
     merged: dict[str, tuple[str, str]] = dict(db)
@@ -138,11 +142,17 @@ def build_plan(lit_dir: Path) -> tuple[list[Entry], list[str]]:
             merged[key] = (f"json:{stem}", text)
             json_only.append(key)
     entries = []
+    skipped_empty: list[str] = []
     for key in sorted(merged):
         source_id, text = merged[key]
+        if not (text or "").strip():
+            skipped_empty.append(key)
+            continue
         entries.append(Entry(key=key, source_id=source_id, text=text, title=first_title(text), group=partition(key)))
     entries.sort(key=lambda e: (e.group != "active", e.key))
-    notes = [f"json-union-only entries: {len(json_only)} ({', '.join(sorted(json_only)[:6])}...)"]
+    notes = [f"json-union-only entries: {len(json_only)} ({', '.join(sorted(json_only)[:6])}...)"] if json_only else []
+    if skipped_empty:
+        notes.append(f"skipped empty-text entries: {len(skipped_empty)} ({', '.join(skipped_empty[:8])}...)")
     return entries, notes
 
 
