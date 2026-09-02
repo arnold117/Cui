@@ -99,7 +99,13 @@ def first_title(markdown: str) -> str:
 
 
 def load_db_rows(db_path: Path) -> dict[str, tuple[str, str]]:
-    """key -> (source paper_id, markdown) from parsed_docs."""
+    """key -> (source paper_id, markdown) from parsed_docs.
+
+    The v4 sqlite is archived (renamed *.db.legacy-v4) once migration completes;
+    a missing file simply yields no rows — the JSON extras still carry the corpus.
+    """
+    if not db_path.exists():
+        return {}
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         rows = con.execute("SELECT paper_id, markdown FROM parsed_docs").fetchall()
