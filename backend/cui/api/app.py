@@ -23,6 +23,7 @@ from cui.research_universe.api.slice3 import create_slice3_router
 from cui.research_universe.api.slice4 import create_slice4_router
 from cui.research_universe.api.slice5 import create_slice5_router
 from cui.research_universe.api.slice6 import create_slice6_router
+from cui.research_universe.api.slice7 import create_corpus_search_router
 from cui.research_universe.application import Slice1Service
 from cui.research_universe.challenge_generator import RealChallengeGenerator, RealEvidenceCandidateGenerator
 from cui.llm.client import create_client
@@ -95,6 +96,7 @@ def create_native_app(settings: object | None = None, native_store: NativeEventS
     app.include_router(create_slice4_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice5_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice6_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_corpus_search_router(store, context), prefix="/api/v2")
     app.include_router(create_archive_router(PostgresRepository(engine), PostgresEventStore(engine), context.library_id), prefix="/api/v2")
     return app
 
@@ -120,6 +122,7 @@ def create_native_test_app(native_store: InMemoryNativeEventStore, library_conte
     app.include_router(create_slice4_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice5_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
     app.include_router(create_slice6_router(service, native_store, resolved_context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_corpus_search_router(native_store, resolved_context), prefix="/api/v2")
     app.include_router(create_archive_router(), prefix="/api/v2")
     return app
 
