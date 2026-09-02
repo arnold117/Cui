@@ -50,6 +50,36 @@ def _corpus_materials(store, universe_id: str, workspace_id: str) -> list[dict]:
     return materials
 
 
+def ranked_corpus_hits(store, universe_id: str, group: str, q: str, limit: int) -> list[CorpusSearchHit]:
+    """IDF-ranked corpus hits (shared by the search route and the dialogue
+    surface's agent search)."""
+    workspace_id = workspace_id_for(ACTIVE_WS_COMMAND if group == "active" else LEGACY_WS_COMMAND)
+    materials = _corpus_materials(store, universe_id, workspace_id)
+    if not materials:
+        return []
+    texts = [(first_title(m["excerpt"]), m["excerpt"]) for m in materials]
+    terms = extract_core_terms([q])
+    if not terms:
+        terms = [q.lower()]
+    order = rank_by_idf(texts, terms)
+    hits: list[CorpusSearchHit] = []
+    for index in order[:limit]:
+        material = materials[index]
+        excerpt = material["excerpt"]
+        matched = sum(1 for t in terms if t in f"{texts[index][0]} {excerpt}".lower())
+        if matched == 0:
+            continue
+        snippet = " ".join(excerpt.split())[:300]
+        hits.append(CorpusSearchHit(
+            material_id=material["material_id"],
+            source_locator=material["source_locator"],
+            title=texts[index][0],
+            matched_terms=matched,
+            snippet=snippet,
+        ))
+    return hits
+
+
 def create_corpus_search_router(store, context: LibraryContext) -> APIRouter:
     router = APIRouter(tags=["research-universe-corpus-search"])
 
@@ -62,33 +92,8 @@ def create_corpus_search_router(store, context: LibraryContext) -> APIRouter:
         universe_id = _active(store, context)
         if not q.strip():
             raise HTTPException(422, "q must not be blank")
-        workspace_id = workspace_id_for(ACTIVE_WS_COMMAND if group == "active" else LEGACY_WS_COMMAND)
-        materials = _corpus_materials(store, universe_id, workspace_id)
-        if not materials:
-            return CorpusSearchResponse(query=q, group=group, total=0, results=[])
-        texts = [(first_title(m["excerpt"]), m["excerpt"]) for m in materials]
-        terms = extract_core_terms([q])
-        if not terms:
-            # Pure CJK / phrase queries: fall back to a single raw substring term
-            # (Chinese texts match on the whole phrase, mirroring the v4 routing
-            # intent that CJK never tokenizes against English sources).
-            terms = [q.lower()]
-        order = rank_by_idf(texts, terms)
-        hits = []
-        for index in order[:limit]:
-            material = materials[index]
-            excerpt = material["excerpt"]
-            matched = sum(1 for t in terms if t in f"{texts[index][0]} {excerpt}".lower())
-            if matched == 0:
-                continue
-            snippet = " ".join(excerpt.split())[:300]
-            hits.append(CorpusSearchHit(
-                material_id=material["material_id"],
-                source_locator=material["source_locator"],
-                title=texts[index][0],
-                matched_terms=matched,
-                snippet=snippet,
-            ))
+        hits = ranked_corpus_hits(store, universe_id, group, q, limit)
+        materials = _corpus_materials(store, universe_id, workspace_id_for(ACTIVE_WS_COMMAND if group == "active" else LEGACY_WS_COMMAND))
         return CorpusSearchResponse(query=q, group=group, total=len(materials), results=hits)
 
     return router

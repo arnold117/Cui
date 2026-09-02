@@ -135,3 +135,26 @@ def test_dialogue_unknown_material_404():
     app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
     resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/landscape-summary", json={"material_ids": ["nope"]})
     assert resp.status_code == 404
+
+def test_literature_search_endpoint_picks_valid_locators_only():
+    store, universe, service, wid, mat, rid = _seed()
+    # seed corpus-style materials in the active corpus workspace for ranking
+    from cui.tools.v4_importer import ACTIVE_WS_COMMAND, workspace_id_for
+    service.create_workspace(universe, ACTIVE_WS_COMMAND, 0, "corpus q")
+    cws = workspace_id_for(ACTIVE_WS_COMMAND)
+    service.add_material(universe, cws, "# RLHF reasoning paper\n\nRLHF improves reasoning by preference alignment.", "arxiv:2401.00009", "parsed", "evidence", "corp1", 0)
+    service.add_material(universe, cws, "# Unrelated cooking paper\n\nRecipes and heat control.", "arxiv:2401.00010", "parsed", "evidence", "corp2", 0)
+    fake = type("F", (), {
+        "complete": lambda self, system, user: "x",
+        "complete_json": lambda self, system, user, retries=2: {"query": "rlhf reasoning", "results": [
+            {"locator": "arxiv:2401.00009", "reason": "直接相关"},
+            {"locator": "arxiv:9999.99999", "reason": "不在候选中,应被过滤"},
+        ]},
+    })()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/literature-search", json={"question": "RLHF 是否提升推理?", "query": "rlhf"})
+    assert resp.status_code == 200
+    body = resp.json()
+    locators = [c["locator"] for c in body["candidates"]]
+    assert locators == ["arxiv:2401.00009"]

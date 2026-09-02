@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from cui.legacy_archive.templates import RELATED_WORK_PROMPT
 from cui.research_universe.api.routes import LibraryContext, LocalPrincipal
+from cui.research_universe.api.slice7 import ranked_corpus_hits
 from cui.research_universe.api.slice1 import Command, CommandResponse, _active, _universe_for_round, _universe_for_workspace
 from cui.research_universe.application import (
     BoundaryViolation,
@@ -49,9 +50,18 @@ counterexample_invitation(字符串:邀请反例的措辞)。
 SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与 claim 同语言),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。"""
 
 
+SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题,从候选文献中挑出真正相关的最多 6 篇,并为每篇写一句中文的相关性理由。只输出 JSON:
+{"query": "实际建议的检索词", "results": [{"locator": "arxiv:... 或 doi:...", "reason": "一句理由"}]}
+只选与问题真正相关的;宁可少于 6 篇;不要编造候选中不存在的 locator。"""
+
+
 class LiteratureChallengeCommand(Command):
     material_ids: list[str] = Field(min_length=1)
 
+
+class LiteratureSearchCommand(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    query: str | None = None
 
 class MaterialSelectionCommand(BaseModel):
     material_ids: list[str] = Field(min_length=1)
@@ -116,6 +126,30 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             return CommandResponse(commit_position=result.commit_position, event_ids=result.event_ids, result=result.result_payload, fragment=review_round_projection(store, universe_id, round_id))
         except Exception as exc:
             fail(exc)
+
+    @router.post("/workspaces/{workspace_id}/dialogue/literature-search")
+    def literature_search(workspace_id: str, body: LiteratureSearchCommand):
+        universe_id = _universe_for_workspace(store, context, workspace_id)
+        llm = _llm()
+        from cui.research_universe.api.slice1 import _active
+        ranked = ranked_corpus_hits(store, _active(store, context), "active", (body.query or body.question)[:100], 12)
+        if not ranked:
+            return {"query": body.query or body.question, "candidates": []}
+        candidate_lines = "\n".join(f"- [{h.source_locator}] {h.title}" for h in ranked)
+        try:
+            text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"问题:{body.question}\n候选文献:\n{candidate_lines}")
+        except Exception as exc:
+            raise HTTPException(502, f"literature search reasoning failed: {exc}") from exc
+        allowed = {h.source_locator for h in ranked}
+        picks = []
+        for item in (text.get("results") or []) if isinstance(text, dict) else []:
+            locator = item.get("locator") if isinstance(item, dict) else None
+            if locator in allowed:
+                hit = next(h for h in ranked if h.source_locator == locator)
+                picks.append({"locator": locator, "title": hit.title, "reason": (item.get("reason") or "")[:200]})
+            if len(picks) >= 6:
+                break
+        return {"query": (text.get("query") if isinstance(text, dict) else None) or body.query or body.question, "candidates": picks}
 
     def _llm():
         if client is None:
