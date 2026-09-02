@@ -192,6 +192,7 @@ T7 收尾验收(依赖全部)
 - **NUL 清洗(踩坑记录)**:PDF/v4 原文含 \u0000 等控制字符——PG jsonb 能存但 SQL 文本转换即炸。修复:importer `sanitize_text` 总闸 + 已入库 2 行(0901.0512、1601.06764)定点清洗;单测补覆盖。
 - **v4 SQLite 已归档**:`cache/litscribe.db` → `cache/litscribe.db.legacy-v4`(只读,不删);importer 对 db 缺失容错(仅 JSON 源可重算)。
 - 相关 commit:`1902c95`(填充+tolerance)、`ebce931`(sanitize)。
+- **元数据回填终态(2026-09-02 完成)**:163 个 sidecar(`~/.cui/materials/*.meta.json`);**ok=78(全部 arXiv 条目)**,meta_pending=85(DOI 56——OpenAlex 持续限流/未收录,arXiv 25——尾部限流,local 4——无外部源)。失败即降级为 markdown 首行标题 + `meta_pending` 标记(脚本可续跑:`--sleep` 加大或改日重试,跳过已有 ok)。
 
 ## 10. T6 执行记录(2026-09-02,v4 cherry-pick 五件全完成)
 
