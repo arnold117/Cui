@@ -34,7 +34,7 @@ An AI-native research environment. Cui starts from questions, not documents: use
 
 ## Status
 
-slice0(迁移里程碑)已完成:Native Research Universe 基线 + 语料库 163 篇 + 边界机器执法全绿。下一里程碑 slice1:review/gap 闭环第一刀(现状图景 + gap 候选 + 人 confirm)+ /api/v3 契约化 + 语料检索(active/legacy 分区)。当前可用主路径:问题工作区 → 探索 → 自写 claim → 不可变审查轮(LLM 挑战)→ 证据候选三态闸 → 人裁决;archive 只读保留旧轨迹。
+slice0(迁移里程碑)已完成:Native Research Universe 基线 + 语料库 163 篇 + 边界机器执法全绿。slice1 第一刀(gap 闭环)+ 第二刀后端与「文献探讨」模式页已就位。当前可用主路径:问题工作区 → 探索 → 自写 claim → 不可变审查轮(LLM 挑战)→ 证据候选三态闸 → 人裁决 → 现状图景/gap;「文献探讨」模式(问题 → agent 从语料挑文献并给理由 → 你勾选 → 现状梳理 → 文献发难 → gap → related-work 草稿);archive 只读保留旧轨迹。
 
 ## License
 

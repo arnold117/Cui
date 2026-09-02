@@ -59,6 +59,13 @@
 ### 旅程验收(demo 一路点通)
 ① 开问题+一句话方向 → ② agent 检索 top-6+理由 → ③ 勾 3–5 篇 → ④ 现状梳理(覆盖/未覆盖) → ⑤ 固化 claim → 审查轮 → agent 引用文献逐条发难 → ⑥ 回答→裁决 → ⑦ agent 起草 gap 候选(检索记录自动带)→ 人 confirm ≥1 → ⑧ 生成 related-work 草稿。
 
+### 执行记录(2026-09-02,L1–L3 完成)
+
+- **L1 后端** `0739e07`:文献挑战 prompt `slice1b-literature-challenge-v1` + 服务 `generate_literature_challenge`(basis_refs=材料 locator,校验同区/parsed evidence)+ `POST /review-rounds/{rid}/literature-challenges`;瞬态端点:landscape-summary / gap-draft(JSON 形状校验)/ related-work-draft(复用 RELATED_WORK_PROMPT,兜底 prompt);`793c1ce`:agent literature-search(top-k 由 LLM 挑、逐篇理由、locator 白名单过滤;slice7 检索抽成 `ranked_corpus_hits` 复用)。
+- **L2 前端** `9c3df01`:DialogueDesk 模式页(五步旅程:找文献→梳理现状→固化 claim 进审查轮+文献发难→gap 起草(人署名提交确认)→related-work 草稿卡片(复制/下载));`/workspaces/:id/dialogue` 路由 + LandscapePanel 入口;会话中间态 sessionStorage(不入库);vitest +1 全旅程测试。
+- **L3 真库 wedge 旅程验收(真 LLM)**:检索(2 篇)→ 现状梳理 → claim → 审查轮挑战 → 文献挑战 201(basis=[arxiv:2311.09277, arxiv:2504.12501])→ gap 起草/confirm → related-work 草稿(含 [locator] 引用)全通。
+- 数字:后端 **551 passed / 15 skipped**、gate 3/3、vitest **70**、build 绿、Playwright **11 passed / 2 skipped**、双 canary 复验绿。
+
 ### 任务草案
 - L1 后端:prompt `slice1b-literature-challenge-v1`(引文献发难)+ 服务方法 `generate_literature_challenge`(basis=material locators)+ 端点;会话瞬态端点(现状梳理/相关草稿/agent gap 草稿)host 层直调 llm;契约测试(纯组装可测,LLM 注入 fake)。
 - L2 前端:文献探讨模式页(两段式状态机、勾选、挑战/裁决复用现有组件、草稿卡片);vitest + Playwright 旅程冒烟。
