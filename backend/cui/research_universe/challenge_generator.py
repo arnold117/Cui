@@ -11,8 +11,29 @@ from cui.llm.client import LLMClient
 from cui.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
 
 PROMPT_VERSION = "slice1-narrow-challenge-v1"
+PROMPT_VERSION_LITERATURE = "slice1b-literature-challenge-v1"
 EXPANDED_CHALLENGE_PROMPT_VERSION = "slice6-expanded-challenge-v1"
 EVIDENCE_CANDIDATE_PROMPT_VERSION = "slice6-evidence-candidate-v1"
+
+def format_materials_block(materials: list[dict]) -> str:
+    """Render selected literature for a literature challenge or draft prompt.
+
+    Each item: {locator, excerpt}. The excerpt is truncated per material so a
+    large corpus never blows the prompt; the locator stays first-class so the
+    model cites which paper it leans on.
+    """
+    if not materials:
+        raise ValueError("literature challenge requires at least one material")
+    lines = []
+    for material in materials:
+        locator = material.get("locator") or material.get("source_locator") or "?"
+        excerpt = (material.get("excerpt") or "")[:1500]
+        lines.append(f"- [{locator}] {excerpt}")
+    return "\n".join(lines)
+
+
+SYSTEM_LITERATURE = """You are Cui's adversarial reviewer examining a claim against SELECTED literature. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty. Attack ONE specific inferential weakness in the claim, using the selected literature as your material: name the literature locator you rely on where relevant, and attack either a gap between the claim and what the literature actually supports, or a contradiction the literature exposes. self_check_method must be concrete and doable. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. Never supply a claim, verdict, answer, or direction."""
+
 
 SYSTEM = """You are Cui's adversarial reviewer. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty. Attack one specific inferential weakness in the claim against the stated question. self_check_method must be a concrete method the user can perform. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. Never supply a claim, verdict, answer, or direction."""
 
@@ -83,6 +104,14 @@ class RealChallengeGenerator:
         data = self.client.complete_json(SYSTEM, f"Question:\n{question}\n\nUser-authored claim:\n{claim}")
         uncertainty = _check_challenge_schema(data, "Slice 1")
         return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
+
+    def generate_literature(self, *, question: str, claim: str, materials: list[dict]) -> ChallengeDraft:
+        block = format_materials_block(materials)
+        user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nSelected literature (locator-prefixed):\n{block}"
+        data = self.client.complete_json(SYSTEM_LITERATURE, user)
+        uncertainty = _check_challenge_schema(data, "Slice 1b literature challenge")
+        basis_refs = [m.get("locator") or m.get("source_locator") or m.get("material_id") for m in materials]
+        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=PROMPT_VERSION_LITERATURE, model_identifier=self.model_identifier, basis_refs=basis_refs)
 
     def generate_additional(self, *, question: str, claim: str, prior_attack_surfaces: list[str]) -> ChallengeDraft:
         used = "\n- ".join(prior_attack_surfaces) if prior_attack_surfaces else "(none yet)"

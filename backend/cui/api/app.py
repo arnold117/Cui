@@ -25,6 +25,7 @@ from cui.research_universe.api.slice5 import create_slice5_router
 from cui.research_universe.api.slice6 import create_slice6_router
 from cui.research_universe.api.slice7 import create_corpus_search_router
 from cui.research_universe.api.slice8 import create_slice8_router
+from cui.research_universe.api.slice9 import create_dialogue_router
 from cui.research_universe.application import Slice1Service
 from cui.research_universe.challenge_generator import RealChallengeGenerator, RealEvidenceCandidateGenerator
 from cui.llm.client import create_client
@@ -99,6 +100,7 @@ def create_native_app(settings: object | None = None, native_store: NativeEventS
     app.include_router(create_slice6_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
     app.include_router(create_corpus_search_router(store, context), prefix="/api/v2")
     app.include_router(create_slice8_router(challenge_service, store, context, resolved_principal), prefix="/api/v2")
+    app.include_router(create_dialogue_router(challenge_service, store, context, resolved_principal, client), prefix="/api/v2")
     app.include_router(create_archive_router(PostgresRepository(engine), PostgresEventStore(engine), context.library_id), prefix="/api/v2")
     return app
 

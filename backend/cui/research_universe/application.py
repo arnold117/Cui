@@ -602,6 +602,45 @@ class Slice1Service:
         p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=claim["id"], claim_version_id=claim["version_id"], claim_text=claim["text"], attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=[*draft.basis_refs, *existing_ids], uncertainty=draft.uncertainty)
         return self._append(universe_id, command_id, "generate_additional_challenge", {"round_id": round_id}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
 
+    def generate_literature_challenge(self, universe_id: str, round_id: str, material_ids: list[str], command_id: str, expected_sequence: int) -> CommitResult:
+        """Explicit user command (slice1 second cut): ask the LLM for a
+        literature-grounded challenge on this round's claim.
+
+        The chosen corpus materials are handed to the generator (excerpts
+        truncated at the prompt boundary) and their locators ride as the
+        challenge's basis_refs — the reference IS the basis. Same challenge
+        lifecycle: a fresh challenge aggregate at expected_sequence 0.
+        """
+        events = _events(self.store, universe_id)
+        round_payload = next((e.validated_payload() for e in events if e.event_type == "review_round_started" and e.validated_payload().round_id == round_id), None)
+        if round_payload is None:
+            raise NotFound(round_id)
+        materials = []
+        for event in events:
+            if event.event_type != "material_added":
+                continue
+            payload = event.validated_payload()
+            if payload.material_id not in material_ids:
+                continue
+            if payload.workspace_id != round_payload.workspace_id:
+                raise BoundaryViolation("material does not belong to the round's workspace")
+            if payload.purpose != "evidence" or payload.parse_status != "parsed":
+                raise BoundaryViolation("literature challenge materials must be parsed evidence materials")
+            materials.append({"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "excerpt": payload.excerpt})
+        missing = set(material_ids) - {m["material_id"] for m in materials}
+        if missing:
+            raise NotFound(sorted(missing)[0])
+        gen = getattr(self.generator, "generate_literature", None)
+        if gen is None:
+            raise BoundaryViolation("challenge generator has no literature support")
+        try:
+            draft = gen(question=round_payload.question_text, claim=round_payload.claim_text, materials=materials)
+        except Exception as exc:
+            raise ChallengeGenerationFailed(str(exc)) from exc
+        challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
+        p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty)
+        return self._append(universe_id, command_id, "generate_literature_challenge", {"round_id": round_id, "material_ids": material_ids}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
+
     def generate_evidence_candidate(self, universe_id: str, round_id: str, material_id: str, command_id: str, expected_sequence: int) -> CommitResult:
         """Explicit user command: ask the LLM to propose an evidence relation.
 
