@@ -184,7 +184,7 @@ T7 收尾验收(依赖全部)
 - **Real 导入(Arnold 批准后执行,anneal 库)**:**160 篇 material_added**(active 57 / legacy 103)+ 两个语料 workspace(`v4-corpus-active`/`v4-corpus-legacy`,uuid 确定性);8 条空文本条目按清单跳过(含 0901.0512 扫描件);`~/.cui/materials/` 160 个 .md 落盘;**复跑 created=0 replayed=160 = 幂等成立**;DB 核实 160 个去重 material_id。
 - **真库 e2e(HTTP slice4 端点)**:active 材料 arxiv:2303.12651 → claim → review round(round 启动原子生成真 LLM challenge)→ propose supports → confirm **confirmed** ✓(期间修正:e2e 里 confirm 的 expected_sequence 应为候选当前序列 1;confirm 端点成功码为 200 非 201)。
 - **记录在案的遗留**:① v4 SQLite 只读归档改名 `*.db.legacy-v4`(plan 退役步,**未执行**,待 Arnold 点头——会动 LitScribe 目录);② 元数据联网回填(OpenAlex/arXiv)未跑——DB papers 元数据表实测近空,标题取 markdown 首行;回填留给 slice1 语料检索元数据层;③ e2e 调试轮在语料 workspace 留下少量 probe claims/rounds(事件流不可删,可视为 demo 数据)。
-- 全量 pytest **409 passed / 15 skipped**(+6 importer 单测);gate 3/3;canary 未受影响。下一步:T6 v4 cherry-pick 清单(逐件小步)。
+- 全量 pytest **404 passed / 15 skipped**(T6 实测基线;此处早期记录 409 系计数错误,已纠)。下一步:T6 v4 cherry-pick 清单(逐件小步)。
 
 **T5 补记(2026-09-02 同日收尾)**
 
@@ -192,3 +192,17 @@ T7 收尾验收(依赖全部)
 - **NUL 清洗(踩坑记录)**:PDF/v4 原文含 \u0000 等控制字符——PG jsonb 能存但 SQL 文本转换即炸。修复:importer `sanitize_text` 总闸 + 已入库 2 行(0901.0512、1601.06764)定点清洗;单测补覆盖。
 - **v4 SQLite 已归档**:`cache/litscribe.db` → `cache/litscribe.db.legacy-v4`(只读,不删);importer 对 db 缺失容错(仅 JSON 源可重算)。
 - 相关 commit:`1902c95`(填充+tolerance)、`ebce931`(sanitize)。
+
+## 10. T6 执行记录(2026-09-02,v4 cherry-pick 五件全完成)
+
+> 方式:五个并行 git worktree 子代理逐件搬迁(worktree 惯例)→ 主循环审计 → cherry-pick 保线性历史。基线实测 **404 passed / 15 skipped**(旧记录 409 为误,已在上节纠错);净增 126 条测试 → **530 passed / 15 skipped**;gate 3/3;`import litscribe` 零残留。
+
+| item | commit | 搬入 | 测试 | 注 |
+|---|---|---|---|---|
+| 1 CJK+IDF | `be73233` | `legacy_archive/search/ranking.py`(extract_core_terms / rank_by_idf) | +12 | 纯函数契约,供 slice1 语料检索接管;语义按 v4(同 term 每文本计 1 次) |
+| 2 pdf.py | `76e3a14` | `legacy_archive/pdf.py`(download_pdf / content_hash / pdf_file_name) | +29 | 解析(原引擎 pymupdf4llm)未搬;httpx MockTransport 测试接缝 |
+| 3 exporters | `6787c59` | `legacy_archive/exporters/`(bibtex / citation_formatter / pandoc 纯构造 / PaperLike) | +61 | **修 v4 bug**:escape_bibtex `~`/`^` 的 re.sub 把 `\t` 变 TAB(输出损坏 .bib)→ callable replacement;pandoc 执行段未搬(docstring 附 slice1 配方) |
+| 4 templates | `d2b0b95` | `legacy_archive/templates.py`(RELATED_WORK_PROMPT / OUTLINE_PROMPT) | +7 | **v4 实际位置修正**:templates.py 无 outline 族 → outline 出自 `tools/local_review.py` Mode B(如实注记);grant/proposal 仅设计笔记,其余族不搬(S24) |
+| 5 contradictions/diff | `05c41d3` | `legacy_archive/contradictions.py`(4 纯函数)+ `diff.py`(4/4 全搬) | +17 | native 确定性 challenge ≠ v4 成对检测(不冗余);LLM 编排部分未搬,slice1 需要回 v4 取;保真 A/B 逐样本一致 |
+
+下一步:T7 收尾验收(全量 + 双 canary + Playwright native 冒烟 + importer 幂等复跑 + 文档收尾 + push)。
