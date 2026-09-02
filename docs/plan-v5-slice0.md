@@ -206,3 +206,12 @@ T7 收尾验收(依赖全部)
 | 5 contradictions/diff | `05c41d3` | `legacy_archive/contradictions.py`(4 纯函数)+ `diff.py`(4/4 全搬) | +17 | native 确定性 challenge ≠ v4 成对检测(不冗余);LLM 编排部分未搬,slice1 需要回 v4 取;保真 A/B 逐样本一致 |
 
 下一步:T7 收尾验收(全量 + 双 canary + Playwright native 冒烟 + importer 幂等复跑 + 文档收尾 + push)。
+
+## 11. T7 收尾验收(2026-09-02)— slice0 完成
+
+- **全量数字(实际 vs T1 基线)**:pytest **530 passed / 15 skipped**(基线 864/34——差异 = T3 legacy 摘除,plan 预期);canary L3 **8/8 GREEN**、slice6 **6/6 GREEN**(真模型);前端 vitest **66 passed**(18 files)+ `tsc -b`/`vite build` 干净;Playwright native 主路径 mock 冒烟 **10 passed / 2 skipped(real 规格需真库)/ 0 failed**(workspace→claim→round→challenge、evidence-gate 三态、verdict、crystallization、archive)。
+- **importer 幂等复跑**:`--mode real` → planned 156(归档后 JSON 源)、**created=0**、replayed 155 + 1 fingerprint-conflict 跳过(arxiv:1601.06764——json 原文 ≠ 入库前 NUL 清洗后文本,守卫正确拦截,零重复写入;全库级幂等以归档前 T5 验证 163/0 + 复跑 0 new 为准)。
+- **文档**:README 已加 v5 状态段(主名 Cui/前身 LitScribe 双指针/验收数字/下一步 slice1);本段即 plan 收尾。
+- **记录在案的开放项**:① 两个 Playwright real 规格(park-release.real / first-fact.real)需真库+起服,留给 slice1 冒烟;② 元数据联网回填进行中(OpenAlex/arXiv 429 退避,~100/160 sidecar,ok/pending 以完成后为准,不影响库内数据);③ e2e 调试 probe 数据在语料 workspace(事件流不可删);④ `.env` 内容不迁移、v4 SQLite 已归档改名。
+- **slice0 完成判据全勾**:全量测试绿 ✓ canary 双绿 ✓ importer 幂等 ✓ 真库 e2e(evidence 三态一条真流,HTTP)✓ 前端绿 ✓ Playwright native 冒烟 ✓ 记忆断点更新 ✓ trunk 已 push。
+- **下一里程碑 = slice1**(review/gap 闭环第一刀 + /api/v3 契约化 + 语料检索 active/legacy 分区),见 §4 预告与 spec §6。
