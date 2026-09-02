@@ -176,3 +176,12 @@ T7 收尾验收(依赖全部)
 - **验收**:`make lint-contracts` → 3 kept / 0 broken(87 文件 303 依赖);**负例验证**:临时在 `cui/store` 塞 `from cui.llm.client import ...` → gate 红(1 broken) → 删 → 复绿 ✓;全量 pytest **397 passed / 15 skipped**(+1 快照);canary L3 复跑 **8/8 GREEN**(归档 prompts 路径端到端);前端未动。
 - 注:`test_native_slice0` 的 fails-closed 测试因 host load_dotenv 补位而更新(中和 dotenv,契约语义不变)。
 - 下一步:T5 语料 importer(依赖 T2/T4 ✓;T3 审阅可并行,此处串行)。
+
+## 9. T5 执行记录(2026-09-02)
+
+- **commits** `357a00a`(importer 代码 + 6 单测)、`5471a6d`(real-run 加固 + e2e 脚本 `scripts/t5_e2e_corpus_evidence.py`)。
+- **工具**:`cui/tools/v4_importer[_cli].py` —— 三源只读(LitScribe DB 157 行 parsed_docs + cache/parsed 161 JSON + data/pdfs 60 核验,PDF 全部已有 DB 行)→ 锚点归一化(arxiv 版本剥除/doi 小写斜杠/local hash;1 条脏行自动排除)→ active(arXiv≥2301)/legacy 分区 → **复用 native 既有命令**(确定性 command_id → 事件指纹幂等)。
+- **Real 导入(Arnold 批准后执行,anneal 库)**:**160 篇 material_added**(active 57 / legacy 103)+ 两个语料 workspace(`v4-corpus-active`/`v4-corpus-legacy`,uuid 确定性);8 条空文本条目按清单跳过(含 0901.0512 扫描件);`~/.cui/materials/` 160 个 .md 落盘;**复跑 created=0 replayed=160 = 幂等成立**;DB 核实 160 个去重 material_id。
+- **真库 e2e(HTTP slice4 端点)**:active 材料 arxiv:2303.12651 → claim → review round(round 启动原子生成真 LLM challenge)→ propose supports → confirm **confirmed** ✓(期间修正:e2e 里 confirm 的 expected_sequence 应为候选当前序列 1;confirm 端点成功码为 200 非 201)。
+- **记录在案的遗留**:① v4 SQLite 只读归档改名 `*.db.legacy-v4`(plan 退役步,**未执行**,待 Arnold 点头——会动 LitScribe 目录);② 元数据联网回填(OpenAlex/arXiv)未跑——DB papers 元数据表实测近空,标题取 markdown 首行;回填留给 slice1 语料检索元数据层;③ e2e 调试轮在语料 workspace 留下少量 probe claims/rounds(事件流不可删,可视为 demo 数据)。
+- 全量 pytest **409 passed / 15 skipped**(+6 importer 单测);gate 3/3;canary 未受影响。下一步:T6 v4 cherry-pick 清单(逐件小步)。
