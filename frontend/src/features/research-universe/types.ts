@@ -44,7 +44,7 @@ export interface ReviewRound {
   evidence_candidates?: EvidenceCandidate[]
   confirmed_facts?: ConfirmedFact[]
 }
-export interface WorkspaceDesk { id: string; question: Snapshot; sequence: number; note?: ExplorationNote | null; note_revisions: NoteRevision[]; anchors: ExplorationAnchor[]; claims: Claim[]; review_rounds: ReviewRoundSummary[]; pending_challenges: Challenge[]; park_release_refs?: ParkReleaseRef[]; materials?: Material[]; confirmed_facts?: ConfirmedFact[]; user_position?: WorkspacePosition; conclusion?: Conclusion | null; direction_links?: DirectionLink[]; successor_workspace_id?: string | null; absorb_target_workspace_id?: string | null }
+export interface WorkspaceDesk { id: string; question: Snapshot; sequence: number; landscape?: WorkspaceLandscape; note?: ExplorationNote | null; note_revisions: NoteRevision[]; anchors: ExplorationAnchor[]; claims: Claim[]; review_rounds: ReviewRoundSummary[]; pending_challenges: Challenge[]; park_release_refs?: ParkReleaseRef[]; materials?: Material[]; confirmed_facts?: ConfirmedFact[]; user_position?: WorkspacePosition; conclusion?: Conclusion | null; direction_links?: DirectionLink[]; successor_workspace_id?: string | null; absorb_target_workspace_id?: string | null }
 export interface HomePendingFact extends Challenge { workspace_id: string; question: string }
 export interface HomeProjection { universe_id: string; workspaces: WorkspaceDesk[]; pending_facts: HomePendingFact[]; directions?: HomeDirection[] }
 
@@ -107,3 +107,32 @@ export interface CreateDirectionEnvelope extends CommandEnvelope { proposition: 
 export interface DeclareDirectionStatusEnvelope extends CommandEnvelope { status: DirectionStatus; user_reason: string }
 export interface RephraseDirectionEnvelope extends CommandEnvelope { new_proposition?: string | null; change_type: DirectionChangeType; user_reason: string; source_conclusion_ref?: string | null }
 export interface AttachCrystallizationEnvelope extends CommandEnvelope { workspace_id: string; conclusion_id: string; user_reason?: string | null }
+
+// slice1 — gap candidates / workspace landscape
+export type GapStatus = "pending" | "confirmed" | "corrected" | "rejected" | "withdrawn"
+export interface GapSearchRecord { query: string; scope: "active" | "legacy"; matched_locators: string[]; searched_at?: string | null }
+export interface GapCandidate {
+  id: string
+  workspace_id: string
+  coverage_statement: string
+  search_record: GapSearchRecord
+  counterexample_invitation: string
+  generator_kind?: "user" | "system"
+  status: GapStatus
+  sequence?: number
+  decision_reason?: string | null
+}
+export interface LandscapeClaim { id: string; text: string; sequence?: number }
+export interface LandscapeFact { candidate_id: string; claim_id: string; claim_text: string; relation: EvidenceRelation; material_locator?: string | null; decision_reason?: string | null }
+export interface WorkspaceLandscape {
+  workspace_id: string
+  question: Snapshot
+  alive_claims: LandscapeClaim[]
+  claim_verdicts: Record<string, string>
+  confirmed_facts: LandscapeFact[]
+  gaps: GapCandidate[]
+}
+export interface CorpusSearchHit { material_id: string; source_locator: string; title: string; matched_terms: number; snippet: string }
+export interface CorpusSearchResponse { query: string; group: string; total: number; results: CorpusSearchHit[] }
+export interface GapProposeEnvelope extends CommandEnvelope { coverage_statement: string; search_query: string; search_scope: "active" | "legacy"; matched_locators: string[]; searched_at?: string | null; counterexample_invitation: string }
+export interface GapDecisionEnvelope extends CommandEnvelope { user_reason?: string | null }

@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from cui.research_universe.api.routes import LibraryContext, LocalPrincipal
-from cui.research_universe.application import Slice1Service, ChallengeGenerationFailed, NotFound, BoundaryViolation, workspace_projection, review_round_projection, universe_home_projection
+from cui.research_universe.application import Slice1Service, ChallengeGenerationFailed, NotFound, BoundaryViolation, workspace_projection, review_round_projection, universe_home_projection, workspace_landscape_projection
 from cui.research_universe.store.event_store import ExpectedSequenceConflict, CommandFingerprintConflict, UniverseNotFound
 
 class Command(BaseModel): command_id: str; expected_sequence: int = Field(ge=0)
@@ -59,7 +59,11 @@ def create_slice1_router(service: Slice1Service, store, context: LibraryContext,
         if universe_id != _active(store, context): raise HTTPException(404, "universe not in active library context")
         return universe_home_projection(store, universe_id)
     @router.get("/workspaces/{workspace_id}")
-    def workspace(workspace_id: str): return workspace_projection(store, _universe_for_workspace(store, context, workspace_id), workspace_id)
+    def workspace(workspace_id: str):
+        universe_id = _universe_for_workspace(store, context, workspace_id)
+        projection = workspace_projection(store, universe_id, workspace_id)
+        projection["landscape"] = workspace_landscape_projection(store, universe_id, workspace_id)
+        return projection
     @router.get("/review-rounds/{round_id}")
     def review_round(round_id: str): return review_round_projection(store, _universe_for_round(store, context, round_id), round_id)
     return router

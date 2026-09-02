@@ -1,4 +1,4 @@
-import type { AbsorbWorkspaceEnvelope, AddMaterialEnvelope, AnswerChallengeEnvelope, AttachCrystallizationEnvelope, AttachDirectionEnvelope, BranchWorkspaceEnvelope, Claim, CommandEnvelope, CommandResponse, ConcludeWorkspaceEnvelope, ConfirmVerdictEnvelope, CorrectEvidenceEnvelope, CreateDirectionEnvelope, DecideEvidenceEnvelope, DeclareDirectionStatusEnvelope, DeferChallengeEnvelope, DetachDirectionLinkEnvelope, Direction, ExplorationAnchor, ExplorationNote, GenerateEvidenceCandidateEnvelope, HomeProjection, PauseWorkspaceEnvelope, ProposeEvidenceCandidateEnvelope, ReopenWorkspaceEnvelope, RephraseDirectionEnvelope, ReviewRound, WithdrawChallengeEnvelope, WorkspaceDesk } from "./types"
+import type { AbsorbWorkspaceEnvelope, CorpusSearchResponse, GapDecisionEnvelope, GapProposeEnvelope, WorkspaceLandscape, AddMaterialEnvelope, AnswerChallengeEnvelope, AttachCrystallizationEnvelope, AttachDirectionEnvelope, BranchWorkspaceEnvelope, Claim, CommandEnvelope, CommandResponse, ConcludeWorkspaceEnvelope, ConfirmVerdictEnvelope, CorrectEvidenceEnvelope, CreateDirectionEnvelope, DecideEvidenceEnvelope, DeclareDirectionStatusEnvelope, DeferChallengeEnvelope, DetachDirectionLinkEnvelope, Direction, ExplorationAnchor, ExplorationNote, GenerateEvidenceCandidateEnvelope, HomeProjection, PauseWorkspaceEnvelope, ProposeEvidenceCandidateEnvelope, ReopenWorkspaceEnvelope, RephraseDirectionEnvelope, ReviewRound, WithdrawChallengeEnvelope, WorkspaceDesk } from "./types"
 
 const BASE = "/api/v2"
 function commandId() { return globalThis.crypto?.randomUUID?.() ?? `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}` }
@@ -55,5 +55,11 @@ export const researchUniverse = {
   rephraseDirection: (directionId: string, envelope: RephraseDirectionEnvelope) => send<CommandResponse<{ direction_id: string; new_proposition_version_id: string; aggregate_sequences?: Record<string, number> }>>(`/directions/${directionId}/rephrasings`, envelope),
   attachCrystallization: (directionId: string, envelope: AttachCrystallizationEnvelope) => send<CommandResponse<{ crystallization_id: string; direction_id: string; workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/directions/${directionId}/crystallizations`, envelope),
   direction: (directionId: string) => read<Direction>(`/directions/${directionId}`),
+  // slice1 — corpus search + gap candidates / landscape
+  corpusSearch: (q: string, opts?: { group?: "active" | "legacy"; limit?: number }) => read<CorpusSearchResponse>(`/corpus/search?${new URLSearchParams({ q, group: opts?.group ?? "active", limit: String(opts?.limit ?? 20) }).toString()}`),
+  landscape: (workspaceId: string) => read<WorkspaceLandscape>(`/workspaces/${workspaceId}/landscape`),
+  proposeGapCandidate: (workspaceId: string, envelope: GapProposeEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/gap-candidates`, envelope),
+  confirmGapCandidate: (candidateId: string, envelope: GapDecisionEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/gap-candidates/${candidateId}/confirm`, envelope),
+  rejectGapCandidate: (candidateId: string, envelope: GapDecisionEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/gap-candidates/${candidateId}/reject`, envelope),
 }
 export type { Claim, ExplorationAnchor, ExplorationNote }
