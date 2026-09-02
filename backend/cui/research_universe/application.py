@@ -13,7 +13,9 @@ from cui.research_universe.domain.events import (
     EvidenceRelationConfirmedPayload, EvidenceRelationCorrectedPayload,
     EvidenceRelationProposedPayload, EvidenceRelationRejectedPayload,
     EvidenceRelationWithdrawnPayload, ExplorationAnchorCreatedPayload,
-    ExplorationNoteSavedPayload, MaterialAddedPayload,
+    ExplorationNoteSavedPayload, GapCandidateConfirmedPayload,
+    GapCandidateCorrectedPayload, GapCandidateProposedPayload,
+    GapCandidateRejectedPayload, GapCandidateWithdrawnPayload, MaterialAddedPayload,
     ParkReleasedPayload, PendingNativeEvent, ReviewRoundStartedPayload,
     VerdictConfirmedPayload, WorkspaceAbsorbedPayload, WorkspaceBranchedPayload,
     WorkspaceConcludedPayload, WorkspaceCreatedPayload,
@@ -167,6 +169,64 @@ def _evidence_candidate_states(events) -> dict[str, dict]:
             entry["status"] = "pending"
         states[cid] = entry
     return states
+
+
+def _gap_candidate_states(events) -> dict[str, dict]:
+    """gap_candidate_id -> derived gap candidate state (workspace-scoped).
+
+    Mirrors the evidence candidate lifecycle: proposed stays pending until
+    exactly one immutable terminal decision (confirmed / corrected / rejected /
+    withdrawn). Old decisions are never rewritten; a new candidate re-opens.
+    """
+    base: dict[str, dict] = {}
+    decisions: dict[str, dict] = {}
+    sequences: dict[str, int] = {}
+    for event in events:
+        p = event.validated_payload()
+        if event.aggregate_type == "gap_candidate":
+            sequences[event.aggregate_id] = event.sequence + 1
+        if event.event_type == "gap_candidate_proposed":
+            base[p.gap_candidate_id] = {
+                "id": p.gap_candidate_id,
+                "workspace_id": p.workspace_id,
+                "coverage_statement": p.coverage_statement,
+                "search_record": {"query": p.search_query, "scope": p.search_scope, "matched_locators": p.matched_locators, "searched_at": p.searched_at},
+                "counterexample_invitation": p.counterexample_invitation,
+                "generator_kind": p.generator_kind,
+            }
+        elif event.event_type == "gap_candidate_confirmed":
+            decisions[p.gap_candidate_id] = {"status": "confirmed", "reason": p.user_reason}
+        elif event.event_type == "gap_candidate_corrected":
+            decisions[p.gap_candidate_id] = {"status": "corrected", "corrected_coverage_statement": p.corrected_coverage_statement, "reason": p.user_reason}
+        elif event.event_type == "gap_candidate_rejected":
+            decisions[p.gap_candidate_id] = {"status": "rejected", "reason": p.user_reason}
+        elif event.event_type == "gap_candidate_withdrawn":
+            decisions[p.gap_candidate_id] = {"status": "withdrawn", "reason": p.user_reason}
+    states: dict[str, dict] = {}
+    for cid, info in base.items():
+        entry = {**info, "sequence": sequences.get(cid, 1)}
+        decision = decisions.get(cid)
+        if decision is not None:
+            entry["status"] = decision["status"]
+            entry["decision_reason"] = decision.get("reason")
+            if decision.get("corrected_coverage_statement") is not None:
+                entry["coverage_statement"] = decision["corrected_coverage_statement"]
+        else:
+            entry["status"] = "pending"
+        states[cid] = entry
+    return states
+
+
+def _landscape(workspace: dict, claims: list[dict], verdicts: dict[str, str], confirmed_facts: list[dict], gaps: list[dict]) -> dict:
+    """现状图景 (workspace-level readback): alive claims + confirmed facts + gaps."""
+    return {
+        "workspace_id": workspace["id"],
+        "question": workspace["question"],
+        "alive_claims": [c for c in claims if verdicts.get(c["id"], "open") != "refuted"],
+        "claim_verdicts": {c["id"]: verdicts.get(c["id"], "open") for c in claims},
+        "confirmed_facts": confirmed_facts,
+        "gaps": gaps,
+    }
 
 
 def _ledger(challenges: list[dict]) -> dict:
@@ -356,6 +416,44 @@ def direction_projection(store: NativeEventStore, universe_id: str, direction_id
         question = next((e.validated_payload().initial_question_text for e in events if e.event_type == "workspace_created" and e.validated_payload().workspace_id == wid), None)
         attached.append({"link_id": link_id, "workspace_id": wid, "question": question, "position": _workspace_position(events, wid), "pending_fact_count": _workspace_pending_count(events, wid)})
     return {"id": direction_id, "proposition": current["proposition"], "status": current["status"], "sequence": direction_sequence, "rephrase_history": history, "attached_workspaces": attached, "crystallizations": crystallizations}
+
+
+def workspace_landscape_projection(store: NativeEventStore, universe_id: str, workspace_id: str) -> dict:
+    """现状图景 (slice1 S1.2): workspace-level readback of alive claims, confirmed
+    facts and gap candidates — the raw material a gap argument cites. Pure read;
+    no new events."""
+    events = _events(store, universe_id)
+    workspace = workspace_projection(store, universe_id, workspace_id)
+    claims = workspace["claims"]
+    verdict_by_claim: dict[str, str] = {}
+    for event in events:
+        if event.event_type == "verdict_confirmed":
+            payload = event.validated_payload()
+            verdict_by_claim[payload.claim_id] = payload.verdict_type
+    confirmed_facts = []
+    for state in _evidence_candidate_states(events).values():
+        if state["workspace_id"] != workspace_id or state["status"] not in ("confirmed", "corrected"):
+            continue
+        confirmed_facts.append({
+            "candidate_id": state["id"],
+            "claim_id": state["claim_snapshot"]["id"],
+            "claim_text": state["claim_snapshot"]["text"],
+            "relation": state["relation"],
+            "material_locator": state["material_anchor"]["source_locator"],
+            "decision_reason": state.get("decision_reason"),
+        })
+    gaps = [state for state in _gap_candidate_states(events).values() if state["workspace_id"] == workspace_id]
+    gaps.sort(key=lambda g: g["id"])
+    _DEAD = {"refuted", "not_worth"}
+    alive = [c for c in claims if verdict_by_claim.get(c["id"], "open") not in _DEAD]
+    return {
+        "workspace_id": workspace_id,
+        "question": workspace["question"],
+        "alive_claims": alive,
+        "claim_verdicts": {c["id"]: verdict_by_claim.get(c["id"], "open") for c in claims},
+        "confirmed_facts": confirmed_facts,
+        "gaps": gaps,
+    }
 
 
 def universe_home_projection(store: NativeEventStore, universe_id: str) -> dict:
@@ -690,6 +788,69 @@ class Slice1Service:
         position = _workspace_position(_events(self.store, universe_id), workspace_id)
         if position not in _ALLOWED_POSITION_TRANSITIONS[action]:
             raise BoundaryViolation(f"cannot {action} a workspace in position {position}")
+
+    # --- slice1 S1.2: gap candidates (workspace-scoped, S20) -----------------
+
+    def _gap_candidate_state(self, universe_id: str, candidate_id: str) -> dict:
+        state = _gap_candidate_states(_events(self.store, universe_id)).get(candidate_id)
+        if state is None:
+            raise NotFound(candidate_id)
+        return state
+
+    def propose_gap_candidate(self, universe_id: str, workspace_id: str, coverage_statement: str, search_query: str, search_scope: str, matched_locators: list[str], counterexample_invitation: str, searched_at: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        workspace_projection(self.store, universe_id, workspace_id)
+        candidate_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:gap-candidate:{command_id}"))
+        p = GapCandidateProposedPayload(gap_candidate_id=candidate_id, workspace_id=workspace_id, coverage_statement=coverage_statement, search_query=search_query, search_scope=search_scope, matched_locators=matched_locators, searched_at=searched_at, counterexample_invitation=counterexample_invitation)
+        command_payload = {"workspace_id": workspace_id, "coverage_statement": coverage_statement, "search_query": search_query, "search_scope": search_scope, "matched_locators": matched_locators, "counterexample_invitation": counterexample_invitation}
+        return self._append(universe_id, command_id, "propose_gap_candidate", command_payload, {("gap_candidate", candidate_id): expected_sequence}, PendingNativeEvent(event_type="gap_candidate_proposed", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id), {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
+
+    def confirm_gap_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._gap_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "user_reason": user_reason}
+        expected = {("gap_candidate", state["id"]): expected_sequence}
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "confirm_gap_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior:
+            return prior
+        if state["status"] != "pending":
+            raise BoundaryViolation(f"gap candidate is already {state['status']}; old decisions are never reopened")
+        p = GapCandidateConfirmedPayload(gap_candidate_id=candidate_id, workspace_id=state["workspace_id"], user_reason=user_reason)
+        return self._append(universe_id, command_id, "confirm_gap_candidate", command_payload, expected, PendingNativeEvent(event_type="gap_candidate_confirmed", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id), {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
+
+    def correct_gap_candidate(self, universe_id: str, candidate_id: str, corrected_coverage_statement: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._gap_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "corrected_coverage_statement": corrected_coverage_statement, "user_reason": user_reason}
+        expected = {("gap_candidate", state["id"]): expected_sequence}
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "correct_gap_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior:
+            return prior
+        if state["status"] != "pending":
+            raise BoundaryViolation(f"gap candidate is already {state['status']}; old decisions are never reopened")
+        p = GapCandidateCorrectedPayload(gap_candidate_id=candidate_id, workspace_id=state["workspace_id"], corrected_coverage_statement=corrected_coverage_statement, user_reason=user_reason)
+        return self._append(universe_id, command_id, "correct_gap_candidate", command_payload, expected, PendingNativeEvent(event_type="gap_candidate_corrected", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id), {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
+
+    def reject_gap_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._gap_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "user_reason": user_reason}
+        expected = {("gap_candidate", state["id"]): expected_sequence}
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "reject_gap_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior:
+            return prior
+        if state["status"] != "pending":
+            raise BoundaryViolation(f"gap candidate is already {state['status']}; old decisions are never reopened")
+        p = GapCandidateRejectedPayload(gap_candidate_id=candidate_id, workspace_id=state["workspace_id"], user_reason=user_reason)
+        return self._append(universe_id, command_id, "reject_gap_candidate", command_payload, expected, PendingNativeEvent(event_type="gap_candidate_rejected", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id), {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
+
+    def withdraw_gap_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        state = self._gap_candidate_state(universe_id, candidate_id)
+        command_payload = {"candidate_id": candidate_id, "user_reason": user_reason}
+        expected = {("gap_candidate", state["id"]): expected_sequence}
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "withdraw_gap_candidate", command_payload, [(kind, ident, seq) for (kind, ident), seq in expected.items()]))
+        if prior:
+            return prior
+        if state["status"] != "pending":
+            raise BoundaryViolation(f"gap candidate is already {state['status']}; old decisions are never reopened")
+        p = GapCandidateWithdrawnPayload(gap_candidate_id=candidate_id, workspace_id=state["workspace_id"], user_reason=user_reason)
+        return self._append(universe_id, command_id, "withdraw_gap_candidate", command_payload, expected, PendingNativeEvent(event_type="gap_candidate_withdrawn", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id), {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
 
     def pause_workspace(self, universe_id: str, workspace_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
         self._assert_position_transition(universe_id, workspace_id, "pause")

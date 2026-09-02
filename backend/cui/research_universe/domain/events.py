@@ -197,6 +197,51 @@ class EvidenceRelationWithdrawnPayload(Payload):
     user_reason: str | None = None
 
 
+# --- slice1 S1.2: gap candidates (workspace-scoped, S20 shape) ----------------
+
+
+class GapCandidateProposedPayload(Payload):
+    """S20 shape: coverage statement + reproducible search record + invitation
+    to counterexamples. The search record is captured at propose time from the
+    corpus search endpoint (S1.1); gaps are user-authored until further slices.
+    """
+    gap_candidate_id: str
+    workspace_id: str
+    coverage_statement: str = Field(min_length=10)
+    search_query: str = Field(min_length=1)
+    search_scope: Literal["active", "legacy"] = "active"
+    matched_locators: list[str] = Field(default_factory=list)
+    searched_at: str | None = None
+    counterexample_invitation: str = Field(min_length=1)
+    generator_kind: Literal["user", "system"] = "user"
+    author: Literal["user"] = "user"
+
+
+class GapCandidateConfirmedPayload(Payload):
+    gap_candidate_id: str
+    workspace_id: str
+    user_reason: str | None = None
+
+
+class GapCandidateCorrectedPayload(Payload):
+    gap_candidate_id: str
+    workspace_id: str
+    corrected_coverage_statement: str = Field(min_length=10)
+    user_reason: str | None = None
+
+
+class GapCandidateRejectedPayload(Payload):
+    gap_candidate_id: str
+    workspace_id: str
+    user_reason: str | None = None
+
+
+class GapCandidateWithdrawnPayload(Payload):
+    gap_candidate_id: str
+    workspace_id: str
+    user_reason: str | None = None
+
+
 # --- Slice 5: workspace crystallization / direction impact --------------------
 
 WorkspacePosition: TypeAlias = Literal["exploring", "paused", "concluded", "branched", "absorbed"]
@@ -336,6 +381,11 @@ EVENT_PAYLOAD_TYPES: dict[tuple[str, int], type[Payload]] = {
     ("evidence_relation_corrected", 1): EvidenceRelationCorrectedPayload,
     ("evidence_relation_rejected", 1): EvidenceRelationRejectedPayload,
     ("evidence_relation_withdrawn", 1): EvidenceRelationWithdrawnPayload,
+    ("gap_candidate_proposed", 1): GapCandidateProposedPayload,
+    ("gap_candidate_confirmed", 1): GapCandidateConfirmedPayload,
+    ("gap_candidate_corrected", 1): GapCandidateCorrectedPayload,
+    ("gap_candidate_rejected", 1): GapCandidateRejectedPayload,
+    ("gap_candidate_withdrawn", 1): GapCandidateWithdrawnPayload,
     ("workspace_paused", 1): WorkspacePausedPayload,
     ("workspace_reopened", 1): WorkspaceReopenedPayload,
     ("workspace_concluded", 1): WorkspaceConcludedPayload,
