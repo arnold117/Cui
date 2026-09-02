@@ -147,3 +147,11 @@ T7 收尾验收(依赖全部)
 - 修复 commit `61f2852`:`challenge_generator.py` 校验容忍数值型 `uncertainty`(int/float → 统一转 str,payload 契约不变;bool/空串/非有限 float/缺键/多键仍拒绝);新增回归单测 `backend/tests/test_challenge_generator.py`(14 条:数值接受/字符串保留/旧失败形态仍拒绝/错误消息保留)。
 - 修复后验证:全量 pytest **864 passed / 34 skipped**(850 基线 + 14 新增);slice6 canary **6 PASS / 0 FLAKY / 0 FAIL = GREEN**(真模型复跑)。
 - 双 canary 至此全绿,基线验收线补齐。`v5-baseline` 仍 @ `416cdc5`(修复在其后,`git diff v5-baseline` 可见全貌)。
+
+## 6. T2 执行记录(2026-09-02)
+
+- **commit `b26bc78`** `refactor: rename anneal -> cui (T2)`:git mv `backend/anneal` → `backend/cui`;代码层替换(点路径/斜杠路径/裸词三类,91 文件,472+/472-);pyproject name → `cui` + setuptools 包发现限定 `include=["cui*"]`(否则 alembic 目录被平铺发现误报);CLAUDE.md(conda cui)/docs/v5-handoff.md §4(终态)同步。
+- **保留项(按设计)**:数据库名 `anneal` 不 rename(PG 仍是 `/anneal`;5c35bf4 保险 `_FORBIDDEN` 集合同时拦 anneal/cui);测试 URL fixture、`annealing` 检索词、`anneal_cutover_` 临时库名;archive 文档与 plan 任务原文。
+- **conda env rename** `anneal` → `cui`(2026-09-02);editable 重建于 cui env。
+- **验证数字**(anneal env rename 前与 cui env rename 后两次):全量 pytest **864 passed / 34 skipped**;canary L3 **8/8 GREEN**;canary slice6 **6/6 GREEN**;`from anneal`/`import anneal` 零残留(代码);中性目录 `import cui` OK。
+- 前端未动(零 python import)。下一步:T3 legacy 审计与摘除(先出引用映射表,12 张空 legacy 表冻结不 drop)。
