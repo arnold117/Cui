@@ -20,3 +20,7 @@ AI-native writing engine. Grills ideas, accumulates trajectories, forges drafts 
 - Use `conda activate anneal` (never install into base)
 - `.env` is sacred — only edit `.env.example`
 - Never use `EnterPlanMode` — it loses context
+## v5 (2026-09-02)
+
+- **v5 = LitScribe 融入 Cui 升级,slice0 执行中**。v5/slice0/merge 类任务先读 `docs/v5-handoff.md`(启动包)+ `docs/plan-v5-slice0.md`(任务清单);决策真相 `docs/spec-v5-merge.md`(已收敛,勿翻案)。
+
