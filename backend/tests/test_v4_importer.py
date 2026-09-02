@@ -41,6 +41,11 @@ def test_first_title_from_markdown_heading():
     assert imp.first_title(md) == "Attention Is All You Need"
 
 
+def test_sanitize_text_strips_control_chars_keeps_newlines():
+    dirty = "line one\x00\x01\x02\x1ftwo\n\tthree\rfour"
+    assert imp.sanitize_text(dirty) == "line onetwo\n\tthree\rfour"
+
+
 # --- plan merging (tmp dirs) ------------------------------------------------
 
 

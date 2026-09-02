@@ -98,6 +98,12 @@ def first_title(markdown: str) -> str:
     return "(untitled)"
 
 
+def sanitize_text(text: str) -> str:
+    """PG jsonb stores NUL but any text conversion then fails — strip control
+    characters (keep \\n \\t \\r) before a text ever enters an event payload."""
+    return "".join(c for c in text if c in "\n\t\r" or ord(c) >= 32)
+
+
 def load_db_rows(db_path: Path) -> dict[str, tuple[str, str]]:
     """key -> (source paper_id, markdown) from parsed_docs.
 
@@ -199,7 +205,7 @@ def execute_plan(service: Slice1Service, store: NativeEventStore, universe_id: s
         command_id = command_ids[entry.key]
         try:
             result = service.add_material(
-                universe_id, workspace_id, excerpt=entry.text, source_locator=entry.key,
+                universe_id, workspace_id, excerpt=sanitize_text(entry.text), source_locator=entry.key,
                 parse_status="parsed", purpose="evidence", command_id=command_id, expected_sequence=0,
             )
         except Exception as exc:  # keep going: report per-item failures
