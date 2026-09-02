@@ -166,3 +166,13 @@ T7 收尾验收(依赖全部)
 - **验证数字**:后端 pytest **396 passed / 15 skipped**(864→396,legacy 摘除预期);canary L3 **8/8 GREEN**(归档路径)、slice6 **6/6 GREEN**;前端 tsc/vitest **66/66 ×3**(一次瞬时 flaky 后稳定)/build 绿。
 - **未做/延迟**:Playwright native 主路径冒烟(需真库 + 起服 + 浏览器,T7 收尾统一跑);vitest App.test 有一次与 act 警告相关的瞬时失败(复跑稳定,疑似既有 flake,观察)。
 - 下一步:T4 import-linter + 契约测试骨架(依赖 T2 ✓)。
+
+## 8. T4 执行记录(2026-09-02)
+
+- **commit `507f368`**:层间契约 gate + kernel 纯度修复 + 契约测试骨架。
+- **gate 基建**:`backend/linter/contracts.py` = 单一规则源(S8/S15 编码:kernel 纯度 / cui.llm leaf / SDK 不反向依赖 host/llm/plugins);`python -m linter`(backend/)把源包展开成具体模块喂 import-linter v2.14;根 `Makefile` 目标 `lint-contracts`;pyproject dev 依赖加 `import-linter`。
+- **纯度为真(机器抓出 2 处真实违规,已修)**:① `cui.store.database` 引 dotenv → 剥离(kernel 永不装 .env),host(`cui.api.app.create_native_app`)显式 `load_dotenv()` 补位;② `cui.llm.prompts`(legacy 提示词文本)引 cui.domain → **移入 `cui/legacy_archive/prompts.py`**(importers 4 处 + 2 测试同步;cui.llm 变纯 transport/config)。会话开 `exclude_type_checking_imports`。
+- **契约测试骨架**:`backend/tests/contracts/`(README 说明写法 + `test_native_store_interface.py` NativeEventStore 协议方法集快照)。
+- **验收**:`make lint-contracts` → 3 kept / 0 broken(87 文件 303 依赖);**负例验证**:临时在 `cui/store` 塞 `from cui.llm.client import ...` → gate 红(1 broken) → 删 → 复绿 ✓;全量 pytest **397 passed / 15 skipped**(+1 快照);canary L3 复跑 **8/8 GREEN**(归档 prompts 路径端到端);前端未动。
+- 注:`test_native_slice0` 的 fails-closed 测试因 host load_dotenv 补位而更新(中和 dotenv,契约语义不变)。
+- 下一步:T5 语料 importer(依赖 T2/T4 ✓;T3 审阅可并行,此处串行)。
