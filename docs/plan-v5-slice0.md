@@ -108,3 +108,37 @@ T7 收尾验收(依赖全部)
 - /api/v3 契约化 + 语料检索端点(active/legacy 分区)
 - review/gap 闭环第一刀(现状 + gap 候选 + 人 confirm,复用候选生命周期;wedge a+b demo)
 - related-work/outline 产物形状插件接线
+
+## 5. T1 基线记录(2026-09-02 执行)
+
+> tag:`v5-baseline` @ `416cdc5`(T0 d764ffd + skills setup 416cdc5 已 push)。执行者:唯一 session(DSH)。
+
+**环境核对(全过)**
+
+- conda env `anneal`(miniforge3,Python 3.11);PG `localhost:5432` accepting connections
+- `backend/.env` 键齐(CUI_DATABASE_URL + CUI_LLM_* 等,值未外泄);alembic head = `sealed_park_v1`(head)
+- canary 配置:`openai` provider / `deepseek-v4-flash`
+
+**数字**
+
+- 后端全量 pytest:**850 passed / 34 skipped**(12.5s,1 条 fastapi/httpx deprecation warning)
+- 前端:vitest **66 passed**(18 files);`tsc -b` + `vite build` 干净
+- canary L3(`scripts/canary_l3.py`,真 key):**8 PASS / 0 FLAKY / 0 FAIL = GREEN**
+- canary native slice6(`scripts/canary_native_slice6.py`,真 key):**RED** — 两次独立复跑均为 4 PASS / 2 FAIL,失败用例不固定(第 1 次 C-multi + 1;第 2 次 C-challenge-en + C-multi)
+
+**slice6 canary RED 根因(探针取证,非网络/非本轮代码改动)**
+
+- 探针真调 8 次(Slice 1 SYSTEM + 英文 claim):键集 8/8 全部正确(无多键、无缺键),但 **6/8 次 `uncertainty` 是 JSON 数字**(float 0.2–0.85),而校验要求非空字符串(`challenge_generator.py:44` Slice 1 / `:52` Slice 6,同型严格检查)→ `ValueError: model response is not the Slice N challenge schema`。
+- 8-05 断点记录的旧假设"DeepSeek 偶发多返回键触发 set 严格相等"**被今日探针证伪**:实际成因为模型把 uncertainty 当置信度数值输出 × 代码强类型(必须 str)。
+- 这是 T0 后代码零改动前提下的既有脆弱点 × 现模型(deepseek-v4-flash)行为,属基线事实,不是回归引入。
+
+**验收线判定**
+
+- [x] 环境核对(conda/PG/.env/alembic)
+- [x] 全量 pytest 850/34(记录)
+- [x] canary L3 双绿之一
+- [ ] canary slice6 双绿之二 —— **RED,基线未全绿**
+- [x] 前端 tsc/vitest/build
+- [x] tag `v5-baseline` @ 416cdc5
+- [ ] plan"基线记录"段 — 本段即产出(随 commit 落库)
+- T2 未开跑,等 Arnold 决策(见汇报)。
