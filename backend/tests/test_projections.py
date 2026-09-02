@@ -29,7 +29,6 @@ from cui.domain.projections import (
     ground_stance,
     has_unresolved_debt,
     is_parked,
-    lens_feed_projection,
     pending_events,
     retracted_event_ids,
     snapshot_projection,
@@ -187,98 +186,6 @@ class TestDocProjection:
         assert debt_draft not in result  # debt excluded
         assert unconfirmed not in result # unconfirmed excluded
 
-
-# ===========================================================================
-# lens_feed_projection
-# ===========================================================================
-
-
-class TestLensFeedProjection:
-    def test_includes_grill_events(self):
-        """Challenge, answer, verdict all pass through for grilled artifacts."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        answer = make_event(type=ANSWER, actor="user", confirmed=True)
-        v = _verdict("survive", confirmed=True)
-        events = [challenge, answer, v]
-        result = lens_feed_projection(events)
-        assert challenge in result
-        assert answer in result
-        assert v in result
-
-    def test_includes_killed_verdict(self):
-        """Killed verdicts are mining material for Lens — must be included."""
-        v_kill = _verdict("kill", confirmed=True)
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        events = [challenge, v_kill]
-        result = lens_feed_projection(events)
-        assert v_kill in result
-
-    def test_excludes_surface_edit(self):
-        """Edit events with scope=surface are excluded."""
-        challenge = make_event(type=CHALLENGE, actor="system")
-        surface_edit = make_event(
-            type=EDIT, actor="user", payload={"scope": "surface"}
-        )
-        events = [challenge, surface_edit]
-        result = lens_feed_projection(events)
-        assert surface_edit not in result
-
-    def test_includes_substance_edit(self):
-        """Edit events with scope=substance are included."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        substance_edit = make_event(
-            type=EDIT, actor="user", payload={"scope": "substance"}, confirmed=True
-        )
-        events = [challenge, substance_edit]
-        result = lens_feed_projection(events)
-        assert substance_edit in result
-
-    def test_empty_for_park_only(self):
-        """Park-only artifacts (no grill events) produce empty lens feed."""
-        park = make_event(type=PARK, actor="user")
-        events = [park]
-        result = lens_feed_projection(events)
-        assert result == []
-
-    def test_excludes_retracted_events(self):
-        """Retracted events are excluded from lens feed."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        answer = make_event(type=ANSWER, actor="user", confirmed=True)
-        r = _retract(answer.id)
-        events = [challenge, answer, r]
-        result = lens_feed_projection(events)
-        assert answer not in result
-        assert challenge in result
-
-    def test_excludes_confirm_retract_meta(self):
-        """CONFIRM and RETRACT meta-events are excluded."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        c = _confirm(challenge.id)
-        events = [challenge, c]
-        result = lens_feed_projection(events)
-        assert c not in result
-        assert challenge in result
-
-    def test_includes_ground_events(self):
-        """Ground events are included in lens feed for grilled artifacts."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        ground = make_event(type=GROUND, actor="system", confirmed=True)
-        events = [challenge, ground]
-        result = lens_feed_projection(events)
-        assert ground in result
-
-    def test_excludes_park_events_from_grilled_artifact(self):
-        """Even for grilled artifacts, the park event itself is excluded."""
-        park = make_event(type=PARK, actor="user", confirmed=True)
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        events = [park, challenge]
-        result = lens_feed_projection(events)
-        assert park not in result
-        assert challenge in result
-
-
-# ===========================================================================
-# claim_status
 # ===========================================================================
 
 
@@ -641,41 +548,6 @@ class TestDocProjectionKilledClaimFiltering:
         result = doc_projection(events)
         assert free_event in result
 
-
-# ===========================================================================
-# lens_feed_projection — unconfirmed filtering (Fix 5)
-# ===========================================================================
-
-
-class TestLensFeedConfirmedFiltering:
-    def test_unconfirmed_event_excluded(self):
-        """Unconfirmed event is excluded from lens feed."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        unconfirmed = make_event(type=ANSWER, actor="user", confirmed=False)
-        events = [challenge, unconfirmed]
-        result = lens_feed_projection(events)
-        assert unconfirmed not in result
-
-    def test_confirmed_event_included(self):
-        """Event with confirmed=True is included in lens feed."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        answer = make_event(type=ANSWER, actor="user", confirmed=True)
-        events = [challenge, answer]
-        result = lens_feed_projection(events)
-        assert answer in result
-
-    def test_event_confirmed_via_confirm_event_included(self):
-        """Event confirmed via a CONFIRM event is included in lens feed."""
-        challenge = make_event(type=CHALLENGE, actor="system", confirmed=True)
-        unconfirmed = make_event(type=ANSWER, actor="user", confirmed=False)
-        c = _confirm(unconfirmed.id)
-        events = [challenge, unconfirmed, c]
-        result = lens_feed_projection(events)
-        assert unconfirmed in result
-
-
-# ===========================================================================
-# Retracted CONFIRM events (Fix 6)
 # ===========================================================================
 
 

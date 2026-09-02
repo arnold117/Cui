@@ -204,52 +204,6 @@ def doc_projection(events: list[Event]) -> list[Event]:
     return result
 
 
-def lens_feed_projection(events: list[Event]) -> list[Event]:
-    """Spec §3.3: lens_feed = project(events: grilled AND scope != "surface").
-
-    Rules:
-    - Include events from grilled artifacts (has at least one CHALLENGE event).
-    - Include BOTH survived and killed verdict events
-      (killed = mining material for Lens).
-    - Include challenge, answer, verdict, ground events.
-    - Exclude EDIT events with scope="surface".
-    - Include EDIT events with scope="substance".
-    - Exclude PARK-only artifacts (no grill events = nothing to feed).
-    - Exclude CONFIRM/RETRACT meta-events (bookkeeping, not content).
-    - Only include confirmed events (Fix 5).
-    """
-    # Defensive sort (Fix 7).
-    events = sorted(events, key=lambda e: e.ts)
-
-    # If the artifact was never grilled, nothing to feed.
-    if not has_grill_events(events):
-        return []
-
-    retracted = retracted_event_ids(events)
-    confirmed = _confirmed_event_ids(events)
-    result: list[Event] = []
-    for e in events:
-        # Skip retracted events.
-        if e.id in retracted:
-            continue
-        # Skip meta-events.
-        if e.type in {CONFIRM, RETRACT}:
-            continue
-        # Skip park events (park is isolation, not Lens food).
-        if e.type == PARK:
-            continue
-        # Only include confirmed events (Fix 5):
-        # confirmed=True on the event itself, OR a CONFIRM event targets it.
-        if not e.confirmed and e.id not in confirmed:
-            continue
-        # Edit events: include substance, exclude surface.
-        if e.type == EDIT:
-            if e.payload.get("scope") == "surface":
-                continue
-        result.append(e)
-    return result
-
-
 def claim_status(events: list[Event], claim_id: str) -> str:
     """Derive claim status from events.
 
