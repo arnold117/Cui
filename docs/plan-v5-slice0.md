@@ -137,8 +137,13 @@ T7 收尾验收(依赖全部)
 - [x] 环境核对(conda/PG/.env/alembic)
 - [x] 全量 pytest 850/34(记录)
 - [x] canary L3 双绿之一
-- [ ] canary slice6 双绿之二 —— **RED,基线未全绿**
+- [x] canary slice6 双绿之二 —— 见下方补记(修复后 6/6 GREEN)
 - [x] 前端 tsc/vitest/build
 - [x] tag `v5-baseline` @ 416cdc5
-- [ ] plan"基线记录"段 — 本段即产出(随 commit 落库)
-- T2 未开跑,等 Arnold 决策(见汇报)。
+- [x] plan"基线记录"段 — 本段即产出(随 commit 落库)
+
+**补记(2026-09-02,Arnold 决策"先修脆弱校验再进 T2")**
+
+- 修复 commit `61f2852`:`challenge_generator.py` 校验容忍数值型 `uncertainty`(int/float → 统一转 str,payload 契约不变;bool/空串/非有限 float/缺键/多键仍拒绝);新增回归单测 `backend/tests/test_challenge_generator.py`(14 条:数值接受/字符串保留/旧失败形态仍拒绝/错误消息保留)。
+- 修复后验证:全量 pytest **864 passed / 34 skipped**(850 基线 + 14 新增);slice6 canary **6 PASS / 0 FLAKY / 0 FAIL = GREEN**(真模型复跑)。
+- 双 canary 至此全绿,基线验收线补齐。`v5-baseline` 仍 @ `416cdc5`(修复在其后,`git diff v5-baseline` 可见全貌)。
