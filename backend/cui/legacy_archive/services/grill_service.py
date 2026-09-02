@@ -36,7 +36,7 @@ from cui.store.event_store import EventStore
 from cui.store.repository import Repository
 
 if TYPE_CHECKING:
-    from cui.llm.prompts import ClaimPrecedent
+    from cui.legacy_archive.prompts import ClaimPrecedent
 
 
 class GrillService:
@@ -356,7 +356,7 @@ class GrillService:
         kills at all.
         """
         from cui.legacy_archive.lens.precedent import DatedPrecedent, select_kill_precedents
-        from cui.llm.prompts import ClaimPrecedent
+        from cui.legacy_archive.prompts import ClaimPrecedent
 
         if self._repo is None:
             return []
@@ -425,7 +425,7 @@ class GrillService:
         """
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
-        from cui.llm.prompts import build_challenge_prompt, format_evidence_block
+        from cui.legacy_archive.prompts import build_challenge_prompt, format_evidence_block
         self._assert_artifact_was_parked(artifact_id)
         evidence_events = self._bearing_evidence(
             confirmed_ground_evidence(
@@ -488,7 +488,7 @@ class GrillService:
         """
         if self._llm is None:
             raise LLMNotConfiguredError("LLM client not configured")
-        from cui.llm.prompts import build_verdict_prompt, format_evidence_block
+        from cui.legacy_archive.prompts import build_verdict_prompt, format_evidence_block
         self._assert_has_challenge(artifact_id)
         evidence_events = self._bearing_evidence(
             confirmed_ground_evidence(

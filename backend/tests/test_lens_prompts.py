@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cui.llm.prompts import build_contradiction_prompt
+from cui.legacy_archive.prompts import build_contradiction_prompt
 
 
 class TestBuildContradictionPrompt:

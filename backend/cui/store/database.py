@@ -1,4 +1,4 @@
-"""Database engine helpers for Anneal."""
+"""Database engine helpers (kernel layer: the host loads .env, never this module)."""
 
 from __future__ import annotations
 
@@ -12,9 +12,8 @@ DEFAULT_URL = "postgresql://localhost:5432/anneal"
 
 
 def get_database_url() -> str:
-    from dotenv import load_dotenv
-
-    load_dotenv()
+    # Kernel purity: this module never loads dotenv — the host (cui.api.app or
+    # the calling script) loads backend/.env before asking for a URL.
     return os.getenv("CUI_DATABASE_URL", DEFAULT_URL)
 
 

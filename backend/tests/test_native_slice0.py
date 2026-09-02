@@ -30,6 +30,9 @@ def test_native_test_app_provisions_server_scoped_active_universe():
 
 def test_native_production_fails_closed_without_database(monkeypatch):
     monkeypatch.delenv("CUI_DATABASE_URL", raising=False)
+    # Host bootstrap may load backend/.env — neutralize it so the test proves
+    # fails-closed when no configuration source provides a database URL.
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
     with pytest.raises(RuntimeError, match="CUI_DATABASE_URL"):
         create_native_app()
 

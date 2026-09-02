@@ -150,7 +150,7 @@ class GroundingService:
             raise LLMNotConfiguredError("LLM client not configured")
         material = self._get_material(material_id)
         self._assert_artifact_was_parked(artifact_id)
-        from cui.llm.prompts import build_grounding_prompt
+        from cui.legacy_archive.prompts import build_grounding_prompt
 
         system, user = build_grounding_prompt(
             claim_body,

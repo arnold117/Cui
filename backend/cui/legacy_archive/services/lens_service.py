@@ -40,7 +40,7 @@ from cui.domain.projections import (
 from cui.legacy_archive.lens.prefilter import prefilter_candidates
 from cui.llm.client import LLMClient
 from cui.llm.errors import LLMNotConfiguredError
-from cui.llm.prompts import (
+from cui.legacy_archive.prompts import (
     ClaimPrecedent,
     build_contradiction_prompt,
     build_semantic_edges_prompt,

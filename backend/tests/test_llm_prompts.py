@@ -1,5 +1,5 @@
 from cui.domain.events import GROUND, make_event
-from cui.llm.prompts import (
+from cui.legacy_archive.prompts import (
     OUTPUT_LANGUAGE_INSTRUCTION,
     ClaimPrecedent,
     build_challenge_prompt,

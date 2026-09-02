@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Iterable, NamedTuple
 
-from cui.llm.prompts import ClaimPrecedent
+from cui.legacy_archive.prompts import ClaimPrecedent
 
 # Deterministic injection budget (spec §2 Q3). Exceeding it is the structural
 # trigger for revisiting selection/compression (判例蒸馏), not a headcount.

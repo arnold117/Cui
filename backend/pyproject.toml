@@ -26,6 +26,7 @@ dev = [
   "pytest",
   "httpx",
   "pytest-asyncio",
+  "import-linter",
 ]
 
 [tool.pytest.ini_options]

@@ -63,6 +63,9 @@ def _resolve_library_context(engine, supplied: LibraryContext | None) -> Library
 
 def create_native_app(settings: object | None = None, native_store: NativeEventStore | None = None, library_context: LibraryContext | None = None, principal: LocalPrincipal | None = None) -> FastAPI:
     """Production/development factory: PostgreSQL and schema head are mandatory."""
+    from dotenv import load_dotenv  # host bootstrap: kernel never loads .env
+
+    load_dotenv()
     database_url = getattr(settings, "database_url", None) if settings else None
     database_url = database_url or os.getenv("CUI_DATABASE_URL")
     if not database_url:
