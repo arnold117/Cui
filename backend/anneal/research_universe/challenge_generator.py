@@ -5,6 +5,8 @@ Every adapter here only ever reads native snapshots (round question/claim,
 material excerpt).  Legacy Lens data must never enter these prompts.
 """
 from __future__ import annotations
+import math
+
 from anneal.llm.client import LLMClient
 from anneal.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
 
@@ -35,23 +37,59 @@ rationale explains WHY in the same language as the claim. evidence_highlight quo
 If the material's parse_status is "failed", relation MUST be "cannot_assess" — a material that failed to parse cannot be read, so it can never be assessed as silent, supporting, or contradicting. Never supply a claim, verdict, answer, or direction."""
 
 
+def _check_challenge_schema(data: dict, schema_name: str) -> str:
+    """Validate a model challenge payload; returns the normalised uncertainty.
+
+    The key set must be exactly the four required keys and the three textual
+    fields must be non-empty strings. ``uncertainty`` is normalised by
+    ``_uncertainty_text`` — current models often emit it as a numeric
+    confidence (see ``_uncertainty_text`` for why that is accepted).
+    """
+    required = ("attack_surface", "why_it_matters", "self_check_method", "uncertainty")
+    if set(data) != set(required):
+        raise ValueError(f"model response is not the {schema_name} challenge schema")
+    for key in ("attack_surface", "why_it_matters", "self_check_method"):
+        if not isinstance(data[key], str) or not data[key].strip():
+            raise ValueError(f"model response is not the {schema_name} challenge schema")
+    return _uncertainty_text(data["uncertainty"], schema_name)
+
+
+def _uncertainty_text(value: object, schema_name: str) -> str:
+    """Normalise the model's uncertainty to a non-empty string.
+
+    Models frequently read "uncertainty" as a 0–1 confidence score and emit a
+    JSON number; the payload contract keeps uncertainty a string, so numbers
+    are stringified. Any other shape (bool, empty string, non-finite float,
+    list, dict) is rejected.
+    """
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            return text
+    elif isinstance(value, bool):
+        pass  # bool is an int subclass; a confidence is never a bool
+    elif isinstance(value, int):
+        return str(value)
+    elif isinstance(value, float) and math.isfinite(value):
+        return str(value)
+    raise ValueError(f"model response is not the {schema_name} challenge schema")
+
+
 class RealChallengeGenerator:
     def __init__(self, client: LLMClient, model_identifier: str | None) -> None:
         self.client, self.model_identifier = client, model_identifier
+
     def generate(self, *, question: str, claim: str) -> ChallengeDraft:
         data = self.client.complete_json(SYSTEM, f"Question:\n{question}\n\nUser-authored claim:\n{claim}")
-        required = ("attack_surface", "why_it_matters", "self_check_method", "uncertainty")
-        if set(data) != set(required) or not all(isinstance(data[key], str) and data[key].strip() for key in required):
-            raise ValueError("model response is not the Slice 1 challenge schema")
-        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=data["uncertainty"], prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
+        uncertainty = _check_challenge_schema(data, "Slice 1")
+        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
+
     def generate_additional(self, *, question: str, claim: str, prior_attack_surfaces: list[str]) -> ChallengeDraft:
         used = "\n- ".join(prior_attack_surfaces) if prior_attack_surfaces else "(none yet)"
         user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nAlready-used attack surfaces (attack a DIFFERENT angle; never repeat one):\n- {used}"
         data = self.client.complete_json(SYSTEM_EXPANDED, user)
-        required = ("attack_surface", "why_it_matters", "self_check_method", "uncertainty")
-        if set(data) != set(required) or not all(isinstance(data[key], str) and data[key].strip() for key in required):
-            raise ValueError("model response is not the Slice 6 expanded challenge schema")
-        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=data["uncertainty"], prompt_version=EXPANDED_CHALLENGE_PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
+        uncertainty = _check_challenge_schema(data, "Slice 6 expanded challenge")
+        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=EXPANDED_CHALLENGE_PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
 
 
 class RealEvidenceCandidateGenerator:
