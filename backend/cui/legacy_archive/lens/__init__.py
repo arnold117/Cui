@@ -6,7 +6,7 @@ NLP deps, no embeddings, no persistent Lens store — these are deterministic
 functions the LensService composes at grill time.
 """
 
-from cui.lens.prefilter import prefilter_candidates
-from cui.lens.topic_terms import topic_terms
+from cui.legacy_archive.lens.prefilter import prefilter_candidates
+from cui.legacy_archive.lens.topic_terms import topic_terms
 
 __all__ = ["topic_terms", "prefilter_candidates"]

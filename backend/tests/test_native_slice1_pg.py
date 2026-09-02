@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from alembic import command
+from alembic.config import Config
 from concurrent.futures import ThreadPoolExecutor
 
 from cui.research_universe.api.routes import LibraryContext
@@ -14,7 +16,12 @@ from cui.api.app import create_native_test_app
 from cui.research_universe.application import ChallengeDraft
 from cui.research_universe.store.event_store import PostgresNativeEventStore
 from cui.research_universe.store import schema
-from tests.test_pg_integration import _alembic_config
+
+
+def _alembic_config(url: str) -> Config:
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", url)
+    return config
 
 PG_URL = os.getenv("CUI_TEST_DATABASE_URL")
 

@@ -37,7 +37,7 @@ from cui.domain.projections import (
     retracted_event_ids,
     verdict_precedent,
 )
-from cui.lens.prefilter import prefilter_candidates
+from cui.legacy_archive.lens.prefilter import prefilter_candidates
 from cui.llm.client import LLMClient
 from cui.llm.errors import LLMNotConfiguredError
 from cui.llm.prompts import (
@@ -46,9 +46,9 @@ from cui.llm.prompts import (
     build_semantic_edges_prompt,
     build_taste_prompt,
 )
-from cui.search.openalex import search_openalex
-from cui.services.collect_service import _load_contact_email
-from cui.services.event_service import EventService
+from cui.legacy_archive.search.openalex import search_openalex
+from cui.legacy_archive.services.collect_service import _load_contact_email
+from cui.legacy_archive.services.event_service import EventService
 from cui.store.event_store import EventStore
 from cui.store.repository import Repository
 

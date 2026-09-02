@@ -87,12 +87,12 @@ load_dotenv(BACKEND_DIR / ".env")
 import cui  # noqa: E402
 from cui.domain.events import CHALLENGE, PARK, VERDICT, make_event  # noqa: E402
 from cui.domain.models import Artifact, Claim  # noqa: E402
-from cui.lens.prefilter import prefilter_candidates  # noqa: E402
+from cui.legacy_archive.lens.prefilter import prefilter_candidates  # noqa: E402
 from cui.llm.client import create_client  # noqa: E402
 from cui.llm.config import load_llm_config  # noqa: E402
-from cui.services.event_service import EventService  # noqa: E402
-from cui.services.grill_service import GrillService  # noqa: E402
-from cui.services.lens_service import (  # noqa: E402
+from cui.legacy_archive.services.event_service import EventService  # noqa: E402
+from cui.legacy_archive.services.grill_service import GrillService  # noqa: E402
+from cui.legacy_archive.services.lens_service import (  # noqa: E402
     _SEMANTIC_EDGE_TYPES,
     _TASTE_TIERS,
     LensService,

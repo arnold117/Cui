@@ -31,7 +31,7 @@ from cui.domain.constants import GROUND_VERDICTS
 from cui.domain.events import GROUND, PARK, Event, make_event
 from cui.llm.client import LLMClient
 from cui.llm.errors import LLMNotConfiguredError, LLMResponseError
-from cui.services.event_service import EventService
+from cui.legacy_archive.services.event_service import EventService
 from cui.store.event_store import EventStore
 from cui.store.repository import Repository
 

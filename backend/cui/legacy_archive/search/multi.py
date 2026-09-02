@@ -14,13 +14,13 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
-from cui.search.arxiv import search_arxiv
-from cui.search.crossref import search_crossref
-from cui.search.dedupe import dedupe
-from cui.search.europe_pmc import search_europepmc
-from cui.search.openalex import search_openalex
-from cui.search.pubmed import search_pubmed
-from cui.search.semantic_scholar import search_semantic_scholar
+from cui.legacy_archive.search.arxiv import search_arxiv
+from cui.legacy_archive.search.crossref import search_crossref
+from cui.legacy_archive.search.dedupe import dedupe
+from cui.legacy_archive.search.europe_pmc import search_europepmc
+from cui.legacy_archive.search.openalex import search_openalex
+from cui.legacy_archive.search.pubmed import search_pubmed
+from cui.legacy_archive.search.semantic_scholar import search_semantic_scholar
 
 logger = logging.getLogger(__name__)
 

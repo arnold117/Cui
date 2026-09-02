@@ -2,14 +2,14 @@
 
 Adapters return plain neutral "paper-like" dicts (NOT domain models).
 Mapping dicts -> Anneal's native Material model lives in the service layer
-(``cui.services.collect_service``), keeping the fetcher pure and the
+(``cui.legacy_archive.services.collect_service``), keeping the fetcher pure and the
 domain side native.
 
 The multi-source orchestrator (``search_all``) and the pure ``dedupe`` helper
 are re-exported here for convenient import.
 """
 
-from cui.search.dedupe import dedupe
-from cui.search.multi import DEFAULT_SOURCES, REGISTRY, search_all
+from cui.legacy_archive.search.dedupe import dedupe
+from cui.legacy_archive.search.multi import DEFAULT_SOURCES, REGISTRY, search_all
 
 __all__ = ["dedupe", "search_all", "DEFAULT_SOURCES", "REGISTRY"]

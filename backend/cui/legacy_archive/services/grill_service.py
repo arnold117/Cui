@@ -31,7 +31,7 @@ from cui.domain.projections import (
 )
 from cui.llm.client import LLMClient
 from cui.llm.errors import LLMNotConfiguredError, LLMResponseError
-from cui.services.event_service import EventService
+from cui.legacy_archive.services.event_service import EventService
 from cui.store.event_store import EventStore
 from cui.store.repository import Repository
 
@@ -355,7 +355,7 @@ class GrillService:
         when the artifact cannot be resolved, or when the Library holds no
         kills at all.
         """
-        from cui.lens.precedent import DatedPrecedent, select_kill_precedents
+        from cui.legacy_archive.lens.precedent import DatedPrecedent, select_kill_precedents
         from cui.llm.prompts import ClaimPrecedent
 
         if self._repo is None:

@@ -1,4 +1,4 @@
-"""Three explicit app factories keep native production and legacy regression separate."""
+"""Two explicit app factories keep native production and native testing separate."""
 from __future__ import annotations
 
 import os
@@ -12,8 +12,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, select
 
-from cui.api.deps import lifespan as legacy_lifespan
-from cui.api.routes import router as legacy_router
 from cui.legacy_archive.api.routes import create_router as create_archive_router
 from cui.store.event_store import PostgresEventStore
 from cui.store.repository import PostgresRepository
@@ -123,13 +121,6 @@ def create_native_test_app(native_store: InMemoryNativeEventStore, library_conte
     return app
 
 
-def create_legacy_regression_app() -> FastAPI:
-    """Test-only v1 compatibility factory with isolated legacy setup."""
-    app = _cors(FastAPI(title="Cui legacy regression", lifespan=legacy_lifespan))
-    app.include_router(legacy_router, prefix="/api/v1")
-    return app
-
-
 def create_app() -> FastAPI:
-    """Deployment entry point; deliberately does not expose legacy mutations."""
+    """Deployment entry point; the v1 legacy surface was removed in T3."""
     return create_native_app()

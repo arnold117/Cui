@@ -5,7 +5,7 @@ constructor ``(store, event_service, repo)``; a method creates domain entities,
 persists them via ``self._repo.create_*``, and appends events via
 ``self._event_service.append_event``.
 
-The fetcher (``cui.search.openalex``) returns neutral paper-like dicts;
+The fetcher (``cui.legacy_archive.search.openalex``) returns neutral paper-like dicts;
 this native service is the only place that knows about the ``Material`` model.
 Collecting a paper is a *factual fetch*, so its event is ``confirmed=True`` —
 the grounding judgment (Stage 2) is what will be pending.
@@ -19,8 +19,8 @@ from dotenv import load_dotenv
 
 from cui.domain.events import COLLECT_MATERIAL, make_event
 from cui.domain.models import Material
-from cui.search.multi import search_all
-from cui.services.event_service import EventService
+from cui.legacy_archive.search.multi import search_all
+from cui.legacy_archive.services.event_service import EventService
 from cui.store.event_store import EventStore
 from cui.store.repository import Repository
 

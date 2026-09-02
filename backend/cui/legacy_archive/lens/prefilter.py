@@ -12,7 +12,7 @@ Pure: no I/O, deterministic ranking, fully unit-testable.
 from __future__ import annotations
 
 from cui.domain.models import Claim
-from cui.lens.topic_terms import topic_terms
+from cui.legacy_archive.lens.topic_terms import topic_terms
 
 
 def _overlap_count(current_terms: set[str], candidate_body: str) -> int:

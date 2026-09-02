@@ -14,7 +14,7 @@ from cui.domain.constants import SUPPORTED_ARTIFACT_KINDS
 from cui.domain.events import PARK, make_event
 from cui.domain.models import Artifact, Claim
 from cui.domain.projections import is_parked
-from cui.services.event_service import EventService
+from cui.legacy_archive.services.event_service import EventService
 from cui.store.event_store import EventStore
 from cui.store.repository import Repository
 

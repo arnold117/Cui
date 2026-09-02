@@ -11,7 +11,7 @@ from __future__ import annotations
 from cui.domain.events import PROMOTE, Event, make_event
 from cui.domain.invariants import assert_can_promote, assert_claim_no_debt
 from cui.domain.projections import doc_projection
-from cui.services.event_service import EventService
+from cui.legacy_archive.services.event_service import EventService
 from cui.store.event_store import EventStore
 
 
