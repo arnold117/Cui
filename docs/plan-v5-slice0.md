@@ -155,3 +155,14 @@ T7 收尾验收(依赖全部)
 - **conda env rename** `anneal` → `cui`(2026-09-02);editable 重建于 cui env。
 - **验证数字**(anneal env rename 前与 cui env rename 后两次):全量 pytest **864 passed / 34 skipped**;canary L3 **8/8 GREEN**;canary slice6 **6/6 GREEN**;`from anneal`/`import anneal` 零残留(代码);中性目录 `import cui` OK。
 - 前端未动(零 python import)。下一步:T3 legacy 审计与摘除(先出引用映射表,12 张空 legacy 表冻结不 drop)。
+
+## 7. T3 执行记录(2026-09-02)
+
+**审计产物**:`docs/t3-legacy-audit.md`(commit `3b76166`)——面→引用方→判定映射表。
+
+- **commit `4895022`**(T3 backend):v1 API 面整组摘除(`cui/api/routes.py` 30 端点 + `deps.py` + `create_legacy_regression_app`);legacy 垂直归档 `cui/legacy_archive/{services,search,lens}`(8 服务含 internal 前缀改写;canary_l3 import 改指归档路径);**lens_feed_service 阑尾删除**(非归档,写-only 空数据)+ `lens_feed_projection` 投影函数与测试摘除(`lens_feed_entries` 表冻结保留);legacy 测试整组删除(约 25 文件,含依赖已删 helper 的 test_native_slice1_pg 改本地定义);native/archive/store/domain 测试保留。
+- **commit `7c0ccd3`**(T3 frontend):死 UI 级联删除——6 视图(ParkView/DocView/GrillView/CorpusGraphView/TrajectoryView/VersionsView)+ useGrillFlow + 第二层(Sidebar/SidebarItem/EvidencePanel/PrecedentTrace/GrillMessage/EventCard)+ EmptyState + 孤儿 `src/api.ts`(v1 BASE)/`src/utils.ts`/`src/types.ts`(Archive 类型本地化至 legacy-archive/api.ts)。保留:LegacyArchive(`/archive*` 活跃面)、ParkDesk(native)、RU 全部。
+- **保留(按设计)**:`/api/v2/legacy-archive` 只读端点 + FE archive;12 张 legacy 表冻结 + preflight 清单;`cui/store/*` + `cui/domain/*`(archive/store 依赖);`libraries` 表(native 用)。
+- **验证数字**:后端 pytest **396 passed / 15 skipped**(864→396,legacy 摘除预期);canary L3 **8/8 GREEN**(归档路径)、slice6 **6/6 GREEN**;前端 tsc/vitest **66/66 ×3**(一次瞬时 flaky 后稳定)/build 绿。
+- **未做/延迟**:Playwright native 主路径冒烟(需真库 + 起服 + 浏览器,T7 收尾统一跑);vitest App.test 有一次与 act 警告相关的瞬时失败(复跑稳定,疑似既有 flake,观察)。
+- 下一步:T4 import-linter + 契约测试骨架(依赖 T2 ✓)。
