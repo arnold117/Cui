@@ -41,3 +41,25 @@
 ## 4. 第二刀预告
 
 方向结晶自动化(文献锚+Lens 历史锚→direction,等第一批判例);/api/v3 契约化重排 + 语料检索端点正式化;exporters/related-work·outline 模板接线(S24);检索默认 active 的正式检索视图。
+
+## 5. 第二刀设计定稿(2026-09-02 收敛):文献探讨对话面 — wedge demo
+
+> 收敛问答记录见本会话;已决条目不再翻案。目标是把你说的核心流程做成可点的产品旅程。
+
+### 决策(Q1–Q7 已答)
+- 文献来源:第一刀只搜**已入厂 active 语料**(离线、可复现、S20 检索记录天然满足);外部实时检索(arXiv/OpenAlex)留后续增强。
+- 载体:复用 **claim + review round**;中间对话不入轨迹,**裁决/confirmed gap/挑战事件才入库**(铁律:自动化取证,定见入库,过程是会话)。
+- 流程两段式:先"选料+现状梳理"(临时)→ 你固化 claim 开审查轮 → agent 用选中文献对抗发问 → 裁决 → gap 候选(人 confirm,保持人署名)→ related-work 段草稿(导出形式,不入事件库)。
+- 带料交互:agent 检 top-6(每篇一行理由)→ 你勾 3–5 篇进入引用。
+- 挑战引用文献:**复用 challenge_created 的 basis_refs 存材料 locator**(引用即依据;文本内嵌引句),新 prompt 版本 `slice1b-literature-challenge-v1`,不新增事件类型。
+- 入口:工作区专属模式页「文献探讨」(仿 forge 布局,从现状图景与 gap 区进入),产物(gap/裁决/草稿)回工作区可见。
+- gap 候选仍由**人提交**(agent 只起草候选字段、预填表单供人修改后 propose,保持 user authorship;S6)。
+- 草稿:related-work 段,复用 `legacy_archive/templates.py` RELATED_WORK_PROMPT,UI 卡片可重生成/复制/下载;不入事件(导出=渲染,S19)。
+
+### 旅程验收(demo 一路点通)
+① 开问题+一句话方向 → ② agent 检索 top-6+理由 → ③ 勾 3–5 篇 → ④ 现状梳理(覆盖/未覆盖) → ⑤ 固化 claim → 审查轮 → agent 引用文献逐条发难 → ⑥ 回答→裁决 → ⑦ agent 起草 gap 候选(检索记录自动带)→ 人 confirm ≥1 → ⑧ 生成 related-work 草稿。
+
+### 任务草案
+- L1 后端:prompt `slice1b-literature-challenge-v1`(引文献发难)+ 服务方法 `generate_literature_challenge`(basis=material locators)+ 端点;会话瞬态端点(现状梳理/相关草稿/agent gap 草稿)host 层直调 llm;契约测试(纯组装可测,LLM 注入 fake)。
+- L2 前端:文献探讨模式页(两段式状态机、勾选、挑战/裁决复用现有组件、草稿卡片);vitest + Playwright 旅程冒烟。
+- L3 验收:全量 + 双 canary + 真库 wedge 旅程走一遍 + README/记忆。
