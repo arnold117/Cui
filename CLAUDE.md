@@ -24,3 +24,17 @@ AI-native writing engine. Grills ideas, accumulates trajectories, forges drafts 
 
 - **v5 = LitScribe 融入 Cui 升级,slice0 执行中**。v5/slice0/merge 类任务先读 `docs/v5-handoff.md`(启动包)+ `docs/plan-v5-slice0.md`(任务清单);决策真相 `docs/spec-v5-merge.md`(已收敛,勿翻案)。
 
+## Agent skills
+
+### Issue tracker
+
+Work is tracked in this repo's GitHub Issues (use the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary, label string = role name: `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context: one `CONTEXT.md` at the repo root; ADRs live under `docs/adr/`. See `docs/agents/domain.md`.
+
