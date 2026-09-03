@@ -246,9 +246,9 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         if not pool:
             return {"query": query, "candidates": []}
         candidate_lines = "\n".join(f"- [{c['locator']}] ({c['source']}) {c['title']}" for c in pool)
-        context = f"问题:{body.question}" + (f"\n(外部检索词:{external_query})" if body.external and external_query != query else "")
+        prompt_context = f"问题:{body.question}" + (f"\n(外部检索词:{external_query})" if body.external and external_query != query else "")
         try:
-            text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"{context}\n候选文献:\n{candidate_lines}")
+            text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"{prompt_context}\n候选文献:\n{candidate_lines}")
         except Exception as exc:
             raise HTTPException(502, f"literature search reasoning failed: {exc}") from exc
         allowed = {c["locator"]: c for c in pool}
