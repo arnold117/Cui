@@ -59,6 +59,15 @@ class LiteratureChallengeCommand(Command):
     material_ids: list[str] = Field(min_length=1)
 
 
+SYSTEM_ORIENTATION = """你是 Cui 的研究起点助手。面对一个全新的研究问题,先帮研究者做正向准备。只输出 JSON:
+{"hypotheses": ["3-5 条候选假设,每条是完整的可检验陈述,中文"], "keywords": ["8-12 条检索关键词或短语(中文/英文均可),用于语料检索"]}
+不要替用户下结论;假设是候选,不是定见。"""
+
+
+class OrientationCommand(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
 class LiteratureSearchCommand(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     query: str | None = None
@@ -131,6 +140,21 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             return CommandResponse(commit_position=result.commit_position, event_ids=result.event_ids, result=result.result_payload, fragment=review_round_projection(store, universe_id, round_id))
         except Exception as exc:
             fail(exc)
+
+    @router.post("/workspaces/{workspace_id}/dialogue/orientation")
+    def orientation(workspace_id: str, body: OrientationCommand):
+        """Fresh-question gate (product journey §0/§1): candidate hypotheses +
+        search keywords for a brand-new question. Transient; nothing stored."""
+        llm = _llm()
+        try:
+            text = llm.complete_json(SYSTEM_ORIENTATION, f"全新研究问题:\n{body.question}")
+        except Exception as exc:
+            raise HTTPException(502, f"orientation failed: {exc}") from exc
+        hypotheses = [str(h) for h in (text.get("hypotheses") or []) if isinstance(h, str) and h.strip()][:5]
+        keywords = [str(k) for k in (text.get("keywords") or []) if isinstance(k, str) and k.strip()][:12]
+        if not hypotheses or not keywords:
+            raise HTTPException(502, "orientation returned no usable hypotheses/keywords")
+        return {"hypotheses": hypotheses, "keywords": keywords}
 
     @router.post("/workspaces/{workspace_id}/dialogue/literature-search")
     def literature_search(workspace_id: str, body: LiteratureSearchCommand):

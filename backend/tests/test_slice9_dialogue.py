@@ -183,3 +183,17 @@ def test_corpus_materials_allowed_in_any_workspace_dialogue_and_challenge():
     assert result.replayed is False
     event = [e for e in store.read_events(universe) if e.event_type == "challenge_created"][-1].validated_payload()
     assert "arxiv:2401.00077" in event.basis_refs
+
+
+def test_orientation_endpoint_returns_hypotheses_and_keywords():
+    store, universe, service, wid, mat, rid = _seed()
+    fake = type("F", (), {
+        "complete": lambda self, s2, u: "x",
+        "complete_json": lambda self, s2, u, retries=2: {"hypotheses": ["RLHF 改善推理是通过偏好对齐减少分布外漂移", "推理提升只是评测过拟合的假象"], "keywords": ["RLHF", "reasoning evaluation", "偏好对齐"]},
+    })()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/orientation", json={"question": "RLHF 是否提升推理?"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["hypotheses"]) == 2 and body["keywords"][0] == "RLHF"

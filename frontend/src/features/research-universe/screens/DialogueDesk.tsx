@@ -3,6 +3,9 @@ import { command, researchUniverse } from "../api"
 import type { DialogueCandidate, GapDraftFields } from "../types"
 
 type SavedState = {
+  hypotheses: string[]
+  keywords: string[]
+  fresh: boolean
   candidates: DialogueCandidate[]
   selected: string[]  // locators of chosen literature
   summary?: string
@@ -14,7 +17,7 @@ type SavedState = {
   searchQuery: string
 }
 
-const EMPTY: SavedState = { candidates: [], selected: [], claimText: "", confirmedGapIds: [], searchQuery: "" }
+const EMPTY: SavedState = { hypotheses: [], keywords: [], fresh: true, candidates: [], selected: [], claimText: "", confirmedGapIds: [], searchQuery: "" }
 
 function storageKey(workspaceId: string) { return `cui-dialogue-${workspaceId}` }
 
@@ -39,7 +42,12 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     let live = true
     researchUniverse.desk(workspaceId)
-      .then((desk) => { if (live) setQuestion(desk.question.text) })
+      .then((desk) => {
+        if (!live) return
+        setQuestion(desk.question.text)
+        const fresh = (desk.claims?.length ?? 0) === 0 && (desk.confirmed_facts?.length ?? 0) === 0 && (desk.materials?.length ?? 0) === 0 && ((desk.landscape?.gaps?.length ?? 0) === 0)
+        setState((prev) => ({ ...prev, fresh }))
+      })
       .catch((e) => { if (live) setError(e instanceof Error ? e.message : "读取工作区失败") })
     return () => { live = false }
   }, [workspaceId])
@@ -50,13 +58,23 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
 
   function patch(partial: Partial<SavedState>) { setState((prev) => ({ ...prev, ...partial })) }
 
-  async function runSearch() {
+  async function runSearch(queryOverride?: string) {
+    if (busy) return
+    const q = queryOverride ?? searchQuery
+    setBusy(true); setError(undefined)
+    try {
+      const result = await researchUniverse.literatureSearch(workspaceId, { question, query: q || undefined })
+      patch({ candidates: result.candidates, selected: [], searchQuery: result.query })
+    } catch (e) { setError(e instanceof Error ? e.message : "检索失败") } finally { setBusy(false) }
+  }
+
+  async function runOrientation() {
     if (busy) return
     setBusy(true); setError(undefined)
     try {
-      const result = await researchUniverse.literatureSearch(workspaceId, { question, query: searchQuery || undefined })
-      patch({ candidates: result.candidates, selected: [], searchQuery: result.query })
-    } catch (e) { setError(e instanceof Error ? e.message : "检索失败") } finally { setBusy(false) }
+      const result = await researchUniverse.orientation(workspaceId, question)
+      patch({ hypotheses: result.hypotheses, keywords: result.keywords })
+    } catch (e) { setError(e instanceof Error ? e.message : "出发点准备失败") } finally { setBusy(false) }
   }
 
   function toggle(locator: string) {
@@ -156,8 +174,20 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     {error && <p className="ru-error" role="alert">{error}</p>}
     <p className="ru-challenge-note">旅程:检索选料 → 现状梳理 → 固化 claim 进审查轮 → 文献发难 → gap → related-work 草稿。中间的对话不入轨迹;只有裁决/确认/gap 会留下。</p>
 
+    <p className="ru-kicker">正向段 · 先把支持面建起来(会话过程,不入轨迹)</p>
     <div className="ru-dialogue-step">
-      <h2>① 让 Cui 从语料里找候选文献</h2>
+      <h2>① 出发点与假设</h2>
+      {state.fresh && state.hypotheses.length === 0 && state.candidates.length === 0 && <div>
+        <p className="ru-challenge-note">这是一个全新问题:先找文献建立支持面,再谈对抗——让 Cui 先给出可能的假设与检索关键词。</p>
+        <button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runOrientation()}>{busy ? "思考中…" : "让 Cui 给出假设与关键词"}</button>
+      </div>}
+      {state.hypotheses.length > 0 && <div><p className="ru-provenance">候选假设(由你判断,不是定见):</p><ul className="ru-landscape-list">{state.hypotheses.map((h) => <li key={h} className="ru-landscape-item"><strong>{h}</strong></li>)}</ul>
+        <p className="ru-provenance">关键词(点击即按它检索):</p>
+        {state.keywords.map((k) => <button key={k} className="ru-quiet-button" disabled={busy} onClick={() => { setSearchQuery(k); void runSearch(k) }}>{k}</button>)}
+      </div>}
+    </div>
+    <div className="ru-dialogue-step">
+      <h2>② 让 Cui 从语料里找候选文献</h2>
       <div><input aria-label="检索词(可选)" className="ru-revival-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="检索词;留空则由 Cui 按问题检索" /><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runSearch()}>{busy ? "工作中…" : "让 Cui 找文献"}</button></div>
       {state.candidates.length > 0 && <ul className="ru-landscape-list">
         {state.candidates.map((c) => <li key={c.locator} className="ru-landscape-item">
@@ -169,13 +199,14 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     </div>
 
     <div className="ru-dialogue-step">
-      <h2>② 让 Cui 梳理现状(这几篇覆盖了什么 / 没覆盖什么)</h2>
+      <h2>③ 覆盖梳理(这几篇覆盖了什么 / 没覆盖什么)</h2>
       <button className="ru-quiet-button" disabled={busy || state.selected.length === 0} onClick={() => void summarize()}>梳理现状</button>
       {state.summary && <pre className="ru-dialogue-pre">{state.summary}</pre>}
     </div>
 
     <div className="ru-dialogue-step">
-      <h2>③ 固化你的 claim,进审查轮</h2>
+      <p className="ru-kicker">反向段 · 对抗与裁决(入轨迹)</p>
+      <h2>④ 固化你的 claim,进审查轮</h2>
       <textarea aria-label="claim" className="ru-conclusion-text" value={state.claimText} onChange={(e) => patch({ claimText: e.target.value })} placeholder="读了这些之后,你究竟要断言什么?" />
       <button className="ru-ink-button ru-active" disabled={busy || !state.claimText.trim()} onClick={() => void openReview()}>固化 claim 并开审查轮</button>
       {state.roundId && <p className="ru-provenance">审查轮已开:<a href={`/review-rounds/${state.roundId}`}>去审查轮回应与裁决</a></p>}
@@ -183,7 +214,8 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     </div>
 
     <div className="ru-dialogue-step">
-      <h2>④ 让 Cui 起草 gap 候选(仍由你署名提交)</h2>
+      <p className="ru-kicker">收敛段 · 定见与导出</p>
+      <h2>⑤ 让 Cui 起草 gap 候选(仍由你署名提交)</h2>
       <button className="ru-quiet-button" disabled={busy || state.selected.length === 0} onClick={() => void draftGap()}>起草 gap</button>
       {state.draft && <div className="ru-material-form">
         <label htmlFor="d-coverage">覆盖范围声明</label>
@@ -196,7 +228,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     </div>
 
     <div className="ru-dialogue-step">
-      <h2>⑤ 生成 related-work 草稿(导出形式,不入轨迹)</h2>
+      <h2>⑥ 生成 related-work 草稿(导出形式,不入轨迹)</h2>
       <button className="ru-quiet-button" disabled={busy || state.selected.length === 0} onClick={() => void draftRelatedWork()}>生成草稿</button>
       {state.relatedWork && <div><pre className="ru-dialogue-pre">{state.relatedWork}</pre>
         <div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => void copyDraft()}>{copied ? "已复制" : "复制"}</button><button className="ru-quiet-button" onClick={downloadDraft}>下载 .md</button></div></div>}

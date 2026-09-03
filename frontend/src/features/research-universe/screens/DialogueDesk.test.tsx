@@ -73,3 +73,27 @@ describe("literature dialogue desk", () => {
     fireEvent.click(screen.getByRole("button", { name: "下载 .md" }))
   })
 })
+
+
+describe("fresh-question orientation gate", () => {
+  it("offers hypotheses and keyword chips for a brand-new question", async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const path = String(url)
+      const method = init?.method ?? "GET"
+      if (path.endsWith("/api/v2/workspaces/w-fresh") && method === "GET") return response({ ...desk, id: "w-fresh" })
+      if (path.endsWith("/dialogue/orientation")) return response({ hypotheses: ["RLHF 通过偏好对齐减少漂移从而提升推理"], keywords: ["RLHF reasoning", "偏好对齐"] })
+      if (path.endsWith("/dialogue/literature-search")) return response({ query: "RLHF reasoning", candidates: [] })
+      return response({ detail: path }, 404)
+    })
+    render(<DialogueDesk workspaceId="w-fresh" />)
+    await screen.findByText(/这是一个全新问题/)
+    fireEvent.click(screen.getByRole("button", { name: "让 Cui 给出假设与关键词" }))
+    await screen.findByText(/RLHF 通过偏好对齐减少漂移从而提升推理/)
+    fireEvent.click(screen.getByRole("button", { name: "RLHF reasoning" }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/dialogue/literature-search"))
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call![1].body as string).query).toBe("RLHF reasoning")
+    })
+  })
+})

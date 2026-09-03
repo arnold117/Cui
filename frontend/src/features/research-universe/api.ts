@@ -61,6 +61,7 @@ export const researchUniverse = {
   confirmGapCandidate: (candidateId: string, envelope: GapDecisionEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/gap-candidates/${candidateId}/confirm`, envelope),
   rejectGapCandidate: (candidateId: string, envelope: GapDecisionEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/gap-candidates/${candidateId}/reject`, envelope),
   // slice1 second cut — literature dialogue surface
+  orientation: (workspaceId: string, question: string) => send<{ hypotheses: string[]; keywords: string[] }>(`/workspaces/${workspaceId}/dialogue/orientation`, { question }),
   literatureSearch: (workspaceId: string, body: { question: string; query?: string }) => send<LiteratureSearchResponse>(`/workspaces/${workspaceId}/dialogue/literature-search`, body),
   landscapeSummary: (workspaceId: string, materialIds: string[]) => send<{ text: string }>(`/workspaces/${workspaceId}/dialogue/landscape-summary`, { material_ids: materialIds }),
   gapDraft: (workspaceId: string, materialIds: string[]) => send<GapDraftFields>(`/workspaces/${workspaceId}/dialogue/gap-draft`, { material_ids: materialIds }),
