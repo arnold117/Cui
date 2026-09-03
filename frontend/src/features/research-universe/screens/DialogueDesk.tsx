@@ -37,6 +37,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [searchedEmpty, setSearchedEmpty] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -61,9 +62,10 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   async function runSearch(queryOverride?: string) {
     if (busy) return
     const q = queryOverride ?? searchQuery
-    setBusy(true); setError(undefined)
+    setBusy(true); setError(undefined); setSearchedEmpty(false)
     try {
       const result = await researchUniverse.literatureSearch(workspaceId, { question, query: q || undefined })
+      setSearchedEmpty(result.candidates.length === 0)
       patch({ candidates: result.candidates, selected: [], searchQuery: result.query })
     } catch (e) { setError(e instanceof Error ? e.message : "检索失败") } finally { setBusy(false) }
   }
@@ -171,6 +173,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   return <section className="ru-dialogue" aria-labelledby="dialogue-title">
     <p className="ru-kicker">文献探讨 · 问题工作区</p>
     <h1 id="dialogue-title">{question || "正在展开问题…"}</h1>
+    <p className="ru-provenance"><a href={`/workspaces/${workspaceId}`}>← 回到问题工作区</a></p>
     {error && <p className="ru-error" role="alert">{error}</p>}
     <p className="ru-challenge-note">旅程:检索选料 → 现状梳理 → 固化 claim 进审查轮 → 文献发难 → gap → related-work 草稿。中间的对话不入轨迹;只有裁决/确认/gap 会留下。</p>
 
@@ -189,6 +192,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     <div className="ru-dialogue-step">
       <h2>② 让 Cui 从语料里找候选文献</h2>
       <div><input aria-label="检索词(可选)" className="ru-revival-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="检索词;留空则由 Cui 按问题检索" /><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runSearch()}>{busy ? "工作中…" : "让 Cui 找文献"}</button></div>
+      {!state.candidates.length && searchedEmpty && <p className="ru-edge-empty">语料库里没有找到相关文献——当前只搜 active 语料(LLM 时代 arXiv);试试更聚焦的关键词,或先采纳上面的候选假设。外部实时检索(arXiv/OpenAlex)在后续计划里。</p>}
       {state.candidates.length > 0 && <ul className="ru-landscape-list">
         {state.candidates.map((c) => <li key={c.locator} className="ru-landscape-item">
           <button className={selectedLocators.includes(c.locator) ? "ru-ink-button" : "ru-quiet-button"} onClick={() => toggle(c.locator)}>{selectedLocators.includes(c.locator) ? "已选" : "选取"}</button>
