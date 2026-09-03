@@ -201,7 +201,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
           <strong>{c.title}</strong><span className="ru-provenance">{c.source && c.source !== "corpus" ? `${c.source} · ` : "语料 · "}{c.url ? <a href={c.url} target="_blank" rel="noreferrer">{c.locator}</a> : c.locator}</span><span>{c.reason}</span>
         </li>)}
       </ul>}
-      <p className="ru-provenance">已选 {state.selected.length} 篇(建议 3–5 篇)</p>
+      <p className="ru-provenance">已选 {state.selected.length} 篇(有多少选多少,通常 1–5 篇;至少选 1 篇才能往下走)</p>
     </div>
 
     <div className="ru-dialogue-step">
