@@ -51,9 +51,13 @@ counterexample_invitation(字符串:邀请反例的措辞)。
 SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与 claim 同语言),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。"""
 
 
-SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题,从候选文献中挑出真正相关的最多 6 篇,并为每篇写一句中文的相关性理由。只输出 JSON:
-{"query": "实际建议的检索词", "results": [{"locator": "arxiv:... 或 doi:...", "reason": "一句理由"}]}
-只选与问题真正相关的;宁可少于 6 篇;不要编造候选中不存在的 locator。"""
+SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题(以及候选假设),从候选文献中挑出真正相关的最多 6 篇。对每篇给出:
+- reason: 一句中文相关性理由;
+- stance: 该文的主要观点/论证角度(2-3 句中文摘要,像人读书后转述);
+- relation: {"kind": "supports" | "partial" | "opposes" | "background", "note": "它如何支持/反驳/仅仅背景式地联系我们的问题与假设(一句中文)"}。
+只输出 JSON:
+{"query": "实际建议的检索词", "results": [{"locator": "arxiv:... 或 doi:...", "reason": "...", "stance": "...", "relation": {"kind": "...", "note": "..."}}]}
+只选与问题真正相关的;宁可少于 6 篇;不要编造候选中不存在的 locator;locator 必须原样抄自候选列表。"""
 
 
 class LiteratureChallengeCommand(Command):
@@ -257,7 +261,17 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             raw = item.get("locator") if isinstance(item, dict) else None
             hit = allowed.get(_canonical_locator(raw)) if raw else None
             if hit is not None:
-                picks.append({"material_id": hit.get("material_id"), "locator": hit["locator"], "title": hit["title"], "source": hit.get("source") or "external", "url": hit.get("url"), "excerpt": (hit.get("excerpt") or "")[:1500], "reason": (item.get("reason") or "")[:200]})
+                relation = item.get("relation") if isinstance(item, dict) else None
+                relation = relation if isinstance(relation, dict) else {}
+                kind = relation.get("kind") if relation.get("kind") in ("supports", "partial", "opposes", "background") else None
+                picks.append({
+                    "material_id": hit.get("material_id"), "locator": hit["locator"], "title": hit["title"],
+                    "source": hit.get("source") or "external", "url": hit.get("url"),
+                    "excerpt": (hit.get("excerpt") or "")[:1500],
+                    "reason": (item.get("reason") or "")[:240],
+                    "stance": (item.get("stance") or "")[:600],
+                    "relation": {"kind": kind or "background", "note": (relation.get("note") or "")[:240]},
+                })
             if len(picks) >= 6:
                 break
         return {"query": (text.get("query") if isinstance(text, dict) else None) or query, "candidates": picks}

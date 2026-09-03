@@ -8,9 +8,9 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 
 const desk = { id: "w-1", question: { version_id: "q-1", text: "Why does RLHF improve reasoning?" }, sequence: 0, note: null, note_revisions: [], anchors: [], claims: [], review_rounds: [], pending_challenges: [] }
 const candidates = [
-  { material_id: "m1", locator: "arxiv:2401.00009", title: "RLHF reasoning paper", reason: "直接相关" },
-  { material_id: "m2", locator: "arxiv:2402.00001", title: "Reasoning evaluation", reason: "相关评测" },
-  { material_id: "m3", locator: "arxiv:2402.00002", title: "Preference alignment", reason: "对齐机制" },
+  { material_id: "m1", locator: "arxiv:2401.00009", title: "RLHF reasoning paper", reason: "直接相关", source: "corpus", stance: "认为 RLHF 通过偏好对齐提升指令遵循。", relation: { kind: "supports", note: "支撑对齐→推理改善的路径。" } },
+  { material_id: "m2", locator: "arxiv:2402.00001", title: "Reasoning evaluation", reason: "相关评测", source: "corpus", stance: "评测了推理链的稳定性。", relation: { kind: "partial", note: "部分支撑:仅限评测面。" } },
+  { material_id: "m3", locator: "arxiv:2402.00002", title: "Preference alignment", reason: "对齐机制", source: "corpus", stance: "讨论对齐偏好分布。", relation: { kind: "background", note: "背景相关。" } },
 ]
 
 function mockJourney() {
@@ -18,7 +18,8 @@ function mockJourney() {
     const path = String(url)
     const method = init?.method ?? "GET"
     if (path.endsWith("/api/v2/workspaces/w-1") && method === "GET") return response(desk)
-    if (path.endsWith("/dialogue/literature-search")) return response({ query: "rlhf", candidates })
+    if (path.endsWith("/dialogue/orientation")) return response({ hypotheses: ["RLHF 通过偏好对齐减少分布外漂移从而提升推理"], keywords: ["RLHF reasoning", "偏好对齐"] })
+    if (path.endsWith("/dialogue/literature-search")) return response({ query: "RLHF reasoning", candidates })
     if (path.endsWith("/dialogue/landscape-summary")) return response({ text: "## 这几篇覆盖了什么\nRLHF 评测覆盖了指令遵循与对齐。\n## 还没有被覆盖的\n推理链上的真实应用表现未被覆盖。" })
     if (path.endsWith("/claims")) return response({ result: { claim_id: "c1" } })
     if (path.endsWith("/review-rounds") && method === "POST") return response({ result: { review_round_id: "r1" } })
@@ -35,36 +36,45 @@ afterEach(() => cleanup())
 beforeEach(() => { fetchMock.mockReset(); window.sessionStorage.clear() })
 
 describe("literature dialogue desk", () => {
-  it("walks the wedge journey end to end", async () => {
+  it("walks the wedge journey: orientation -> editable hypotheses -> keyword auto-search -> picks -> coverage -> claim -> challenge -> gap -> draft", async () => {
     mockJourney()
     render(<DialogueDesk workspaceId="w-1" />)
     await screen.findByText("Why does RLHF improve reasoning?")
 
-    fireEvent.click(screen.getByRole("button", { name: "让 Cui 找文献" }))
-    await screen.findByText("RLHF reasoning paper")
-    for (const button of screen.getAllByRole("button", { name: "选取" })) fireEvent.click(button)
-    await waitFor(() => expect(screen.getByText(/已选 3 篇/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "让 Cui 起草假设与关键词" }))
+    await waitFor(() => expect(screen.getByDisplayValue(/RLHF 通过偏好对齐减少分布外漂移/)).toBeInTheDocument(), { timeout: 3000 })
+    expect(screen.getByLabelText(/关键词\(用 ; 或 ; 分隔/)).toHaveValue("RLHF reasoning; 偏好对齐")
 
-    fireEvent.click(screen.getByRole("button", { name: "梳理现状" }))
+    fireEvent.click(screen.getByRole("button", { name: "RLHF reasoning" }))
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/dialogue/literature-search"))
+      expect(call).toBeTruthy()
+      expect(JSON.parse(call![1].body as string).query).toBe("RLHF reasoning")
+    }, { timeout: 4000 })
+
+    await waitFor(() => expect(screen.getByText(/观点:认为 RLHF 通过偏好对齐提升指令遵循/)).toBeInTheDocument(), { timeout: 3000 })
+    expect(screen.getByText(/支撑对齐→推理改善的路径/)).toBeInTheDocument()
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getAllByRole("button", { name: "待选" })[0])
+    await waitFor(() => expect(screen.getByText(/已选 3 篇\(通常选/)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: /梳理现状/ }))
     await screen.findByText(/还没有被覆盖的/)
 
     fireEvent.change(screen.getByLabelText("claim"), { target: { value: "RLHF 提升推理是因为对齐偏好。" } })
     fireEvent.click(screen.getByRole("button", { name: "固化 claim 并开审查轮" }))
     await screen.findByText(/去审查轮回应与裁决/)
-
     fireEvent.click(screen.getByRole("button", { name: /用所选文献发难/ }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/literature-challenges"))
       expect(call).toBeTruthy()
-      const body = JSON.parse(call![1].body as string)
-      expect(body.material_ids).toEqual(["m1", "m2", "m3"])
-    })
+      expect(JSON.parse(call![1].body as string).material_ids).toEqual(["m1", "m2", "m3"])
+    }, { timeout: 3000 })
 
     fireEvent.click(screen.getByRole("button", { name: "起草 gap" }))
     await screen.findByDisplayValue(/覆盖了评测方法/)
     fireEvent.click(screen.getByRole("button", { name: "提交并确认这个 gap" }))
-    await waitFor(() => expect(screen.getByText(/已确认 gap ×1/)).toBeInTheDocument())
-    const propose = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/gap-candidates") )
+    await waitFor(() => expect(screen.getByText(/已确认 gap ×1/)).toBeInTheDocument(), { timeout: 3000 })
+    const propose = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/gap-candidates"))
     expect(propose).toBeTruthy()
     expect(JSON.parse(propose![1].body as string).matched_locators).toEqual(["arxiv:2401.00009", "arxiv:2402.00001", "arxiv:2402.00002"])
 
@@ -72,28 +82,28 @@ describe("literature dialogue desk", () => {
     await screen.findByText(/Existing work covers RLHF evaluations/)
     fireEvent.click(screen.getByRole("button", { name: "下载 .md" }))
   })
-})
 
-
-describe("fresh-question orientation gate", () => {
-  it("offers hypotheses and keyword chips for a brand-new question", async () => {
+  it("lets the user edit the drafted hypotheses before searching", async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       const path = String(url)
-      const method = init?.method ?? "GET"
-      if (path.endsWith("/api/v2/workspaces/w-fresh") && method === "GET") return response({ ...desk, id: "w-fresh" })
-      if (path.endsWith("/dialogue/orientation")) return response({ hypotheses: ["RLHF 通过偏好对齐减少漂移从而提升推理"], keywords: ["RLHF reasoning", "偏好对齐"] })
-      if (path.endsWith("/dialogue/literature-search")) return response({ query: "RLHF reasoning", candidates: [] })
+      if (path.endsWith("/api/v2/workspaces/w-1") && (init?.method ?? "GET") === "GET") return response(desk)
+      if (path.endsWith("/dialogue/orientation")) return response({ hypotheses: ["Cui 起草的假设 A"], keywords: ["偏好对齐"] })
+      if (path.endsWith("/dialogue/literature-search")) return response({ query: "偏好对齐", candidates: [] })
       return response({ detail: path }, 404)
     })
-    render(<DialogueDesk workspaceId="w-fresh" />)
+    render(<DialogueDesk workspaceId="w-1" />)
     await screen.findByText(/这是一个全新问题/)
-    fireEvent.click(screen.getByRole("button", { name: "让 Cui 给出假设与关键词" }))
-    await screen.findByText(/RLHF 通过偏好对齐减少漂移从而提升推理/)
-    fireEvent.click(screen.getByRole("button", { name: "RLHF reasoning" }))
+    fireEvent.click(screen.getByRole("button", { name: "让 Cui 起草假设与关键词" }))
+    const textarea = await screen.findByLabelText(/候选假设/)
+    expect(textarea).toHaveValue("Cui 起草的假设 A")
+    fireEvent.change(textarea, { target: { value: "我自己的假设:美国霸权更多来自制度而非军事。\n第二条由我自己加的假设。" } })
+    expect((textarea as HTMLTextAreaElement).value).toContain("我自己的假设:美国霸权更多来自制度而非军事")
+    fireEvent.click(screen.getByRole("button", { name: "偏好对齐" }))
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/dialogue/literature-search"))
       expect(call).toBeTruthy()
-      expect(JSON.parse(call![1].body as string).query).toBe("RLHF reasoning")
-    })
+      expect(JSON.parse(call![1].body as string).query).toBe("偏好对齐")
+    }, { timeout: 4000 })
+    await waitFor(() => expect(screen.getByText(/这次没有候选文献/)).toBeInTheDocument(), { timeout: 3000 })
   })
 })

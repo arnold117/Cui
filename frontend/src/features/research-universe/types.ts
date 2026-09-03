@@ -148,6 +148,8 @@ export interface DialogueCandidate {
   source?: string
   url?: string | null
   excerpt?: string
+  stance?: string
+  relation?: { kind: string; note: string }
 }
 export interface LiteratureSearchResponse { query: string; candidates: DialogueCandidate[] }
 export interface GapDraftFields { coverage_statement: string; search_query: string; counterexample_invitation: string }

@@ -3,8 +3,9 @@ import { command, researchUniverse } from "../api"
 import type { DialogueCandidate, GapDraftFields } from "../types"
 
 type SavedState = {
-  hypotheses: string[]
-  keywords: string[]
+  hypothesesText: string
+  keywordsText: string
+  selectedKeywords: string[]
   fresh: boolean
   candidates: DialogueCandidate[]
   selected: string[]  // locators of chosen literature
@@ -17,7 +18,7 @@ type SavedState = {
   searchQuery: string
 }
 
-const EMPTY: SavedState = { hypotheses: [], keywords: [], fresh: true, candidates: [], selected: [], claimText: "", confirmedGapIds: [], searchQuery: "" }
+const EMPTY: SavedState = { hypothesesText: "", keywordsText: "", selectedKeywords: [], fresh: true, candidates: [], selected: [], claimText: "", confirmedGapIds: [], searchQuery: "" }
 
 function storageKey(workspaceId: string) { return `cui-dialogue-${workspaceId}` }
 
@@ -36,8 +37,9 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   const [state, setState] = useState<SavedState>(() => loadState(workspaceId))
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
   const [searchedEmpty, setSearchedEmpty] = useState(false)
+  const parsedKeywords = state.keywordsText.split(/[;；]/).map((k) => k.trim()).filter(Boolean)
+  const uniqueKeywords = [...new Set(parsedKeywords)]
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -59,9 +61,9 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
 
   function patch(partial: Partial<SavedState>) { setState((prev) => ({ ...prev, ...partial })) }
 
-  async function runSearch(queryOverride?: string) {
+  async function runSearch(queryOverride?: string | null) {
     if (busy) return
-    const q = queryOverride ?? searchQuery
+    const q = queryOverride !== undefined ? queryOverride : (state.selectedKeywords.length > 0 ? state.selectedKeywords.join(" ") : undefined)
     setBusy(true); setError(undefined); setSearchedEmpty(false)
     try {
       const result = await researchUniverse.literatureSearch(workspaceId, { question, query: q || undefined })
@@ -70,13 +72,32 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     } catch (e) { setError(e instanceof Error ? e.message : "检索失败") } finally { setBusy(false) }
   }
 
+  function toggleKeyword(keyword: string) {
+    const has = state.selectedKeywords.includes(keyword)
+    patch({ selectedKeywords: has ? state.selectedKeywords.filter((k) => k !== keyword) : [...state.selectedKeywords, keyword] })
+  }
+
+  // selecting keywords (or editing the keyword text) auto-triggers one combined search
+  useEffect(() => {
+    const selection = state.selectedKeywords.join(" ")
+    if (!selection) return
+    const timer = window.setTimeout(() => { void runSearch(selection) }, 500)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedKeywords.join(" ")])
+
   async function runOrientation() {
     if (busy) return
     setBusy(true); setError(undefined)
     try {
       const result = await researchUniverse.orientation(workspaceId, question)
-      patch({ hypotheses: result.hypotheses, keywords: result.keywords })
+      patch({ hypothesesText: result.hypotheses.join("\n"), keywordsText: result.keywords.join("; "), selectedKeywords: [] })
     } catch (e) { setError(e instanceof Error ? e.message : "出发点准备失败") } finally { setBusy(false) }
+  }
+
+  function editKeywordsText(value: string) {
+    const kept = state.selectedKeywords.filter((k) => value.includes(k))
+    patch({ keywordsText: value, selectedKeywords: kept })
   }
 
   function toggle(locator: string) {
@@ -170,43 +191,54 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     URL.revokeObjectURL(url)
   }
 
-  const selectedLocators = state.selected
-
-  return <section className="ru-dialogue" aria-labelledby="dialogue-title">
+    return <section className="ru-dialogue" aria-labelledby="dialogue-title">
     <p className="ru-kicker">文献探讨 · 问题工作区</p>
     <h1 id="dialogue-title">{question || "正在展开问题…"}</h1>
     <p className="ru-provenance"><a href={`/workspaces/${workspaceId}`}>← 回到问题工作区</a></p>
     {error && <p className="ru-error" role="alert">{error}</p>}
     <p className="ru-challenge-note">旅程:检索选料 → 现状梳理 → 固化 claim 进审查轮 → 文献发难 → gap → related-work 草稿。中间的对话不入轨迹;只有裁决/确认/gap 会留下。</p>
 
-    <p className="ru-kicker">正向段 · 先把支持面建起来(会话过程,不入轨迹)</p>
+    <p className="ru-kicker">正向段 · 先把支持面建起来(会话过程,不入轨迹;假设与关键词你都可以改)</p>
     <div className="ru-dialogue-step">
-      <h2>① 出发点与假设</h2>
-      {state.fresh && state.hypotheses.length === 0 && state.candidates.length === 0 && <div>
-        <p className="ru-challenge-note">这是一个全新问题:先找文献建立支持面,再谈对抗——让 Cui 先给出可能的假设与检索关键词。</p>
-        <button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runOrientation()}>{busy ? "思考中…" : "让 Cui 给出假设与关键词"}</button>
+      <h2>① 出发点:候选假设(可改可删可加,仍是你的判断)</h2>
+      {state.fresh && !state.hypothesesText.trim() && state.candidates.length === 0 && <div>
+        <p className="ru-challenge-note">这是一个全新问题:先找文献建立支持面,再谈对抗——先让 Cui 起草候选假设与关键词,然后你改。</p>
+        <button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runOrientation()}>{busy ? "思考中…" : "让 Cui 起草假设与关键词"}</button>
       </div>}
-      {state.hypotheses.length > 0 && <div><p className="ru-provenance">候选假设(由你判断,不是定见):</p><ul className="ru-landscape-list">{state.hypotheses.map((h) => <li key={h} className="ru-landscape-item"><strong>{h}</strong></li>)}</ul>
-        <p className="ru-provenance">关键词(点击即按它检索):</p>
-        <div className="ru-keyword-chips">{state.keywords.map((k) => <button key={k} className="ru-quiet-button" disabled={busy} onClick={() => { setSearchQuery(k); void runSearch(k) }}>{k}</button>)}</div>
+      {state.hypothesesText.trim() && <div className="ru-material-form">
+        <label htmlFor="hypotheses-edit">候选假设(每行一个;由 Cui 起草,你可改写/增删)</label>
+        <textarea id="hypotheses-edit" className="ru-conclusion-text" rows={Math.min(8, state.hypothesesText.split("\n").length + 1)} value={state.hypothesesText} onChange={(e) => patch({ hypothesesText: e.target.value })} />
       </div>}
     </div>
     <div className="ru-dialogue-step">
-      <h2>② 让 Cui 从语料里找候选文献</h2>
-      <div><input aria-label="检索词(可选)" className="ru-revival-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="检索词;留空则由 Cui 按问题检索" /><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runSearch()}>{busy ? "工作中…" : "让 Cui 找文献"}</button></div>
-      {!state.candidates.length && searchedEmpty && <p className="ru-edge-empty">这次没有候选文献:语料库(active)与 arXiv/OpenAlex 实时检索都没给出可用结果(或 LLM 判定都不够相关)。试试:换更聚焦的关键词、点击上面某个候选假设里的说法再搜、或稍等片刻重试(外部源偶发限流)。</p>}
+      <h2>② 关键词与检索(选中即自动合并搜一次)</h2>
+      <div className="ru-material-form">
+        <label htmlFor="keywords-edit">关键词(用 ; 或 ; 分隔;直接改,回车后按新词条勾选)</label>
+        <input id="keywords-edit" className="ru-revival-input" value={state.keywordsText} onChange={(e) => editKeywordsText(e.target.value)} placeholder="例:US hegemony; 美国霸权; power transition" />
+        {uniqueKeywords.length > 0 && <div className="ru-keyword-chips">
+          {uniqueKeywords.map((k) => <button key={k} type="button" className={state.selectedKeywords.includes(k) ? "ru-ink-button ru-active" : "ru-quiet-button"} onClick={() => toggleKeyword(k)}>{state.selectedKeywords.includes(k) ? `✓ ${k}` : k}</button>)}
+        </div>}
+        <p className="ru-provenance">已勾选 {state.selectedKeywords.length} 个检索词{state.selectedKeywords.length > 0 ? "——已自动合并检索;候选会出现在下方。" : "——勾选任意词条即自动检索(也可点下方按钮手动搜一次)。"}</p>
+        <button className="ru-quiet-button" disabled={busy || (uniqueKeywords.length === 0 && state.selectedKeywords.length === 0)} onClick={() => void runSearch(state.selectedKeywords.length > 0 ? state.selectedKeywords.join(" ") : uniqueKeywords.join(" "))}>按当前关键词搜一次</button>
+      </div>
       {state.candidates.length > 0 && <ul className="ru-landscape-list">
         {state.candidates.map((c) => <li key={c.locator} className="ru-landscape-item">
-          <button className={selectedLocators.includes(c.locator) ? "ru-ink-button" : "ru-quiet-button"} onClick={() => toggle(c.locator)}>{selectedLocators.includes(c.locator) ? "已选" : "选取"}</button>
-          <strong>{c.title}</strong><span className="ru-provenance">{c.source && c.source !== "corpus" ? `${c.source} · ` : "语料 · "}{c.url ? <a href={c.url} target="_blank" rel="noreferrer">{c.locator}</a> : c.locator}</span><span>{c.reason}</span>
+          <button className={state.selected.includes(c.locator) ? "ru-ink-button" : "ru-quiet-button"} onClick={() => toggle(c.locator)}>{state.selected.includes(c.locator) ? "已选(待用)" : "待选"}</button>
+          <div>
+            <strong>{c.title}</strong>
+            <p className="ru-provenance">{c.source && c.source !== "corpus" ? `${c.source} · ` : "语料 · "}{c.url ? <a href={c.url} target="_blank" rel="noreferrer">{c.locator}</a> : c.locator}</p>
+            {c.stance && <p className="ru-reading-copy">观点:{c.stance}</p>}
+            {c.relation && <p className="ru-provenance">{({ supports: "支持", partial: "部分支持", opposes: "对立", background: "背景" } as Record<string, string>)[c.relation.kind] ?? c.relation.kind}:{c.relation.note}</p>}
+            {c.reason && <p className="ru-provenance">为何相关:{c.reason}</p>}
+          </div>
         </li>)}
       </ul>}
-      <p className="ru-provenance">已选 {state.selected.length} 篇(有多少选多少,通常 1–5 篇;至少选 1 篇才能往下走)</p>
+      {!state.candidates.length && searchedEmpty && <p className="ru-edge-empty">这次没有候选文献:语料库(active)与 arXiv/OpenAlex 实时检索都没给出可用结果(或 LLM 判定都不够相关)。试试:换更聚焦的关键词、改一改上面的候选假设、或稍等片刻重试(外部源偶发限流)。</p>}
+      {state.candidates.length > 0 && <p className="ru-provenance">已选 {state.selected.length} 篇(通常选 1–5 篇;至少 1 篇才能继续)</p>}
     </div>
-
     <div className="ru-dialogue-step">
-      <h2>③ 覆盖梳理(这几篇覆盖了什么 / 没覆盖什么)</h2>
-      <button className="ru-quiet-button" disabled={busy || state.selected.length === 0} onClick={() => void summarize()}>梳理现状</button>
+      <h2>③ 覆盖梳理:这几篇覆盖了什么 / 还没覆盖什么</h2>
+      <button className="ru-quiet-button" disabled={busy || chosen.length === 0} onClick={() => void summarize()}>梳理现状(对已选 {state.selected.length} 篇)</button>
       {state.summary && <pre className="ru-dialogue-pre">{state.summary}</pre>}
     </div>
 
