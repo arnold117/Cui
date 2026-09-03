@@ -61,6 +61,9 @@ class LiteratureChallengeCommand(Command):
     external_refs: list[ExternalRef] = Field(default_factory=list)
 
 
+SYSTEM_QUERY_TRANSLATE = """你是学术检索助手。把下面的中文问题/关键词改写成 1-2 个用于英文文献库(arXiv/OpenAlex)检索的学术关键词短语。只输出 JSON: {"query_en": "..."}。"""
+
+
 SYSTEM_ORIENTATION = """你是 Cui 的研究起点助手。面对一个全新的研究问题,先帮研究者做正向准备。只输出 JSON:
 {"hypotheses": ["3-5 条候选假设,每条是完整的可检验陈述,中文"], "keywords": ["8-12 条检索关键词或短语(中文/英文均可),用于语料检索"]}
 不要替用户下结论;假设是候选,不是定见。"""
@@ -201,7 +204,16 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             pool.append({"locator": hit.source_locator, "title": hit.title, "excerpt": hit.snippet, "url": None, "source": "corpus", "material_id": hit.material_id})
             seen.add(hit.source_locator)
         if body.external:
-            for ext in await external_search(query, per_source=5):
+            external_query = query
+            if re.search(r"[\u4e00-\u9fff]", query):
+                try:
+                    translated = llm.complete_json(SYSTEM_QUERY_TRANSLATE, f"问题/关键词:{body.question or query}")
+                    candidate_en = (translated.get("query_en") if isinstance(translated, dict) else None) or ""
+                    if candidate_en.strip() and len(candidate_en) <= 200:
+                        external_query = candidate_en.strip()
+                except Exception:
+                    pass
+            for ext in await external_search(external_query, per_source=5):
                 if ext["locator"] in seen:
                     continue
                 seen.add(ext["locator"])

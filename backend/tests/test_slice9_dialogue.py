@@ -242,3 +242,26 @@ def test_external_refs_flow_through_summary_and_challenge(monkeypatch):
     assert challenge.status_code == 201, challenge.text
     lit = [c for c in challenge.json()["fragment"]["challenges"] if c.get("provenance", {}).get("prompt_version") == PROMPT_VERSION_LITERATURE][-1]
     assert "doi:10.1000/example123" in lit["provenance"]["basis_refs"]
+
+
+def test_cjk_question_translates_query_for_external_sources(monkeypatch):
+    captured: dict = {}
+    async def _capture_external(query, per_source=5):
+        captured["query"] = query
+        return [{"locator": "doi:10.1000/hegemony-test", "title": "US Hegemony review", "excerpt": "hegemony global order abstract.", "url": "https://doi.org/10.1000/hegemony-test", "source": "openalex"}]
+    monkeypatch.setattr(slice9_module, "external_search", _capture_external)
+    store, universe, service, wid, mat, rid = _seed()
+    calls = {"n": 0}
+    def fake_complete_json(self, system, user, retries=2):
+        calls["n"] += 1
+        if "query_en" in system:
+            return {"query_en": "US hegemony international order"}
+        return {"query": "美国霸权", "results": [{"locator": "doi:10.1000/hegemony-test", "reason": "直接相关"}]}
+    fake = type("F", (), {"complete": lambda self, s2, u: "x", "complete_json": fake_complete_json})()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/literature-search", json={"question": "为什么美国最强大?", "query": "美国霸权"})
+    assert resp.status_code == 200
+    assert captured.get("query") == "US hegemony international order"
+    candidates = resp.json()["candidates"]
+    assert candidates and candidates[0]["locator"] == "doi:10.1000/hegemony-test"
