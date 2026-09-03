@@ -602,7 +602,7 @@ class Slice1Service:
         p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=claim["id"], claim_version_id=claim["version_id"], claim_text=claim["text"], attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=[*draft.basis_refs, *existing_ids], uncertainty=draft.uncertainty)
         return self._append(universe_id, command_id, "generate_additional_challenge", {"round_id": round_id}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
 
-    def generate_literature_challenge(self, universe_id: str, round_id: str, material_ids: list[str], command_id: str, expected_sequence: int) -> CommitResult:
+    def generate_literature_challenge(self, universe_id: str, round_id: str, material_ids: list[str], command_id: str, expected_sequence: int, externals: list[dict] | None = None) -> CommitResult:
         """Explicit user command (slice1 second cut): ask the LLM for a
         literature-grounded challenge on this round's claim.
 
@@ -632,6 +632,12 @@ class Slice1Service:
         missing = set(material_ids) - {m["material_id"] for m in materials}
         if missing:
             raise NotFound(sorted(missing)[0])
+        for ref in externals or []:
+            excerpt = (ref.get("excerpt") or "").strip()
+            locator = (ref.get("locator") or "").strip()
+            if not locator or not excerpt:
+                continue
+            materials.append({"material_id": None, "locator": locator, "excerpt": excerpt[:1500]})
         gen = getattr(self.generator, "generate_literature", None)
         if gen is None:
             raise BoundaryViolation("challenge generator has no literature support")

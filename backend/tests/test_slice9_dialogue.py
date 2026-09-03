@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from cui.research_universe.api import slice9 as slice9_module
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -136,7 +137,12 @@ def test_dialogue_unknown_material_404():
     resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/landscape-summary", json={"material_ids": ["nope"]})
     assert resp.status_code == 404
 
-def test_literature_search_endpoint_picks_valid_locators_only():
+async def _no_external(query, per_source=5):
+    return []
+
+
+def test_literature_search_endpoint_picks_valid_locators_only(monkeypatch):
+    monkeypatch.setattr(slice9_module, "external_search", _no_external)
     store, universe, service, wid, mat, rid = _seed()
     # seed corpus-style materials in the active corpus workspace for ranking
     from cui.tools.v4_importer import ACTIVE_WS_COMMAND, workspace_id_for
@@ -159,6 +165,7 @@ def test_literature_search_endpoint_picks_valid_locators_only():
     locators = [c["locator"] for c in body["candidates"]]
     assert locators == ["arxiv:2401.00009"]
     assert body["candidates"][0]["material_id"]
+    assert body["candidates"][0]["source"] == "corpus"
 
 
 def test_corpus_materials_allowed_in_any_workspace_dialogue_and_challenge():
@@ -197,3 +204,41 @@ def test_orientation_endpoint_returns_hypotheses_and_keywords():
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["hypotheses"]) == 2 and body["keywords"][0] == "RLHF"
+
+
+async def _canned_external(query, per_source=5):
+    return [{"locator": "arxiv:2504.09999", "title": "External RLHF survey", "excerpt": "external abstract text for RLHF reasoning evaluation.", "url": "https://arxiv.org/abs/2504.09999", "source": "arxiv"}]
+
+
+def test_literature_search_merges_external_candidates(monkeypatch):
+    monkeypatch.setattr(slice9_module, "external_search", _canned_external)
+    store, universe, service, wid, mat, rid = _seed()
+    fake = type("F", (), {
+        "complete": lambda self, s2, u: "x",
+        "complete_json": lambda self, s2, u, retries=2: {"query": "rlhf", "results": [{"locator": "arxiv:2504.09999", "reason": "外部综述直接相关"}]},
+    })()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/literature-search", json={"question": "RLHF 推理?", "query": "rlhf"})
+    assert resp.status_code == 200
+    candidate = resp.json()["candidates"][0]
+    assert candidate["locator"] == "arxiv:2504.09999"
+    assert candidate["source"] == "arxiv"
+    assert candidate["material_id"] is None
+    assert candidate["excerpt"] and candidate["url"]
+
+
+def test_external_refs_flow_through_summary_and_challenge(monkeypatch):
+    store, universe, service, wid, mat, rid = _seed()
+    fake = type("F", (), {"complete": lambda self, s2, u: "## 覆盖\n外部文献覆盖了 RLHF 对齐。", "complete_json": lambda self, s2, u, retries=2: {}})()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    client = TestClient(app)
+    ext = [{"locator": "doi:10.1000/example123", "excerpt": "external abstract here for RLHF alignment review.", "url": "https://doi.org/10.1000/example123"}]
+    summary = client.post(f"/api/v2/workspaces/{wid}/dialogue/landscape-summary", json={"external_refs": ext})
+    assert summary.status_code == 200 and "外部文献" in summary.json()["text"]
+    challenge = client.post(f"/api/v2/review-rounds/{rid}/literature-challenges", json={
+        "command_id": "lit-ext-http", "expected_sequence": 0, "material_ids": [mat], "external_refs": ext})
+    assert challenge.status_code == 201, challenge.text
+    lit = [c for c in challenge.json()["fragment"]["challenges"] if c.get("provenance", {}).get("prompt_version") == PROMPT_VERSION_LITERATURE][-1]
+    assert "doi:10.1000/example123" in lit["provenance"]["basis_refs"]

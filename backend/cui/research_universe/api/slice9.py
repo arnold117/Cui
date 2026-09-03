@@ -16,11 +16,12 @@ import json
 import re
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from cui.legacy_archive.templates import RELATED_WORK_PROMPT
 from cui.research_universe.api.routes import LibraryContext, LocalPrincipal
 from cui.research_universe.api.slice7 import ranked_corpus_hits
+from cui.research_universe.dialogue_sources import external_search
 from cui.research_universe.api.slice1 import Command, CommandResponse, _active, _universe_for_round, _universe_for_workspace
 from cui.research_universe.application import (
     BoundaryViolation,
@@ -57,6 +58,7 @@ SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题,从候选文
 
 class LiteratureChallengeCommand(Command):
     material_ids: list[str] = Field(min_length=1)
+    external_refs: list[ExternalRef] = Field(default_factory=list)
 
 
 SYSTEM_ORIENTATION = """你是 Cui 的研究起点助手。面对一个全新的研究问题,先帮研究者做正向准备。只输出 JSON:
@@ -68,16 +70,29 @@ class OrientationCommand(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class ExternalRef(BaseModel):
+    locator: str = Field(min_length=1, max_length=200)
+    excerpt: str = Field(min_length=1)
+    url: str | None = None
+
+
 class LiteratureSearchCommand(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     query: str | None = None
+    external: bool = True
 
 class MaterialSelectionCommand(BaseModel):
-    material_ids: list[str] = Field(min_length=1)
+    material_ids: list[str] = Field(default_factory=list)
+    external_refs: list[ExternalRef] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _nonempty(self) -> "MaterialSelectionCommand":
+        if not self.material_ids and not self.external_refs:
+            raise ValueError("at least one material_id or external_ref is required")
+        return self
 
 
-class RelatedWorkDraftCommand(BaseModel):
-    material_ids: list[str] = Field(min_length=1)
+class RelatedWorkDraftCommand(MaterialSelectionCommand):
     gap_ids: list[str] = Field(default_factory=list)
 
 
@@ -99,6 +114,23 @@ def _selected_materials(store, universe_id: str, workspace_id: str, material_ids
     if missing:
         raise HTTPException(404, f"material not in workspace nor corpus: {sorted(missing)[0]}")
     return [by_id[m] for m in material_ids]
+
+
+def _item_lines(items: list[dict]) -> str:
+    return "\n".join(f"- [{i['locator']}] {i.get('title') or ''}\n  {(i.get('excerpt') or '')[:1500]}" for i in items)
+
+
+def _chosen_items(store, universe_id: str, workspace_id: str, material_ids: list[str], external_refs: list[dict]) -> list[dict]:
+    items = _selected_materials(store, universe_id, workspace_id, material_ids)
+    for ref in external_refs:
+        excerpt = (ref.get("excerpt") or "").strip()
+        locator = (ref.get("locator") or "").strip()
+        if not locator or not excerpt:
+            raise HTTPException(422, "external_ref needs locator and excerpt")
+        items.append({"locator": locator, "title": "", "excerpt": excerpt[:1500], "url": ref.get("url"), "external": True})
+    if not items:
+        raise HTTPException(422, "no material or external literature selected")
+    return items
 
 
 def _parse_draft_json(text: str) -> dict:
@@ -136,7 +168,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
     def literature_challenge(round_id: str, body: LiteratureChallengeCommand):
         universe_id = _universe_for_round(store, context, round_id)
         try:
-            result = service.generate_literature_challenge(universe_id, round_id, body.material_ids, body.command_id, body.expected_sequence)
+            result = service.generate_literature_challenge(universe_id, round_id, body.material_ids, body.command_id, body.expected_sequence, externals=[{"locator": r.locator, "excerpt": r.excerpt, "url": r.url} for r in body.external_refs])
             return CommandResponse(commit_position=result.commit_position, event_ids=result.event_ids, result=result.result_payload, fragment=review_round_projection(store, universe_id, round_id))
         except Exception as exc:
             fail(exc)
@@ -157,28 +189,40 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         return {"hypotheses": hypotheses, "keywords": keywords}
 
     @router.post("/workspaces/{workspace_id}/dialogue/literature-search")
-    def literature_search(workspace_id: str, body: LiteratureSearchCommand):
+    async def literature_search(workspace_id: str, body: LiteratureSearchCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
         llm = _llm()
         from cui.research_universe.api.slice1 import _active
-        ranked = ranked_corpus_hits(store, _active(store, context), "active", (body.query or body.question)[:100], 12)
-        if not ranked:
-            return {"query": body.query or body.question, "candidates": []}
-        candidate_lines = "\n".join(f"- [{h.source_locator}] {h.title}" for h in ranked)
+        query = (body.query or body.question)[:100]
+        ranked = ranked_corpus_hits(store, _active(store, context), "active", query, 8)
+        pool: list[dict] = []
+        seen: set[str] = set()
+        for hit in ranked:
+            pool.append({"locator": hit.source_locator, "title": hit.title, "excerpt": hit.snippet, "url": None, "source": "corpus", "material_id": hit.material_id})
+            seen.add(hit.source_locator)
+        if body.external:
+            for ext in await external_search(query, per_source=5):
+                if ext["locator"] in seen:
+                    continue
+                seen.add(ext["locator"])
+                pool.append({**ext, "source": ext["source"], "material_id": None})
+        if not pool:
+            return {"query": query, "candidates": []}
+        candidate_lines = "\n".join(f"- [{c['locator']}] ({c['source']}) {c['title']}" for c in pool)
         try:
             text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"问题:{body.question}\n候选文献:\n{candidate_lines}")
         except Exception as exc:
             raise HTTPException(502, f"literature search reasoning failed: {exc}") from exc
-        allowed = {h.source_locator for h in ranked}
+        allowed = {c["locator"] for c in pool}
         picks = []
         for item in (text.get("results") or []) if isinstance(text, dict) else []:
             locator = item.get("locator") if isinstance(item, dict) else None
             if locator in allowed:
-                hit = next(h for h in ranked if h.source_locator == locator)
-                picks.append({"material_id": hit.material_id, "locator": locator, "title": hit.title, "reason": (item.get("reason") or "")[:200]})
+                hit = next(c for c in pool if c["locator"] == locator)
+                picks.append({"material_id": hit.get("material_id"), "locator": locator, "title": hit["title"], "source": hit.get("source") or "external", "url": hit.get("url"), "excerpt": (hit.get("excerpt") or "")[:1500], "reason": (item.get("reason") or "")[:200]})
             if len(picks) >= 6:
                 break
-        return {"query": (text.get("query") if isinstance(text, dict) else None) or body.query or body.question, "candidates": picks}
+        return {"query": (text.get("query") if isinstance(text, dict) else None) or query, "candidates": picks}
 
     def _llm():
         if client is None:
@@ -188,10 +232,10 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
     @router.post("/workspaces/{workspace_id}/dialogue/landscape-summary")
     def landscape_summary(workspace_id: str, body: MaterialSelectionCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
-        materials = _selected_materials(store, universe_id, workspace_id, body.material_ids)
+        items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
         llm = _llm()
         try:
-            user = "\n".join(f"- [{m['locator']}] {m['excerpt'][:1500]}" for m in materials)
+            user = _item_lines(items)
             text = llm.complete(SYSTEM_LANDSCAPE_SUMMARY, f"问题方向:{workspace_id}\n所选文献:\n{user}")
             return {"text": text}
         except HTTPException:
@@ -202,10 +246,10 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
     @router.post("/workspaces/{workspace_id}/dialogue/gap-draft")
     def gap_draft(workspace_id: str, body: MaterialSelectionCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
-        materials = _selected_materials(store, universe_id, workspace_id, body.material_ids)
+        items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
         llm = _llm()
         try:
-            user = "\n".join(f"- [{m['locator']}] {m['excerpt'][:1500]}" for m in materials)
+            user = _item_lines(items)
             text = llm.complete(SYSTEM_GAP_DRAFT, f"所选文献:\n{user}")
             return _parse_draft_json(text)
         except HTTPException:
@@ -216,7 +260,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
     @router.post("/workspaces/{workspace_id}/dialogue/related-work-draft")
     def related_work_draft(workspace_id: str, body: RelatedWorkDraftCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
-        materials = _selected_materials(store, universe_id, workspace_id, body.material_ids)
+        items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
         llm = _llm()
         gaps_text = ""
         try:
@@ -226,7 +270,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                     gaps_text += f"\n- {state['coverage_statement']}"
         except Exception:
             pass
-        prompt = _render_related_work_prompt(materials, gaps_text)
+        prompt = _render_related_work_prompt(items, gaps_text)
         try:
             text = llm.complete(SYSTEM_RELATED_WORK, prompt)
             return {"text": text}

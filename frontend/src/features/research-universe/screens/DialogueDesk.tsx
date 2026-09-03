@@ -85,12 +85,14 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   }
 
   const chosen: DialogueCandidate[] = state.candidates.filter((c) => state.selected.includes(c.locator))
+  const corpusIds = chosen.filter((c) => c.material_id).map((c) => c.material_id as string)
+  const externalRefs = chosen.filter((c) => !c.material_id).map((c) => ({ locator: c.locator, excerpt: c.excerpt ?? c.title, url: c.url ?? null }))
 
   async function summarize() {
     if (busy || state.selected.length === 0) return
     setBusy(true); setError(undefined)
     try {
-      const result = await researchUniverse.landscapeSummary(workspaceId, chosen.map((c) => c.material_id))
+      const result = await researchUniverse.landscapeSummary(workspaceId, corpusIds, externalRefs)
       patch({ summary: result.text })
     } catch (e) { setError(e instanceof Error ? e.message : "梳理失败") } finally { setBusy(false) }
   }
@@ -109,7 +111,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     if (busy || !state.roundId || state.selected.length === 0) return
     setBusy(true); setError(undefined)
     try {
-      await researchUniverse.literatureChallenge(state.roundId, command({ material_ids: chosen.map((c) => c.material_id) }, 0))
+      await researchUniverse.literatureChallenge(state.roundId, command({ material_ids: corpusIds, external_refs: externalRefs }, 0))
     } catch (e) { setError(e instanceof Error ? e.message : "文献发难失败") } finally { setBusy(false) }
   }
 
@@ -117,7 +119,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     if (busy || state.selected.length === 0) return
     setBusy(true); setError(undefined)
     try {
-      const draft = await researchUniverse.gapDraft(workspaceId, chosen.map((c) => c.material_id))
+      const draft = await researchUniverse.gapDraft(workspaceId, corpusIds, externalRefs)
       patch({ draft })
     } catch (e) { setError(e instanceof Error ? e.message : "起草失败") } finally { setBusy(false) }
   }
@@ -147,7 +149,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     if (busy || state.selected.length === 0) return
     setBusy(true); setError(undefined)
     try {
-      const result = await researchUniverse.relatedWorkDraft(workspaceId, chosen.map((c) => c.material_id), state.confirmedGapIds)
+      const result = await researchUniverse.relatedWorkDraft(workspaceId, corpusIds, state.confirmedGapIds, externalRefs)
       patch({ relatedWork: result.text })
     } catch (e) { setError(e instanceof Error ? e.message : "草稿失败") } finally { setBusy(false) }
   }
@@ -196,7 +198,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       {state.candidates.length > 0 && <ul className="ru-landscape-list">
         {state.candidates.map((c) => <li key={c.locator} className="ru-landscape-item">
           <button className={selectedLocators.includes(c.locator) ? "ru-ink-button" : "ru-quiet-button"} onClick={() => toggle(c.locator)}>{selectedLocators.includes(c.locator) ? "已选" : "选取"}</button>
-          <strong>{c.title}</strong><span className="ru-provenance">{c.locator}</span><span>{c.reason}</span>
+          <strong>{c.title}</strong><span className="ru-provenance">{c.source && c.source !== "corpus" ? `${c.source} · ` : "语料 · "}{c.url ? <a href={c.url} target="_blank" rel="noreferrer">{c.locator}</a> : c.locator}</span><span>{c.reason}</span>
         </li>)}
       </ul>}
       <p className="ru-provenance">已选 {state.selected.length} 篇(建议 3–5 篇)</p>

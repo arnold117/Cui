@@ -138,7 +138,16 @@ export interface GapProposeEnvelope extends CommandEnvelope { coverage_statement
 export interface GapDecisionEnvelope extends CommandEnvelope { user_reason?: string | null }
 
 // slice1 second cut — literature dialogue surface
-export interface LiteratureChallengeEnvelope extends CommandEnvelope { material_ids: string[] }
-export interface DialogueCandidate { material_id: string; locator: string; title: string; reason: string }
+export interface LiteratureChallengeEnvelope extends CommandEnvelope { material_ids: string[]; external_refs?: DialogueExternalRef[] }
+export interface DialogueExternalRef { locator: string; excerpt: string; url?: string | null }
+export interface DialogueCandidate {
+  material_id?: string | null
+  locator: string
+  title: string
+  reason: string
+  source?: string
+  url?: string | null
+  excerpt?: string
+}
 export interface LiteratureSearchResponse { query: string; candidates: DialogueCandidate[] }
 export interface GapDraftFields { coverage_statement: string; search_query: string; counterexample_invitation: string }

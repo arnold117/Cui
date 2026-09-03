@@ -47,7 +47,7 @@
 | 步骤 | 前端 | 后端 | 状态 |
 |---|---|---|---|
 | 出发点判断/假设+关键词 | DialogueDesk 新增闸门 | 新瞬态端点 orientation | 本文发布后实现 |
-| 正向检索 top-k+理由 | DialogueDesk ① | literature-search / corpus-search | ✅ |
+| 正向检索 top-k+理由(语料库 + **arXiv/OpenAlex 实时**) | DialogueDesk ①(候选带来源标签) | literature-search / corpus-search / external_search | ✅ |
 | 勾选 | ① chips | —(会话) | ✅ |
 | 覆盖梳理 | ② | landscape-summary | ✅ |
 | 探索稿留档 | 工作区 note | save_note | ✅(既有) |
