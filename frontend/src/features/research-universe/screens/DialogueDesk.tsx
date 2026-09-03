@@ -186,7 +186,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       </div>}
       {state.hypotheses.length > 0 && <div><p className="ru-provenance">候选假设(由你判断,不是定见):</p><ul className="ru-landscape-list">{state.hypotheses.map((h) => <li key={h} className="ru-landscape-item"><strong>{h}</strong></li>)}</ul>
         <p className="ru-provenance">关键词(点击即按它检索):</p>
-        {state.keywords.map((k) => <button key={k} className="ru-quiet-button" disabled={busy} onClick={() => { setSearchQuery(k); void runSearch(k) }}>{k}</button>)}
+        <div className="ru-keyword-chips">{state.keywords.map((k) => <button key={k} className="ru-quiet-button" disabled={busy} onClick={() => { setSearchQuery(k); void runSearch(k) }}>{k}</button>)}</div>
       </div>}
     </div>
     <div className="ru-dialogue-step">
