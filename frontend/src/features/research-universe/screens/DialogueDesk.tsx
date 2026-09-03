@@ -194,7 +194,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     <div className="ru-dialogue-step">
       <h2>② 让 Cui 从语料里找候选文献</h2>
       <div><input aria-label="检索词(可选)" className="ru-revival-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="检索词;留空则由 Cui 按问题检索" /><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void runSearch()}>{busy ? "工作中…" : "让 Cui 找文献"}</button></div>
-      {!state.candidates.length && searchedEmpty && <p className="ru-edge-empty">语料库里没有找到相关文献——当前只搜 active 语料(LLM 时代 arXiv);试试更聚焦的关键词,或先采纳上面的候选假设。外部实时检索(arXiv/OpenAlex)在后续计划里。</p>}
+      {!state.candidates.length && searchedEmpty && <p className="ru-edge-empty">这次没有候选文献:语料库(active)与 arXiv/OpenAlex 实时检索都没给出可用结果(或 LLM 判定都不够相关)。试试:换更聚焦的关键词、点击上面某个候选假设里的说法再搜、或稍等片刻重试(外部源偶发限流)。</p>}
       {state.candidates.length > 0 && <ul className="ru-landscape-list">
         {state.candidates.map((c) => <li key={c.locator} className="ru-landscape-item">
           <button className={selectedLocators.includes(c.locator) ? "ru-ink-button" : "ru-quiet-button"} onClick={() => toggle(c.locator)}>{selectedLocators.includes(c.locator) ? "已选" : "选取"}</button>
