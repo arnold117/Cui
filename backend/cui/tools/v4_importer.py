@@ -40,12 +40,12 @@ from cui.research_universe.store.event_store import NativeEventStore
 DEFAULT_LITSCRIBE = Path("/Users/arnold/Documents/Dev/LitScribe")
 DEFAULT_DATA_ROOT = Path.home() / ".cui"
 
-ACTIVE_WS_COMMAND = "v4-corpus-active"
-LEGACY_WS_COMMAND = "v4-corpus-legacy"
-WS_QUESTIONS = {
-    ACTIVE_WS_COMMAND: "语料库·active — v4 迁移 LLM 时代 arXiv 群(2026-09-02 importer)",
-    LEGACY_WS_COMMAND: "语料库·legacy — v4 迁移生物工艺/DOI/老 arXiv 群(2026-09-02 importer)",
-}
+from cui.research_universe.corpus import (  # noqa: E402  canonical identity
+    ACTIVE_WS_COMMAND,
+    LEGACY_WS_COMMAND,
+    WS_QUESTIONS,
+    workspace_id_for,
+)
 
 _ARXIV = re.compile(r"^(arxiv:)?(\d{4}\.\d{4,5}|0\d{6}|[1-9]\d{5})(v\d+)?$", re.I)
 _DOI = re.compile(r"^(?:doi:\s*)?(10\.[^\s]+)$", re.I)
@@ -166,10 +166,6 @@ def build_plan(lit_dir: Path) -> tuple[list[Entry], list[str]]:
     if skipped_empty:
         notes.append(f"skipped empty-text entries: {len(skipped_empty)} ({', '.join(skipped_empty[:8])}...)")
     return entries, notes
-
-
-def workspace_id_for(command_id: str) -> str:
-    return str(uuid5(NAMESPACE_URL, f"slice1:workspace:{command_id}"))
 
 
 def command_ids_for(entries: list[Entry]) -> dict[str, str]:

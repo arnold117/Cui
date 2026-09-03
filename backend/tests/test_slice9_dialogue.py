@@ -159,3 +159,27 @@ def test_literature_search_endpoint_picks_valid_locators_only():
     locators = [c["locator"] for c in body["candidates"]]
     assert locators == ["arxiv:2401.00009"]
     assert body["candidates"][0]["material_id"]
+
+
+def test_corpus_materials_allowed_in_any_workspace_dialogue_and_challenge():
+    from cui.research_universe.corpus import ACTIVE_WS_COMMAND, workspace_id_for
+    store = InMemoryNativeEventStore()
+    universe = store.create_active_universe("lib")
+    service = Slice1Service(store, "local", _LitGen())
+    wid = service.create_workspace(universe, "my-q", 0, "我的问题:RLHF?").result_payload["workspace_id"]
+    corpus = service.create_workspace(universe, ACTIVE_WS_COMMAND, 0, "corpus q").result_payload["workspace_id"]
+    mat = service.add_material(universe, corpus, "# corpus paper\n\nRLHF aligns preferences.", "arxiv:2401.00077", "parsed", "evidence", "corp-m", 0).result_payload["material_id"]
+    # landscape-summary in the NON-corpus workspace may read the corpus material
+    fake = type("F", (), {"complete": lambda self, s2, u: "## 覆盖\nRLHF 对齐评测", "complete_json": lambda self, s2, u, retries=2: {}})()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    client = TestClient(app)
+    resp = client.post(f"/api/v2/workspaces/{wid}/dialogue/landscape-summary", json={"material_ids": [mat]})
+    assert resp.status_code == 200, resp.text
+    # literature challenge from a round in the non-corpus workspace may cite the corpus material
+    cid = service.create_claim(universe, wid, "c-x", 0, "RLHF 提升推理.").result_payload["claim_id"]
+    rid = service.start_review_round(universe, cid, "r-x", 0).result_payload["review_round_id"]
+    result = service.generate_literature_challenge(universe, rid, [mat], "lit-x", 0)
+    assert result.replayed is False
+    event = [e for e in store.read_events(universe) if e.event_type == "challenge_created"][-1].validated_payload()
+    assert "arxiv:2401.00077" in event.basis_refs

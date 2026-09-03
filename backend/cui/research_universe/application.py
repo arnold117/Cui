@@ -622,8 +622,10 @@ class Slice1Service:
             payload = event.validated_payload()
             if payload.material_id not in material_ids:
                 continue
-            if payload.workspace_id != round_payload.workspace_id:
-                raise BoundaryViolation("material does not belong to the round's workspace")
+            from cui.research_universe.corpus import corpus_workspace_ids
+            allowed_workspaces = {round_payload.workspace_id} | corpus_workspace_ids()
+            if payload.workspace_id not in allowed_workspaces:
+                raise BoundaryViolation("material does not belong to the round's workspace nor the corpus")
             if payload.purpose != "evidence" or payload.parse_status != "parsed":
                 raise BoundaryViolation("literature challenge materials must be parsed evidence materials")
             materials.append({"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "excerpt": payload.excerpt})

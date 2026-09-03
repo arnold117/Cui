@@ -73,17 +73,22 @@ class RelatedWorkDraftCommand(BaseModel):
 
 
 def _selected_materials(store, universe_id: str, workspace_id: str, material_ids: list[str]) -> list[dict]:
+    """Materials for a dialogue turn: anything in the dialogue workspace plus
+    the shared corpus workspaces (the corpus is library-wide; transient reads
+    never mutate it)."""
+    from cui.research_universe.corpus import corpus_workspace_ids
+    allowed = {workspace_id} | corpus_workspace_ids()
     by_id: dict[str, dict] = {}
     for event in store.read_events(universe_id):
         if event.event_type != "material_added":
             continue
         payload = event.validated_payload()
-        if payload.workspace_id != workspace_id:
+        if payload.workspace_id not in allowed:
             continue
         by_id[payload.material_id] = {"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "title": payload.excerpt.splitlines()[0][:80] if payload.excerpt else "", "excerpt": payload.excerpt}
     missing = set(material_ids) - set(by_id)
     if missing:
-        raise HTTPException(404, f"material not in workspace: {sorted(missing)[0]}")
+        raise HTTPException(404, f"material not in workspace nor corpus: {sorted(missing)[0]}")
     return [by_id[m] for m in material_ids]
 
 
