@@ -136,6 +136,31 @@ def _chosen_items(store, universe_id: str, workspace_id: str, material_ids: list
     return items
 
 
+def _canonical_locator(raw: str) -> str:
+    """Tolerant normalisation for LLM-returned locators (URLs / prefixes / case)."""
+    value = (raw or "").strip().lower()
+    import re as _re
+    m = _re.match(r"^(?:https?://)?(?:dx\.)?doi\.org/(.+)$", value)
+    if m:
+        value = m.group(1)
+    if _re.match(r"^10\.", value):
+        return "doi:" + value
+    m = _re.search(r"arxiv\.org/abs/([^/?#]+)", value)
+    if m:
+        value = _re.sub(r"v\d+$", "", m.group(1))
+        return "arxiv:" + value
+    if value.startswith("arxiv:"):
+        return "arxiv:" + _re.sub(r"v\d+$", "", value[len("arxiv:"):])
+    m = _re.search(r"openalex\.org/works/(w\d+)", value)
+    if m:
+        return "openalex:" + m.group(1)
+    if value.startswith("doi:"):
+        return value
+    if value.startswith("openalex:"):
+        return value
+    return value
+
+
 def _parse_draft_json(text: str) -> dict:
     match = re.search(r"\{.*\}", text, re.S)
     if not match:
@@ -221,17 +246,18 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         if not pool:
             return {"query": query, "candidates": []}
         candidate_lines = "\n".join(f"- [{c['locator']}] ({c['source']}) {c['title']}" for c in pool)
+        context = f"问题:{body.question}" + (f"\n(外部检索词:{external_query})" if body.external and external_query != query else "")
         try:
-            text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"问题:{body.question}\n候选文献:\n{candidate_lines}")
+            text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"{context}\n候选文献:\n{candidate_lines}")
         except Exception as exc:
             raise HTTPException(502, f"literature search reasoning failed: {exc}") from exc
-        allowed = {c["locator"] for c in pool}
+        allowed = {c["locator"]: c for c in pool}
         picks = []
         for item in (text.get("results") or []) if isinstance(text, dict) else []:
-            locator = item.get("locator") if isinstance(item, dict) else None
-            if locator in allowed:
-                hit = next(c for c in pool if c["locator"] == locator)
-                picks.append({"material_id": hit.get("material_id"), "locator": locator, "title": hit["title"], "source": hit.get("source") or "external", "url": hit.get("url"), "excerpt": (hit.get("excerpt") or "")[:1500], "reason": (item.get("reason") or "")[:200]})
+            raw = item.get("locator") if isinstance(item, dict) else None
+            hit = allowed.get(_canonical_locator(raw)) if raw else None
+            if hit is not None:
+                picks.append({"material_id": hit.get("material_id"), "locator": hit["locator"], "title": hit["title"], "source": hit.get("source") or "external", "url": hit.get("url"), "excerpt": (hit.get("excerpt") or "")[:1500], "reason": (item.get("reason") or "")[:200]})
             if len(picks) >= 6:
                 break
         return {"query": (text.get("query") if isinstance(text, dict) else None) or query, "candidates": picks}
