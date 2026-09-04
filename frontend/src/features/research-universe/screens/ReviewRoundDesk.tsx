@@ -39,7 +39,7 @@ export function ReviewRoundDesk({ roundId }: { roundId: string }) {
     {judging && !closed && <VerdictForge round={round} onChanged={() => void load()} onClose={() => setJudging(false)} />}
     {closed && <ReReview round={round} onError={(message) => setError(message)} />}
     {round.verdict?.verdict_type === "boundary" && <BoundaryLineage round={round} onError={(message) => setError(message)} />}
-    <nav className="ru-review-exits" aria-label="离开审查轮次"><a className="ru-ink-button" href={`/workspaces/${round.workspace_id}`}>回工作区继续探索</a><a className="ru-quiet-button" href="/">回研究宇宙查看上下文</a></nav></section>
+    <nav className="ru-review-exits" aria-label="离开审查轮次"><a className="ru-ink-button" href={`/workspaces/${round.workspace_id}`}>回工作区继续探索</a><a className="ru-quiet-button" href="/">回研究宇宙查看上下文</a><a className="ru-quiet-button" href={`/workspaces/${round.workspace_id}/dialogue`}>回文献探讨继续收尾</a></nav></section>
 }
 
 function ChallengePanel({ round, challenge, onChanged }: { round: ReviewRound; challenge: Challenge; onChanged: () => void }) {

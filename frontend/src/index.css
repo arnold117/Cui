@@ -185,3 +185,97 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-direction-card strong { font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1rem; font-weight: 600; line-height: 1.45; }
 .ru-home-crystallizations { margin-top: .6rem; border-top: 1px solid var(--line); padding-top: .5rem; }
 .ru-home-crystal { margin: .25rem 0; color: var(--muted); font-size: .8rem; font-family: "Charis SIL", "Source Han Serif", serif; }
+
+/* ============ 文献探讨 · 分阶段会话(重做后) ============ */
+.ru-dialogue-new { width: min(100%, 1080px); padding: clamp(1.5rem, 4vw, 3.5rem) 0 5rem; }
+.ru-dialogue-head { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: flex-end; justify-content: space-between; padding-bottom: 1.1rem; border-bottom: 1px solid var(--line); }
+.ru-dialogue-head h1 { margin: .4rem 0 0; max-width: 30em; font-size: clamp(1.35rem, 2.6vw, 1.8rem); font-weight: 550; line-height: 1.4; }
+.ru-dialogue-head-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .45rem; }
+.ru-save-note { color: var(--muted); font-size: .74rem; }
+.ru-exit-button { border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: .86rem; padding: .42rem .95rem; cursor: pointer; }
+.ru-exit-button:hover { border-color: var(--edge); color: var(--edge); }
+.ru-resume-note { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; justify-content: space-between; margin: .9rem 0 0; padding: .55rem .9rem; border: 1px dashed var(--line); border-radius: 10px; background: color-mix(in srgb, var(--stone) 45%, var(--paper)); color: var(--muted); font-size: .87rem; line-height: 1.6; }
+.ru-ok-note { margin: .7rem 0; padding: .55rem .85rem; border-left: 3px solid var(--teal); background: color-mix(in srgb, var(--teal) 9%, transparent); color: #1E6B50; font-size: .9rem; line-height: 1.6; }
+
+/* 阶段条 */
+.ru-stage-rail { display: flex; flex-wrap: wrap; gap: .45rem .4rem; margin: 1.6rem 0 .5rem; padding: 0; list-style: none; align-items: center; }
+.ru-stage-li button { display: inline-flex; gap: .45rem; align-items: center; border: 0; background: transparent; padding: .34rem .6rem; border-radius: 999px; font-size: .88rem; color: var(--muted); cursor: pointer; }
+.ru-stage-li button:hover:not(:disabled) { background: color-mix(in srgb, var(--stone) 60%, transparent); color: var(--ink); }
+.ru-stage-li button:disabled { cursor: not-allowed; opacity: .45; }
+.ru-stage-dot { display: inline-grid; place-items: center; width: 1.45em; height: 1.45em; border-radius: 50%; font-size: .78rem; font-weight: 700; background: color-mix(in srgb, var(--line) 70%, var(--paper)); color: var(--muted); }
+.ru-stage-li-done button { color: var(--edge); }
+.ru-stage-li-done .ru-stage-dot { background: var(--teal); color: var(--paper); }
+.ru-stage-li-current button { background: var(--edge); color: var(--paper); font-weight: 600; }
+.ru-stage-li-current .ru-stage-dot { background: color-mix(in srgb, var(--paper) 16%, var(--edge)); color: var(--paper); }
+.ru-stage-hint { margin: 0 0 .4rem; color: var(--muted); font-size: .84rem; }
+
+/* 步骤卡 */
+.ru-stage-card { margin: .9rem 0; padding: 1.3rem clamp(1.1rem, 3vw, 2rem) 1.6rem; background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--edge); border-radius: 12px; }
+.ru-stage-card-revisit { border-top-color: var(--teal); border-style: dashed; }
+.ru-stage-card-title { display: flex; flex-wrap: wrap; gap: .6rem 1.2rem; align-items: baseline; justify-content: space-between; padding-bottom: .8rem; border-bottom: 1px solid var(--line); }
+.ru-stage-card-title h2 { margin: 0; font-size: 1.18rem; font-weight: 600; letter-spacing: .01em; }
+.ru-stage-body { padding-top: .9rem; }
+.ru-copy { max-width: 64em; margin: .25rem 0 .9rem; color: color-mix(in srgb, var(--ink) 82%, var(--muted)); font-size: .94rem; line-height: 1.8; }
+.ru-quiet-hint, .ru-muted-note { color: var(--muted); font-size: .82rem; line-height: 1.65; margin: .45rem 0; }
+.ru-stage-actions { display: flex; flex-wrap: wrap; gap: .8rem 1.2rem; align-items: center; margin-top: 1.35rem; }
+.ru-stage-actions .ru-ink-button { margin-left: auto; }
+.ru-secondary-row { display: flex; flex-wrap: wrap; gap: .7rem 1.1rem; align-items: center; margin-top: .8rem; }
+.ru-link-button { border: 0; background: none; padding: .05rem 0; color: var(--edge); font-size: .9rem; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--edge) 45%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.ru-link-button:hover { color: var(--teal); }
+.ru-link-close-revisit { display: block; margin-top: 1rem; font-size: .84rem; }
+.ru-quiet-button:disabled { color: var(--muted); cursor: not-allowed; }
+
+/* 已完成步骤折叠行 */
+.ru-done-step { margin: .45rem 0; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--paper) 55%, var(--stone)); }
+.ru-done-step-toggle { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: baseline; width: 100%; padding: .55rem .95rem; border: 0; background: none; text-align: left; font: inherit; cursor: pointer; }
+.ru-done-step-toggle:hover { border-color: var(--edge); }
+.ru-done-step-title { display: inline-flex; gap: .5rem; align-items: center; font-weight: 650; font-size: .9rem; color: var(--edge); }
+.ru-done-step-title .ru-stage-dot { width: 1.3em; height: 1.3em; background: color-mix(in srgb, var(--teal) 22%, var(--paper)); color: var(--edge); }
+.ru-done-step-line { flex: 1 1 18rem; color: var(--muted); font-size: .85rem; }
+.ru-done-step-action { color: var(--muted); font-size: .8rem; text-decoration: underline; text-underline-offset: 3px; }
+.ru-done-step-toggle:hover .ru-done-step-action { color: var(--edge); }
+
+/* 词条 chips / 类型 chips */
+.ru-chip { border: 1px solid var(--line); border-radius: 999px; background: transparent; padding: .3rem .85rem; color: var(--muted); font-size: .86rem; cursor: pointer; }
+.ru-chip:hover { border-color: var(--edge); color: var(--edge); }
+.ru-chip-on { border-color: var(--teal); background: var(--teal); color: var(--paper); }
+.ru-chip-on:hover { color: var(--paper); }
+.ru-keyword-chips { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; margin-top: .6rem; }
+.ru-kind-row { display: flex; flex-wrap: wrap; gap: .55rem; margin: .5rem 0 .3rem; }
+
+/* 候选论文卡 */
+.ru-paper-list { display: grid; gap: .65rem; margin: 1rem 0 .4rem; padding: 0; list-style: none; }
+.ru-paper-card { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; padding: .95rem 1.05rem; background: color-mix(in srgb, var(--stone) 50%, var(--paper)); border: 1px solid var(--line); border-left: 3px solid transparent; border-radius: 10px; }
+.ru-paper-card:hover { border-color: color-mix(in srgb, var(--teal) 45%, var(--line)); }
+.ru-paper-card.ru-paper-picked { border-left-color: var(--teal); }
+.ru-paper-main { min-width: 0; flex: 1 1 auto; }
+.ru-paper-title { display: block; font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1rem; line-height: 1.5; margin-bottom: .3rem; }
+.ru-paper-meta { margin: .15rem 0; color: var(--muted); font-size: .78rem; line-height: 1.6; }
+.ru-paper-meta a { color: var(--edge); }
+.ru-paper-stance { margin: .45rem 0 0; font-family: "Charis SIL", "Source Han Serif", serif; font-size: .96rem; line-height: 1.7; }
+.ru-paper-relation { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; margin: .35rem 0 0; color: var(--muted); font-size: .84rem; line-height: 1.6; }
+.ru-rel-chip { display: inline-block; padding: .08rem .6rem; border-radius: 999px; font-size: .74rem; font-weight: 700; flex: none; }
+.ru-rel-supports { color: #1E6B50; background: color-mix(in srgb, var(--teal) 16%, transparent); }
+.ru-rel-partial { color: #7A5A10; background: color-mix(in srgb, #B8860B 16%, transparent); }
+.ru-rel-opposes { color: #9C3627; background: color-mix(in srgb, var(--rust) 14%, transparent); }
+.ru-rel-background { color: #4F5855; background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.ru-pick { flex: none; align-self: center; border: 1px solid var(--edge); border-radius: 8px; background: transparent; padding: .42rem .9rem; color: var(--edge); font-size: .86rem; font-weight: 600; cursor: pointer; }
+.ru-pick:hover { background: color-mix(in srgb, var(--edge) 8%, transparent); }
+.ru-pick-on { background: var(--edge); color: var(--paper); }
+.ru-pick-on:hover { background: var(--teal); color: var(--paper); }
+.ru-selected-count { color: var(--edge); font-size: .87rem; font-weight: 650; margin: .7rem 0 0; }
+
+/* Cui 输出块 / claim 引用 */
+.ru-ai-block { margin: 1.1rem 0 .4rem; padding-left: 1.05rem; border-left: 3px solid var(--edge); }
+.ru-ai-content { white-space: pre-line; font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1.02rem; line-height: 1.85; margin: .5rem 0 0; }
+.ru-claim-quote { margin: 1rem 0; padding: .8rem 1rem; border-left: 3px solid var(--edge); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1.02rem; line-height: 1.75; }
+.ru-dialogue-pre { margin: .8rem 0 0; padding: 1rem 1.2rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--stone) 35%, var(--paper)); font-family: "IBM Plex Sans", "Source Han Sans", monospace; font-size: .9rem; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+.ru-review-handoff { margin-top: .4rem; }
+
+/* 工作区里的文献探讨入口条 */
+.ru-dialogue-entry { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; justify-content: space-between; margin: 1.4rem 0 .6rem; padding: .95rem 1.3rem; border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 12px; background: color-mix(in srgb, var(--paper) 70%, var(--stone)); }
+.ru-dialogue-entry .ru-copy { margin: .15rem 0 0; max-width: 46em; font-size: .88rem; }
+.ru-dialogue-entry .ru-ink-button { flex: none; }
+
+/* 兜底:任何 scope 里被激活外观的黑色主按钮,disabled 时必须老实变灰 */
+button.ru-ink-button:disabled { opacity: .38 !important; cursor: not-allowed !important; }
