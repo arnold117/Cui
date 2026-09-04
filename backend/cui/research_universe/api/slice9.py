@@ -12,6 +12,7 @@ Transient endpoints need an injected ``client`` (``None`` in test apps).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 
@@ -51,13 +52,13 @@ counterexample_invitation(字符串:邀请反例的措辞)。
 SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与 claim 同语言),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。"""
 
 
-SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题(以及候选假设),从候选文献中挑出真正相关的最多 6 篇。对每篇给出:
+SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题(以及候选假设),从候选文献中挑出真正相关的最多 8 篇。对每篇给出:
 - reason: 一句中文相关性理由;
 - stance: 该文的主要观点/论证角度(2-3 句中文摘要,像人读书后转述);
 - relation: {"kind": "supports" | "partial" | "opposes" | "background", "note": "它如何支持/反驳/仅仅背景式地联系我们的问题与假设(一句中文)"}。
 只输出 JSON:
 {"query": "实际建议的检索词", "results": [{"locator": "arxiv:... 或 doi:...", "reason": "...", "stance": "...", "relation": {"kind": "...", "note": "..."}}]}
-只选与问题真正相关的;宁可少于 6 篇;不要编造候选中不存在的 locator;locator 必须原样抄自候选列表。"""
+只选与问题真正相关的;宁可少于 8 篇;探索性综述多给 1-2 篇边界相关的让研究者自己挑,比少给好;不要编造候选中不存在的 locator;locator 必须原样抄自候选列表。"""
 
 
 class LiteratureChallengeCommand(Command):
@@ -221,28 +222,35 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         return {"hypotheses": hypotheses, "keywords": keywords}
 
     @router.post("/workspaces/{workspace_id}/dialogue/literature-search")
-    async def literature_search(workspace_id: str, body: LiteratureSearchCommand):
+    def literature_search(workspace_id: str, body: LiteratureSearchCommand):
+        # sync def + asyncio.run: LLM client is synchronous, so an async handler
+        # would freeze the whole event loop for every request (DeepSeek can take
+        # 30s+). FastAPI runs sync handlers on the threadpool instead.
         universe_id = _universe_for_workspace(store, context, workspace_id)
         llm = _llm()
         from cui.research_universe.api.slice1 import _active
         query = (body.query or body.question)[:100]
-        ranked = ranked_corpus_hits(store, _active(store, context), "active", query, 8)
+        # 中文 query 先译成英文一次,同时用于语料检索与外部检索
+        # (语料是英文 arXiv 群,中文检索词直接命中为 0)。
+        translated_en = ""
+        if re.search(r"[\u4e00-\u9fff]", query):
+            try:
+                translated = llm.complete_json(SYSTEM_QUERY_TRANSLATE, f"问题/关键词:{body.question or query}")
+                candidate_en = (translated.get("query_en") if isinstance(translated, dict) else None) or ""
+                if candidate_en.strip() and len(candidate_en) <= 200:
+                    translated_en = candidate_en.strip()
+            except Exception:
+                pass
+        corpus_query = translated_en or query
+        external_query = translated_en or query
+        ranked = ranked_corpus_hits(store, _active(store, context), "active", corpus_query, 10)
         pool: list[dict] = []
         seen: set[str] = set()
         for hit in ranked:
             pool.append({"locator": hit.source_locator, "title": hit.title, "excerpt": hit.snippet, "url": None, "source": "corpus", "material_id": hit.material_id})
             seen.add(hit.source_locator)
         if body.external:
-            external_query = query
-            if re.search(r"[\u4e00-\u9fff]", query):
-                try:
-                    translated = llm.complete_json(SYSTEM_QUERY_TRANSLATE, f"问题/关键词:{body.question or query}")
-                    candidate_en = (translated.get("query_en") if isinstance(translated, dict) else None) or ""
-                    if candidate_en.strip() and len(candidate_en) <= 200:
-                        external_query = candidate_en.strip()
-                except Exception:
-                    pass
-            for ext in await external_search(external_query, per_source=5):
+            for ext in asyncio.run(external_search(external_query, per_source=6)):
                 if ext["locator"] in seen:
                     continue
                 seen.add(ext["locator"])
@@ -250,7 +258,9 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         if not pool:
             return {"query": query, "candidates": []}
         candidate_lines = "\n".join(f"- [{c['locator']}] ({c['source']}) {c['title']}" for c in pool)
-        prompt_context = f"问题:{body.question}" + (f"\n(外部检索词:{external_query})" if body.external and external_query != query else "")
+        prompt_context = f"问题:{body.question}"
+        if translated_en and translated_en != query:
+            prompt_context += f"\n(中文检索词已译为英文执行:{translated_en})"
         try:
             text = llm.complete_json(SYSTEM_LITERATURE_SEARCH, f"{prompt_context}\n候选文献:\n{candidate_lines}")
         except Exception as exc:
@@ -272,7 +282,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                     "stance": (item.get("stance") or "")[:600],
                     "relation": {"kind": kind or "background", "note": (relation.get("note") or "")[:240]},
                 })
-            if len(picks) >= 6:
+            if len(picks) >= 8:
                 break
         return {"query": (text.get("query") if isinstance(text, dict) else None) or query, "candidates": picks}
 

@@ -59,7 +59,37 @@ class OpenAIClient:
         return response.choices[0].message.content or ""
 
     def complete_json(self, system: str, user: str, retries: int = 2) -> dict:
-        return _complete_json_with_retry(self, system, user, retries)
+        """Structured JSON with one json_object-hinted attempt, then plain
+        retries. The hint stops the model wasting a whole attempt on fences /
+        prose (a failed attempt can cost 30s+ on slow providers)."""
+        last_raw = ""
+        for attempt in range(retries + 1):
+            kwargs = {
+                "model": self._model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "temperature": 0.1,
+            }
+            if attempt == 0:
+                try:
+                    response = self._client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
+                except Exception:
+                    # provider without json_object support -> plain chat call
+                    response = self._client.chat.completions.create(**kwargs)
+            else:
+                response = self._client.chat.completions.create(**kwargs)
+            last_raw = response.choices[0].message.content or ""
+            cleaned = _strip_markdown_fences(last_raw)
+            try:
+                result = json.loads(cleaned)
+                return result if isinstance(result, dict) else {"data": result}
+            except json.JSONDecodeError:
+                logger.warning("JSON parse failed (attempt %d/%d): %s...", attempt + 1, retries + 1, cleaned[:200])
+                if attempt == retries:
+                    raise LLMResponseError(f"Failed to parse JSON after {retries + 1} attempts. Last response: {last_raw[:500]}") from None
+        raise LLMResponseError("Retry loop exhausted")
 
 
 class AnthropicClient:
