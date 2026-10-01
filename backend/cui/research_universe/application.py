@@ -457,9 +457,11 @@ def workspace_landscape_projection(store: NativeEventStore, universe_id: str, wo
 
 
 def universe_home_projection(store: NativeEventStore, universe_id: str) -> dict:
+    from cui.research_universe.corpus import corpus_workspace_ids
+    corpus = corpus_workspace_ids()  # 文献库容器,不是用户的探索:不进首页
     workspaces = []
     for event in _events(store, universe_id):
-        if event.event_type == "workspace_created":
+        if event.event_type == "workspace_created" and event.validated_payload().workspace_id not in corpus:
             workspaces.append(workspace_projection(store, universe_id, event.validated_payload().workspace_id))
     pending = [{**c, "workspace_id": w["id"], "question": w["question"]["text"]} for w in workspaces for c in w["pending_challenges"]]
     directions: list[dict] = []

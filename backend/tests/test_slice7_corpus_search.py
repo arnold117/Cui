@@ -96,3 +96,21 @@ def test_results_carry_metadata_and_snippet():
     assert hit["source_locator"].startswith("arxiv:")
     assert hit["matched_terms"] >= 1
     assert len(hit["snippet"]) <= 300
+
+
+def test_home_excludes_corpus_workspaces_and_their_challenges():
+    """#11: 语料 workspace 是文献库容器,不是用户的探索 —— 其上的 probe 挑战不该出现在首页。"""
+    store = InMemoryNativeEventStore()
+    universe = store.create_active_universe("lib")
+    service = Slice1Service(store, "local", _Gen())
+    service.create_workspace(universe, ACTIVE_WS_COMMAND, 0, "corpus active q")
+    ws_corpus = workspace_id_for(ACTIVE_WS_COMMAND)
+    probe = service.create_claim(universe, ws_corpus, "probe-claim", 0, "probe claim").result_payload["claim_id"]
+    service.start_review_round(universe, probe, "probe-round", 0)
+    ws_user = service.create_workspace(universe, "user-ws", 0, "real question").result_payload["workspace_id"]
+    mine = service.create_claim(universe, ws_user, "user-claim", 0, "my claim").result_payload["claim_id"]
+    service.start_review_round(universe, mine, "user-round", 0)
+    client = TestClient(create_native_test_app(store, LibraryContext("lib"), principal=None, challenge_generator=_Gen()))
+    home = client.get(f"/api/v2/universes/{universe}/home").json()
+    assert [w["id"] for w in home["workspaces"]] == [ws_user]
+    assert {p["workspace_id"] for p in home["pending_facts"]} == {ws_user}
