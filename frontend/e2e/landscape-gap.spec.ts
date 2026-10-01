@@ -39,6 +39,8 @@ test("gap candidate can be confirmed from the workspace landscape", async ({ pag
       } : desk)
     }
     if (url === "/api/v2/gap-candidates/gap-1/confirm") { confirmed = true; return json({ commit_position: 2, event_ids: ["e2"], result: { gap_candidate_id: "gap-1" } }) }
+    if (url === "/api/v2/workspaces/w-1/claims") return json({ commit_position: 3, event_ids: ["e3"], result: { claim_id: "c-1" } })
+    if (url === "/api/v2/claims/c-1/review-rounds") return json({ commit_position: 4, event_ids: ["e4"], result: { review_round_id: "r-1" } })
     return route.fulfill({ status: 404, body: JSON.stringify({ detail: url }) })
   })
   await page.goto("/workspaces/w-1")
@@ -48,4 +50,12 @@ test("gap candidate can be confirmed from the workspace landscape", async ({ pag
   const confirmCall = requests.find(r => r.url.endsWith("/gap-candidates/gap-1/confirm"))
   expect(confirmCall?.body).toMatchObject({ user_reason: "人审确认", expected_sequence: 1 })
   await expect(page.getByText("已确认 gap")).toBeVisible()
+
+  // 反证桥接:已确认 gap → 预填草稿 → 署名才固化 vacancy claim 并开审查轮
+  await page.getByRole("button", { name: "对这个 gap 发起反证" }).click()
+  expect(requests.some(r => r.url.endsWith("/claims"))).toBe(false)
+  await expect(page.getByLabel("反证用 claim(空缺断言)")).toHaveValue(/没有覆盖间隔练习在真实课堂的长期保持/)
+  await page.getByRole("button", { name: "署名固化为 claim 并开审查轮" }).click()
+  await expect(page).toHaveURL(/\/review-rounds\/r-1$/)
+  expect(requests.find(r => r.url.endsWith("/workspaces/w-1/claims"))?.body).toMatchObject({ kind: "vacancy" })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
+import { GapChallengeComposer } from "./GapChallengeComposer"
 import type { CitationReport, DialogueCandidate } from "../types"
 import { CLAIM_KINDS, clearDialogueDraft, hasClaimBlanks, contentStage, emptyDraft, loadDialogueDraft, saveDialogueDraft, STAGE_DESCRIPTIONS, STAGE_LABELS, type ClaimKind, type DialogueDraft, dialogueProgress } from "../dialogueDraft"
 
@@ -55,6 +56,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   const corpusIds = chosen.filter((c) => c.material_id).map((c) => c.material_id as string)
   const externalRefs = chosen.filter((c) => !c.material_id).map((c) => ({ locator: c.locator, excerpt: c.excerpt ?? c.title, url: c.url ?? null }))
   const gapConfirmed = state.confirmedGapIds.length > 0
+  const [gapCoverage, setGapCoverage] = useState<Record<string, string>>({})  // 已确认 gap 的覆盖声明(desk 读到的 + 本次会话刚确认的)
 
   useEffect(() => {
     let live = true
@@ -62,6 +64,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       .then((desk) => {
         if (!live) return
         setQuestion(desk.question.text)
+        setGapCoverage((prev) => ({ ...Object.fromEntries((desk.landscape?.gaps ?? []).map((g) => [g.id, g.coverage_statement])), ...prev }))
         // 没有本机草稿但轨迹里已有固化内容(经工作区/审查轮固化过 claim、gap)→ 接上,而不是从零开始。
         setState((prev) => {
           if (bootstrapped.current || prev.savedAt) return prev
@@ -211,6 +214,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       }, 0))
       const gapId = proposed.result.gap_candidate_id
       await researchUniverse.confirmGapCandidate(gapId, command({ user_reason: "人审确认" }, 1))
+      setGapCoverage((prev) => ({ ...prev, [gapId]: coverage }))
       patch({ gapDraft: undefined, confirmedGapIds: [...state.confirmedGapIds, gapId] })
     } catch (e) { setError(e instanceof Error ? e.message : "登记 gap 失败") } finally { setBusy(false) }
   }
@@ -454,6 +458,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
         </div>
       </div>}
       {gapConfirmed && <p className="ru-ok-note">✓ gap 已确认 ×{state.confirmedGapIds.length},已入轨迹(工作区"现状图景与 gap"里可见)。</p>}
+      {state.confirmedGapIds.filter((id) => gapCoverage[id]).map((id) => <GapChallengeComposer key={id} workspaceId={workspaceId} coverage={gapCoverage[id]} />)}
     </div>
   }
 

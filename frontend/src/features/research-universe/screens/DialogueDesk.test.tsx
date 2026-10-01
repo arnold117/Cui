@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppRouter } from "../../../router"
 import { DialogueDesk } from "./DialogueDesk"
@@ -177,5 +177,33 @@ describe("literature dialogue desk (staged)", () => {
     fireEvent.change(screen.getByLabelText("由你写下的 claim"), { target: { value: "文献在对齐机制上分成两派:一派认为偏好分布,另一派认为数据重复。" } })
     expect(solidify).toBeEnabled()
     expect(screen.queryByText("还有 ____ 没填")).not.toBeInTheDocument()
+  })
+  it("step 5: a confirmed gap can be challenged by signing a pre-filled vacancy claim into a review round", async () => {
+    const coverage = "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。"
+    window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({
+      v: 2, workspaceId: "w-1", hypothesesText: "h", hypothesesDone: true, keywordsText: "x", selectedKeywords: [],
+      candidates, selected: ["arxiv:2401.00009"], searchQueries: ["x"], summary: "## 覆盖\n评测。", claimText: "c", roundId: "r0", claimAck: true,
+      confirmedGapIds: ["g1"], savedAt: new Date().toISOString(),
+    }))
+    mockFullJourney()
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/api/v2/workspaces/w-1") && (init?.method ?? "GET") === "GET") {
+        return response({ ...desk, landscape: { workspace_id: "w-1", question: desk.question, alive_claims: [], claim_verdicts: {}, confirmed_facts: [], gaps: [{ id: "g1", workspace_id: "w-1", coverage_statement: coverage, search_record: { query: "x", scope: "active", matched_locators: [], searched_at: "2026-09-02" }, counterexample_invitation: "i", status: "confirmed", sequence: 2 }] } })
+      }
+      return base(url, init)
+    })
+    renderDesk("w-1")
+    fireEvent.click(within(await screen.findByLabelText(/已完成:第 5 步/, {}, { timeout: 3000 })).getByRole("button"))
+    fireEvent.click(await screen.findByRole("button", { name: "对这个 gap 发起反证" }, { timeout: 3000 }))
+    const box = screen.getByLabelText("反证用 claim(空缺断言)") as HTMLTextAreaElement
+    expect(box.value).toContain("没有覆盖推理链真实应用的长期表现")
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/claims"))).toBe(false)
+    fireEvent.change(box, { target: { value: "" } })
+    expect(screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" })).toBeDisabled()
+    fireEvent.change(box, { target: { value: "没有文献覆盖长期表现。" } })
+    fireEvent.click(screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" }))
+    await waitFor(() => expect(window.location.pathname).toBe("/review-rounds/r1"), { timeout: 3000 })
+    expect(JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))![1].body as string)).toMatchObject({ text: "没有文献覆盖长期表现。", kind: "vacancy" })
   })
 })

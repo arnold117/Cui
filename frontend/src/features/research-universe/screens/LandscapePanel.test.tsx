@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { WorkspaceLandscape } from "../types"
+import { AppRouter } from "../../../router"
 import { LandscapePanel } from "./LandscapePanel"
 
 const fetchMock = vi.fn()
@@ -78,5 +79,41 @@ describe("landscape panel", () => {
     await waitFor(() => expect(screen.getAllByText(/Repeated recall improves later access/).length).toBeGreaterThanOrEqual(2))
     expect(screen.getByText(/已确认取证 · supports/)).toBeInTheDocument()
     expect(screen.getByText(/裁决:存活/)).toBeInTheDocument()
+  })
+  describe("challenge a confirmed gap", () => {
+    const withStatus = (status: "pending" | "confirmed" | "rejected"): WorkspaceLandscape => ({ ...landscapeWithPendingGap, gaps: [{ ...landscapeWithPendingGap.gaps[0], status }] })
+    const renderPanel = (l: WorkspaceLandscape) => render(<AppRouter><LandscapePanel landscape={l} onChanged={onChanged} /></AppRouter>)
+
+    it("offers the challenge button only on confirmed gaps", () => {
+      for (const status of ["pending", "rejected"] as const) {
+        renderPanel(withStatus(status))
+        expect(screen.queryByRole("button", { name: "对这个 gap 发起反证" })).not.toBeInTheDocument()
+        cleanup()
+      }
+      renderPanel(withStatus("confirmed"))
+      expect(screen.getByRole("button", { name: "对这个 gap 发起反证" })).toBeInTheDocument()
+    })
+
+    it("pre-fills a draft, creates nothing until signed, then creates a vacancy claim, opens a round and navigates", async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (String(url).endsWith("/claims")) return response({ result: { claim_id: "c-9" } })
+        if (String(url).endsWith("/review-rounds")) return response({ result: { review_round_id: "r-9" } })
+        return response({ detail: String(url) }, 404)
+      })
+      renderPanel(withStatus("confirmed"))
+      fireEvent.click(screen.getByRole("button", { name: "对这个 gap 发起反证" }))
+      const box = screen.getByLabelText("反证用 claim(空缺断言)") as HTMLTextAreaElement
+      expect(box.value).toContain("没有覆盖真实任务表现")
+      expect(fetchMock).not.toHaveBeenCalled()
+      const sign = screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" })
+      fireEvent.change(box, { target: { value: "" } })
+      expect(sign).toBeDisabled()
+      fireEvent.change(box, { target: { value: "我改写的空缺断言。" } })
+      fireEvent.click(sign)
+      await waitFor(() => expect(window.location.pathname).toBe("/review-rounds/r-9"))
+      const claimCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))!
+      expect(JSON.parse(claimCall[1].body)).toMatchObject({ text: "我改写的空缺断言。", kind: "vacancy" })
+      expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/claims/c-9/review-rounds") || String(u).endsWith("/review-rounds"))).toBe(true)
+    })
   })
 })

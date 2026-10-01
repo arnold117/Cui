@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { command, researchUniverse } from "../api"
+import { GapChallengeComposer } from "./GapChallengeComposer"
 import type { CorpusSearchHit, GapCandidate, WorkspaceLandscape } from "../types"
 
 const STATUS_LABELS: Record<GapCandidate["status"], string> = {
@@ -102,6 +103,7 @@ export function LandscapePanel({ landscape, onChanged }: { landscape: WorkspaceL
         <p className="ru-reading-copy"><strong>邀请反例:</strong>{gap.counterexample_invitation}</p>
         <p className="ru-provenance">检索:{gap.search_record.query}{gap.search_record.matched_locators.length > 0 ? ` · 命中 ${gap.search_record.matched_locators.length} 篇` : ""}{gap.search_record.searched_at ? ` · ${gap.search_record.searched_at}` : ""}</p>
         {gap.status === "pending" && <div className="ru-crystal-actions"><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "reject")}>拒绝</button><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void decide(gap, "confirm")}>确认这个 gap</button></div>}
+        {gap.status === "confirmed" && <GapChallengeComposer workspaceId={landscape.workspace_id} coverage={gap.coverage_statement} />}
       </article>)}
     </div>
     {!open && <button className="ru-quiet-button" onClick={() => setOpen(true)}>登记一个 gap 候选</button>}
