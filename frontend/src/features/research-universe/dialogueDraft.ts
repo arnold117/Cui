@@ -1,4 +1,4 @@
-import type { DialogueCandidate, GapDraftFields } from "./types"
+import type { CitationReport, DialogueCandidate, GapDraftFields } from "./types"
 
 /** 文献探讨会话的类型:claim 步的起草辅助(不入事件;仅存本机草稿)。 */
 export type ClaimKind = "consensus" | "division" | "vacancy" | "custom"
@@ -25,6 +25,7 @@ export interface DialogueDraft {
   selected: string[] // locators
   searchQuery: string
   summary?: string
+  summaryCheck?: CitationReport
   claimKind?: ClaimKind
   claimText: string
   roundId?: string
@@ -33,6 +34,7 @@ export interface DialogueDraft {
   gapDraft?: GapDraftFields
   confirmedGapIds: string[]
   relatedWork?: string
+  relatedWorkCheck?: CitationReport
   skipHypotheses?: boolean
   savedAt?: string
 }

@@ -1,10 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
-import type { DialogueCandidate } from "../types"
+import type { CitationReport, DialogueCandidate } from "../types"
 import { CLAIM_KINDS, clearDialogueDraft, hasClaimBlanks, contentStage, emptyDraft, loadDialogueDraft, saveDialogueDraft, STAGE_DESCRIPTIONS, STAGE_LABELS, type ClaimKind, type DialogueDraft, dialogueProgress } from "../dialogueDraft"
 
 const RELATION_LABELS: Record<string, string> = { supports: "支持", partial: "部分支持", opposes: "对立", background: "背景" }
+
+const SCOPE_MESSAGES = { abstract: "摘要中未找到依据(可能在全文)", excerpt: "摘录中未找到依据", full: "全文中未找到依据" } as const
+
+/** 只标记不改写:列出核对不过的引用;全过只一行;无引用不显示。 */
+function CitationCheckList({ report }: { report?: CitationReport }) {
+  const checks = report?.citation_checks ?? []
+  const flagged = checks.filter((c) => c.verdict !== "supported")
+  if (!report || (report.citation_check_status !== "unavailable" && checks.length === 0)) return null
+  return <div className="ru-muted-note">
+    {report.citation_check_status === "unavailable" && <p>引用核对暂不可用,以上引用未经核对。</p>}
+    {report.citation_check_status === "ok" && flagged.length === 0 && <p>引用核对:全部可在所选文献中找到依据</p>}
+    {flagged.length > 0 && <>
+      <p className="ru-kicker">引用核对:以下引用未通过(仅标记,草稿未改动)</p>
+      <ul className="ru-error">{flagged.map((c, i) => <li key={`${c.locator}-${i}`}>
+        “{c.sentence}” [{c.locator}] —— {c.verdict === "not_selected" || !c.scope ? "引用了未选入的文献" : SCOPE_MESSAGES[c.scope]}
+      </li>)}</ul>
+    </>}
+  </div>
+}
 
 /**
  * 文献探讨 · 一次会话 = 一页,六步推进。
@@ -70,7 +89,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   function patch(partial: Partial<DialogueDraft>) { setState((prev) => ({ ...prev, ...partial })) }
 
   function invalidateDownstream(partial: Partial<DialogueDraft> = {}) {
-    patch({ summary: undefined, gapDraft: undefined, relatedWork: undefined, ...partial })
+    patch({ summary: undefined, summaryCheck: undefined, gapDraft: undefined, relatedWork: undefined, relatedWorkCheck: undefined, ...partial })
     setRevisit(null)
   }
 
@@ -135,7 +154,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     setBusy(true); setError(undefined)
     try {
       const result = await researchUniverse.landscapeSummary(workspaceId, corpusIds, externalRefs)
-      patch({ summary: result.text })
+      patch({ summary: result.text, summaryCheck: result })
     } catch (e) { setError(e instanceof Error ? e.message : "梳理失败") } finally { setBusy(false) }
   }
 
@@ -201,7 +220,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     setBusy(true); setError(undefined)
     try {
       const result = await researchUniverse.relatedWorkDraft(workspaceId, corpusIds, state.confirmedGapIds, externalRefs)
-      patch({ relatedWork: result.text })
+      patch({ relatedWork: result.text, relatedWorkCheck: result })
     } catch (e) { setError(e instanceof Error ? e.message : "草稿失败") } finally { setBusy(false) }
   }
 
@@ -371,6 +390,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       {state.summary && <div className="ru-ai-block">
         <p className="ru-kicker">覆盖梳理(Cui 起草,临时;基于已选 {state.selected.length} 篇)</p>
         <p className="ru-ai-content">{state.summary}</p>
+        <CitationCheckList report={state.summaryCheck} />
         <div className="ru-secondary-row">
           <button type="button" className="ru-quiet-button" disabled={busy} onClick={() => void summarize()}>重新梳理</button>
         </div>
@@ -424,6 +444,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
         <p className="ru-kicker">gap 形状:覆盖声明 + 检索记录 + 反例邀请(Cui 起草,你改,你署名)</p>
         <label htmlFor="d-coverage">覆盖范围声明(哪些已被覆盖、缺口在哪)</label>
         <textarea id="d-coverage" className="ru-conclusion-text" value={state.gapDraft.coverage_statement} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, coverage_statement: e.target.value } })} />
+        <CitationCheckList report={state.gapDraft} />
         <label htmlFor="d-invitation">邀请反例</label>
         <input id="d-invitation" className="ru-revival-input" value={state.gapDraft.counterexample_invitation} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, counterexample_invitation: e.target.value } })} />
         <div className="ru-stage-actions">
@@ -447,6 +468,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
         <div className="ru-ai-block">
           <p className="ru-kicker">综述草稿(导出形式,不入轨迹)</p>
           <pre className="ru-dialogue-pre">{state.relatedWork}</pre>
+          <CitationCheckList report={state.relatedWorkCheck} />
         </div>
         <div className="ru-crystal-actions">
           <button type="button" className="ru-quiet-button" onClick={() => void copyDraft()}>{copied ? "已复制" : "复制"}</button>

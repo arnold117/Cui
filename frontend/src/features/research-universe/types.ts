@@ -147,3 +147,4 @@ export type DialogueExternalRef = S["ExternalRef"]
 export type DialogueCandidate = S["DialogueCandidate"]
 export type LiteratureSearchResponse = S["LiteratureSearchResponse"]
 export type GapDraftFields = S["GapDraftResponse"]
+export type CitationReport = Pick<S["DraftTextResponse"], "citation_check_status" | "citation_checks">

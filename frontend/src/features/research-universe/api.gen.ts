@@ -1051,6 +1051,20 @@ export interface components {
             /** Original Text */
             original_text: string;
         };
+        /** CitationCheck */
+        CitationCheck: {
+            /** Locator */
+            locator: string;
+            /** Scope */
+            scope?: ("abstract" | "excerpt" | "full") | null;
+            /** Sentence */
+            sentence: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "supported" | "unsupported" | "not_selected";
+        };
         /** ClaimCommand */
         ClaimCommand: {
             /** Command Id */
@@ -1227,6 +1241,14 @@ export interface components {
         };
         /** DraftTextResponse */
         DraftTextResponse: {
+            /**
+             * Citation Check Status
+             * @default ok
+             * @enum {string}
+             */
+            citation_check_status?: "ok" | "unavailable";
+            /** Citation Checks */
+            citation_checks?: components["schemas"]["CitationCheck"][];
             /** Text */
             text: string;
         };
@@ -1263,6 +1285,14 @@ export interface components {
         };
         /** GapDraftResponse */
         GapDraftResponse: {
+            /**
+             * Citation Check Status
+             * @default ok
+             * @enum {string}
+             */
+            citation_check_status?: "ok" | "unavailable";
+            /** Citation Checks */
+            citation_checks?: components["schemas"]["CitationCheck"][];
             /** Counterexample Invitation */
             counterexample_invitation: string;
             /** Coverage Statement */

@@ -299,5 +299,81 @@ def test_draft_prompts_are_anchored_on_question_and_claim():
     for prompt in seen:
         assert "Why does RLHF improve reasoning?" in prompt
     assert wid not in summary  # 以前把 workspace UUID 当成"问题方向"
-    assert "RLHF improves reasoning because it aligns preferences." in gap
-    assert "RLHF improves reasoning because it aligns preferences." in related
+    claim = "RLHF improves reasoning because it aligns preferences."
+    assert claim in gap
+    assert claim in summary
+    assert claim not in related  # Q2: related-work 只锚问题,带 claim 会把文献按 claim 结构掰弯
+
+
+class _Checker:
+    """complete() 依次吐 texts;complete_json 记录 prompt 并回放 verdicts(或抛错)。"""
+    def __init__(self, texts, verdicts=None, fail=False):
+        self.texts, self.verdicts, self.fail = list(texts), verdicts, fail
+        self.json_calls: list[str] = []
+    def complete(self, system, user): return self.texts.pop(0)
+    def complete_json(self, system, user, retries=2):
+        self.json_calls.append(user)
+        if self.fail:
+            raise RuntimeError("checker down")
+        return self.verdicts
+
+
+def _desk(fake):
+    store, universe, service, wid, mat, rid = _seed()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    return TestClient(app), wid, mat, service, universe
+
+
+def test_unselected_locator_flagged_without_checker_call():
+    fake = _Checker(["RLHF 提升了推理 [arxiv:9999.99999]。"])
+    client, wid, mat, *_ = _desk(fake)
+    body = client.post(f"/api/v2/workspaces/{wid}/dialogue/landscape-summary", json={"material_ids": [mat]}).json()
+    assert fake.json_calls == []
+    assert body["citation_check_status"] == "ok"
+    assert [(c["locator"], c["verdict"], c["scope"]) for c in body["citation_checks"]] == [("arxiv:9999.99999", "not_selected", None)]
+
+
+def test_no_citations_no_checker_call():
+    fake = _Checker(["没有任何引用的一段话。"])
+    client, wid, mat, *_ = _desk(fake)
+    body = client.post(f"/api/v2/workspaces/{wid}/dialogue/related-work-draft", json={"material_ids": [mat]}).json()
+    assert fake.json_calls == []
+    assert body["citation_checks"] == [] and body["citation_check_status"] == "ok"
+
+
+def test_checker_scopes_abstract_excerpt_full():
+    fake = _Checker(
+        ["第一句引用摘要 [doi:10.1000/ext]。第二句引用长文 [arxiv:2401.00002]。第三句引用短文 [arxiv:2401.00001]。"],
+        verdicts={"checks": [{"i": 1, "supported": False}, {"i": 2, "supported": False}, {"i": 3, "supported": True}]},
+    )
+    client, wid, mat, service, universe = _desk(fake)
+    long_mat = service.add_material(universe, wid, "# long\n\n" + "x" * 7000, "arxiv:2401.00002", "parsed", "evidence", "m-long", 0).result_payload["material_id"]
+    ext = [{"locator": "doi:10.1000/ext", "excerpt": "external abstract only.", "url": None}]
+    body = client.post(f"/api/v2/workspaces/{wid}/dialogue/landscape-summary", json={"material_ids": [mat, long_mat], "external_refs": ext}).json()
+    assert len(fake.json_calls) == 1
+    # 核对者看到的文本比起草(1500)长,但封顶 6000
+    assert "x" * 5000 in fake.json_calls[0] and "x" * 6001 not in fake.json_calls[0]
+    got = {c["locator"]: (c["verdict"], c["scope"]) for c in body["citation_checks"]}
+    assert got == {"doi:10.1000/ext": ("unsupported", "abstract"), "arxiv:2401.00002": ("unsupported", "excerpt"), "arxiv:2401.00001": ("supported", "full")}
+
+
+def test_checker_failure_or_garbage_returns_draft_unavailable():
+    for fake in (_Checker(["有引用 [arxiv:2401.00001]。"], fail=True), _Checker(["有引用 [arxiv:2401.00001]。"], verdicts={"nonsense": 1})):
+        client, wid, mat, *_ = _desk(fake)
+        resp = client.post(f"/api/v2/workspaces/{wid}/dialogue/related-work-draft", json={"material_ids": [mat]})
+        assert resp.status_code == 200
+        assert resp.json()["text"].startswith("有引用") and resp.json()["citation_check_status"] == "unavailable"
+
+
+def test_gap_draft_checks_coverage_statement_and_material_lines_carry_scope():
+    gap = json.dumps({"coverage_statement": "文献覆盖了评测方法,但缺推理应用 [arxiv:2401.00001]。", "search_query": "q", "counterexample_invitation": "c"})
+    fake = _Checker([gap], verdicts={"checks": [{"i": 1, "supported": False}]})
+    seen: list[str] = []
+    orig = fake.complete
+    fake.complete = lambda s, u: seen.append(u) or orig(s, u)
+    client, wid, mat, *_ = _desk(fake)
+    ext = [{"locator": "doi:10.1000/ext", "excerpt": "external abstract only.", "url": None}]
+    body = client.post(f"/api/v2/workspaces/{wid}/dialogue/gap-draft", json={"material_ids": [mat], "external_refs": ext}).json()
+    assert body["coverage_statement"].startswith("文献覆盖了") and body["citation_checks"][0]["verdict"] == "unsupported"
+    assert "[doi:10.1000/ext] " in seen[0] and "范围:仅摘要" in seen[0] and "范围:全文" in seen[0]

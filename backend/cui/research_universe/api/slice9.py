@@ -44,15 +44,17 @@ SYSTEM_LANDSCAPE_SUMMARY = """你是 Cui,和一个研究者一起梳理现状。
 ## 这几篇覆盖了什么
 逐篇一句话(带 locator),然后归纳共同覆盖的区域。
 ## 还没有被覆盖的
-只陈述"未被这些文献覆盖/未被它们支持"的观察,不要建议研究课题、不要替用户下判断。"""
+只陈述"未被这些文献覆盖/未被它们支持"的观察,不要建议研究课题、不要替用户下判断。
+每篇文献标注了你能看到的范围:仅摘要的,不要断言摘要之外的细节。"""
 
 SYSTEM_GAP_DRAFT = """你是 Cui 的 gap 起草助手。基于给定的研究问题(及研究者的 claim)与所选文献,起草一个 gap 候选。缺口必须相对这个研究问题来表述:文献里与问题无关的子话题不算缺口。只输出 JSON,键为:
 coverage_statement(字符串:覆盖范围声明——哪些已被覆盖、缺口在哪,至少 10 字,不要说"所以你应该做 Y"),
 search_query(字符串:可复现检索词),
 counterexample_invitation(字符串:邀请反例的措辞)。
-用中文。"""
+用中文。
+每篇文献标注了你能看到的范围:仅摘要的,不要断言摘要之外的细节。"""
 
-SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与 claim 同语言),围绕给定的研究问题组织(而不是围绕文献各自的主题),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。"""
+SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与研究问题同语言),围绕给定的研究问题组织(而不是围绕文献各自的主题),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。每篇文献标注了你能看到的范围:仅摘要的,不要断言摘要之外的细节。"""
 
 
 SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题(以及候选假设),从候选文献中挑出真正相关的最多 8 篇。对每篇给出:
@@ -134,14 +136,26 @@ class LiteratureSearchResponse(BaseModel):
     candidates: list[DialogueCandidate]
 
 
+class CitationCheck(BaseModel):
+    sentence: str
+    locator: str
+    verdict: Literal["supported", "unsupported", "not_selected"]
+    # 核对者实际看到的范围;not_selected(引了没选的文献)没有可看的材料 → None
+    scope: Literal["abstract", "excerpt", "full"] | None = None
+
+
 class DraftTextResponse(BaseModel):
     text: str
+    citation_check_status: Literal["ok", "unavailable"] = "ok"
+    citation_checks: list[CitationCheck] = Field(default_factory=list)
 
 
 class GapDraftResponse(BaseModel):
     coverage_statement: str
     search_query: str
     counterexample_invitation: str
+    citation_check_status: Literal["ok", "unavailable"] = "ok"
+    citation_checks: list[CitationCheck] = Field(default_factory=list)
 
 
 def _selected_materials(store, universe_id: str, workspace_id: str, material_ids: list[str]) -> list[dict]:
@@ -157,24 +171,28 @@ def _selected_materials(store, universe_id: str, workspace_id: str, material_ids
         payload = event.validated_payload()
         if payload.workspace_id not in allowed:
             continue
-        by_id[payload.material_id] = {"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "title": first_title(payload.excerpt)[:80] if payload.excerpt else "", "excerpt": payload.excerpt}
+        by_id[payload.material_id] = {"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "title": first_title(payload.excerpt)[:80] if payload.excerpt else "", "excerpt": payload.excerpt, "content_scope": payload.content_scope}
     missing = set(material_ids) - set(by_id)
     if missing:
         raise HTTPException(404, f"material not in workspace nor corpus: {sorted(missing)[0]}")
     return [by_id[m] for m in material_ids]
 
 
-def _anchor(store, universe_id: str, workspace_id: str) -> str:
-    """问题(+最新 claim)是起草的锚:不带它,LLM 只会顺着所选文献的主题漂移(#10)。"""
+def _drafting_context(store, universe_id: str, workspace_id: str, items: list[dict], *, with_claim: bool = True) -> tuple[str, str]:
+    """三个起草端点共用:(锚, 材料行)。
+    锚 = 研究问题(+最新 claim):不带它,LLM 只会顺着所选文献的主题漂移(#10);
+    related-work 只锚问题(with_claim=False)——带 claim 时它会把文献按 claim 的结构掰弯、错配引用(Q2)。
+    材料行带范围标注,让 LLM 知道自己手里只有摘要。"""
     ws = workspace_projection(store, universe_id, workspace_id)
-    lines = [f"研究问题:{ws['question']['text']}"]
-    if ws["claims"]:
-        lines.append(f"研究者的 claim:{ws['claims'][-1]['text']}")
-    return "\n".join(lines)
-
-
-def _item_lines(items: list[dict]) -> str:
-    return "\n".join(f"- [{i['locator']}] {i.get('title') or ''}\n  {(i.get('excerpt') or '')[:1500]}" for i in items)
+    anchor = [f"研究问题:{ws['question']['text']}"]
+    if with_claim and ws["claims"]:
+        anchor.append(f"研究者的 claim:{ws['claims'][-1]['text']}")
+    lines = []
+    for i in items:
+        excerpt = i.get("excerpt") or ""
+        scope = "仅摘要" if i.get("content_scope") == "abstract" else ("全文,以下为开头摘录" if len(excerpt) > 1500 else "全文")
+        lines.append(f"- [{i['locator']}] {i.get('title') or ''} (范围:{scope})\n  {excerpt[:1500]}")
+    return "\n".join(anchor), "\n".join(lines)
 
 
 def _chosen_items(store, universe_id: str, workspace_id: str, material_ids: list[str], external_refs: list[dict]) -> list[dict]:
@@ -184,7 +202,8 @@ def _chosen_items(store, universe_id: str, workspace_id: str, material_ids: list
         locator = (ref.get("locator") or "").strip()
         if not locator or not excerpt:
             raise HTTPException(422, "external_ref needs locator and excerpt")
-        items.append({"locator": locator, "title": "", "excerpt": excerpt[:1500], "url": ref.get("url"), "external": True})
+        # 请求里临时带来的外部文献只有摘要
+        items.append({"locator": locator, "title": "", "excerpt": excerpt, "url": ref.get("url"), "content_scope": "abstract"})
     if not items:
         raise HTTPException(422, "no material or external literature selected")
     return items
@@ -226,12 +245,66 @@ def _parse_draft_json(text: str) -> dict:
     return data
 
 
-def _render_related_work_prompt(materials: list[dict], gaps_text: str) -> str:
-    papers = "\n".join(f"- [{m['locator']}] {m['title']}" for m in materials)
+def _render_related_work_prompt(n_papers: int, papers: str, gaps_text: str) -> str:
     try:
-        return RELATED_WORK_PROMPT.format(num_papers=str(len(materials)), papers=papers, user_instructions=gaps_text)
+        return RELATED_WORK_PROMPT.format(num_papers=str(n_papers), papers=papers, user_instructions=gaps_text)
     except (KeyError, IndexError, ValueError):
         return f"Write a related-work paragraph. Selected literature:\n{papers}\nConfirmed gaps:\n{gaps_text}\nObjective and [locator]-cited only."
+
+
+SYSTEM_CITATION_CHECK = """你是引用核对员。下面给出若干 (句子, 文献) 对:句子里用 [locator] 引用了该文献。逐对判断:句子对该文献所作的断言,能否在给出的该文献文本中找到依据。
+- supported=true:文本里有明确依据(转述也算);
+- supported=false:文本里找不到依据,或与文本矛盾,或文本根本没谈到这件事。
+只依据给出的文本判断,不要用你自己的背景知识替文献补充内容。只输出 JSON:
+{"checks": [{"i": 1, "supported": true}, ...]}
+每个 (句子, 文献) 对都必须有一条,i 为其编号。"""
+
+CHECK_CHARS = 6000  # 核对者看的文本比起草时(1500)更长
+
+
+def _citation_pairs(text: str) -> list[tuple[str, str]]:
+    """(句子, 引用的 locator) 去重对。locator 不含空白;句子按句末标点/换行切。"""
+    pairs: list[tuple[str, str]] = []
+    for sentence in re.split(r"(?<=[。！？!?])\s*|(?<=\.)\s+|\n+", text):
+        for loc in re.findall(r"\[([^\s\[\]]+)\]", sentence):
+            if (sentence.strip(), loc) not in pairs:
+                pairs.append((sentence.strip(), loc))
+    return pairs
+
+
+def _check_citations(llm, text: str, items: list[dict]) -> dict:
+    """只标记,不改写不拦截;核对者调用失败/返回垃圾 → status=unavailable,草稿照常返回。"""
+    pairs = _citation_pairs(text)
+    by_loc = {_canonical_locator(i["locator"]): i for i in items}
+    checks: list[dict] = []
+    known: list[tuple[int, str, str, dict]] = []  # (checks 下标, 句子, locator, item)
+    for sentence, loc in pairs:
+        item = by_loc.get(_canonical_locator(loc))
+        base = {"sentence": sentence[:240], "locator": loc}
+        if item is None:
+            checks.append({**base, "verdict": "not_selected", "scope": None})
+        else:
+            checks.append({**base, "verdict": "supported", "scope": None})
+            known.append((len(checks) - 1, sentence, loc, item))
+    if not known:
+        return {"citation_check_status": "ok", "citation_checks": checks}
+    seen: dict[str, dict] = {}
+    for _, _, loc, item in known:
+        seen.setdefault(_canonical_locator(loc), item)
+    materials = "\n\n".join(f"### [{i['locator']}] {i.get('title') or ''}\n{(i.get('excerpt') or '')[:CHECK_CHARS]}" for i in seen.values())
+    claims = "\n".join(f"{n}. 句子:{sentence}\n   引用:[{loc}]" for n, (_, sentence, loc, _) in enumerate(known, 1))
+    try:
+        data = llm.complete_json(SYSTEM_CITATION_CHECK, f"文献文本:\n{materials}\n\n待核对:\n{claims}")
+        verdicts = {c["i"]: c["supported"] for c in data["checks"]}
+        if any(not isinstance(verdicts.get(n), bool) for n in range(1, len(known) + 1)):
+            raise ValueError("checker skipped or garbled a pair")
+    except Exception:
+        return {"citation_check_status": "unavailable", "citation_checks": [c for c in checks if c["verdict"] == "not_selected"]}
+    for n, (idx, _, _, item) in enumerate(known, 1):
+        excerpt = item.get("excerpt") or ""
+        checks[idx]["scope"] = "abstract" if item.get("content_scope") == "abstract" else ("excerpt" if len(excerpt) > CHECK_CHARS else "full")
+        checks[idx]["verdict"] = "supported" if verdicts[n] else "unsupported"
+    return {"citation_check_status": "ok", "citation_checks": checks}
 
 
 def create_dialogue_router(service: Slice1Service, store, context: LibraryContext, principal: LocalPrincipal, client=None) -> APIRouter:
@@ -346,9 +419,9 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
         llm = _llm()
         try:
-            user = _item_lines(items)
-            text = llm.complete(SYSTEM_LANDSCAPE_SUMMARY, f"{_anchor(store, universe_id, workspace_id)}\n所选文献:\n{user}")
-            return {"text": text}
+            anchor, lines = _drafting_context(store, universe_id, workspace_id, items)
+            text = llm.complete(SYSTEM_LANDSCAPE_SUMMARY, f"{anchor}\n所选文献:\n{lines}")
+            return {"text": text, **_check_citations(llm, text, items)}
         except HTTPException:
             raise
         except Exception as exc:
@@ -360,9 +433,10 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
         llm = _llm()
         try:
-            user = _item_lines(items)
-            text = llm.complete(SYSTEM_GAP_DRAFT, f"{_anchor(store, universe_id, workspace_id)}\n所选文献:\n{user}")
-            return _parse_draft_json(text)
+            anchor, lines = _drafting_context(store, universe_id, workspace_id, items)
+            text = llm.complete(SYSTEM_GAP_DRAFT, f"{anchor}\n所选文献:\n{lines}")
+            draft = _parse_draft_json(text)
+            return {**draft, **_check_citations(llm, draft["coverage_statement"], items)}
         except HTTPException:
             raise
         except Exception as exc:
@@ -381,10 +455,11 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                     gaps_text += f"\n- {state['coverage_statement']}"
         except Exception:
             pass
-        prompt = _render_related_work_prompt(items, f"{_anchor(store, universe_id, workspace_id)}\n已确认的 gap:{gaps_text}")
+        anchor, lines = _drafting_context(store, universe_id, workspace_id, items, with_claim=False)
+        prompt = _render_related_work_prompt(len(items), lines, f"{anchor}\n已确认的 gap:{gaps_text}")
         try:
             text = llm.complete(SYSTEM_RELATED_WORK, prompt)
-            return {"text": text}
+            return {"text": text, **_check_citations(llm, text, items)}
         except Exception as exc:
             raise HTTPException(502, f"related-work draft failed: {exc}") from exc
 

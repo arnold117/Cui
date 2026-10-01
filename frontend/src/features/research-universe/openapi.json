@@ -325,6 +325,50 @@
         "title": "CaptureCommand",
         "type": "object"
       },
+      "CitationCheck": {
+        "properties": {
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "abstract",
+                  "excerpt",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "supported",
+              "unsupported",
+              "not_selected"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence",
+          "locator",
+          "verdict"
+        ],
+        "title": "CitationCheck",
+        "type": "object"
+      },
       "ClaimCommand": {
         "properties": {
           "command_id": {
@@ -843,6 +887,22 @@
       },
       "DraftTextResponse": {
         "properties": {
+          "citation_check_status": {
+            "default": "ok",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Citation Check Status",
+            "type": "string"
+          },
+          "citation_checks": {
+            "items": {
+              "$ref": "#/components/schemas/CitationCheck"
+            },
+            "title": "Citation Checks",
+            "type": "array"
+          },
           "text": {
             "title": "Text",
             "type": "string"
@@ -952,6 +1012,22 @@
       },
       "GapDraftResponse": {
         "properties": {
+          "citation_check_status": {
+            "default": "ok",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Citation Check Status",
+            "type": "string"
+          },
+          "citation_checks": {
+            "items": {
+              "$ref": "#/components/schemas/CitationCheck"
+            },
+            "title": "Citation Checks",
+            "type": "array"
+          },
           "counterexample_invitation": {
             "title": "Counterexample Invitation",
             "type": "string"
