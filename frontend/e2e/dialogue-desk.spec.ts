@@ -174,22 +174,21 @@ test("exit and re-enter restores the session at the same stage with keywords kep
   await expect(page).toHaveURL(/\/workspaces\/w-1$/)
   await expect(page.getByText("Why does RLHF improve reasoning?").first()).toBeVisible()
 
-  // ── 重新进入 → 恢复横幅 + 停在第 2 步 + 检索词内容保留 ──
+  // ── 重新进入 → 恢复横幅 + 停在第 3 步 + 上游内容保留 ──
   const searchesBeforeReentry = of(calls, "/dialogue/literature-search").length
   await page.goto("/workspaces/w-1/dialogue")
   const resume = page.getByRole("status")
   await expect(resume).toBeVisible()
-  await expect(resume).toHaveText(/已恢复上次会话:当前在第 2 步/)
+  await expect(resume).toHaveText(/已恢复上次会话:当前在第 3 步/)
+  await expect(page.getByRole("heading", { name: "3. 覆盖与 claim" })).toBeVisible()
+  await expect(page.getByText(/还没有被覆盖的/)).toBeVisible()
+  // 展开第 2 步回看:检索词与候选都还在
+  await page.getByRole("button", { name: "✓ 选料" }).click()
   await expect(page.getByLabel(/检索词\(用分号/)).toHaveValue("RLHF reasoning; 偏好对齐")
   await expect(page.getByRole("button", { name: /✓ RLHF reasoning/ })).toBeVisible()
-  await expect(page.getByRole("heading", { name: "2. 选料" })).toBeVisible()
   await expect(page.getByText("Reasoning evaluation")).toBeVisible()
-
-  // ⚠️ 已知产品 bug(未修,勿在此掩盖):重新进入会因 question 从空变为非空而重跑一次防抖检索,
-  // 把刚恢复出来的选中文献清空(DialogueDesk.tsx:106-112 的 effect + 121 invalidateDownstream({selected: []}))。
-  // 这里断言的是现状(重跑 1 次 + 选中丢失);产品修好后应改成:
-  //   await expect(page.getByText(/已选 3 篇/)).toBeVisible()
-  //   expect(of(calls, "/dialogue/literature-search").length).toBe(searchesBeforeReentry)
-  await expect.poll(() => of(calls, "/dialogue/literature-search").length - searchesBeforeReentry, { timeout: 8000 }).toBe(1)
-  await expect(page.getByText(/已选 3 篇/)).toHaveCount(0)
+  // 重进不重跑检索,恢复出来的选中文献保留(#2)
+  await expect(page.getByText(/已选 3 篇/)).toBeVisible()
+  await page.waitForTimeout(800) // 越过 500ms 防抖窗口,确认没有迟到的检索
+  expect(of(calls, "/dialogue/literature-search").length).toBe(searchesBeforeReentry)
 })

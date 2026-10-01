@@ -103,10 +103,12 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   }
 
   // 勾选/取消关键词 → 只触发一次合并检索(单 query,500ms 防抖)。
+  // 恢复的草稿已带候选 → 视为该组关键词已检索过,重进页面不重跑(否则会清空已选文献)。
+  const searchedSelection = useRef(state.candidates.length > 0 ? state.selectedKeywords.join(" ") : "")
   useEffect(() => {
     const selection = state.selectedKeywords.join(" ")
-    if (!selection || !question) return
-    const timer = window.setTimeout(() => { void runSearch(selection) }, 500)
+    if (!selection || !question || selection === searchedSelection.current) return
+    const timer = window.setTimeout(() => { searchedSelection.current = selection; void runSearch(selection) }, 500)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedKeywords.join(" "), question])
