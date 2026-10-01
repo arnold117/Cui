@@ -21,12 +21,12 @@ function mockFullJourney() {
     const method = init?.method ?? "GET"
     if (path.endsWith("/api/v2/workspaces/w-1") && method === "GET") return response(desk)
     if (path.endsWith("/dialogue/orientation")) return response({ hypotheses: ["RLHF 通过偏好对齐减少分布外漂移从而提升推理", "推理提升来自训练数据的分布而非对齐"], keywords: ["RLHF reasoning", "偏好对齐"] })
-    if (path.endsWith("/dialogue/literature-search")) return response({ query: "RLHF reasoning", candidates })
+    if (path.endsWith("/dialogue/literature-search")) return response({ suggested_query: "LLM free-text suggestion", executed_queries: ["RLHF reasoning"], candidates })
     if (path.endsWith("/dialogue/landscape-summary")) return response({ text: "## 这几篇覆盖了什么\nRLHF 评测覆盖了指令遵循与对齐。\n## 还没有被覆盖的\n推理链上的真实应用表现未被覆盖。" })
     if (path.endsWith("/claims")) return response({ result: { claim_id: "c1" } })
     if (path.endsWith("/review-rounds") && method === "POST") return response({ result: { review_round_id: "r1" } })
     if (path.endsWith("/literature-challenges")) return response({ result: { challenge_id: "ch-lit" } })
-    if (path.endsWith("/dialogue/gap-draft")) return response({ coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。", search_query: "rlhf reasoning", counterexample_invitation: "如有推理任务上的 RLHF 长期数据请指正。" })
+    if (path.endsWith("/dialogue/gap-draft")) return response({ coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。", counterexample_invitation: "如有推理任务上的 RLHF 长期数据请指正。" })
     if (path.endsWith("/gap-candidates") && method === "POST") return response({ result: { gap_candidate_id: "g1" } })
     if (path.includes("/gap-candidates/g1/confirm")) return response({ result: { gap_candidate_id: "g1" } })
     if (path.endsWith("/dialogue/related-work-draft")) return response({ text: "Existing work covers RLHF evaluations [arxiv:2401.00009] while the real-task gap stays open." })
@@ -104,6 +104,7 @@ describe("literature dialogue desk (staged)", () => {
     expect(propose).toBeTruthy()
     expect(JSON.parse(propose![1].body as string).matched_locators).toEqual(["arxiv:2401.00009", "arxiv:2402.00001", "arxiv:2402.00002"])
     expect(JSON.parse(propose![1].body as string).external_refs).toEqual([])  // 全是语料库内文献,无外部快照
+    expect(JSON.parse(propose![1].body as string).search_query).toBe("RLHF reasoning")  // 实际执行的检索,不是 LLM 建议词
 
     // 第 6 步:related-work 草稿
     fireEvent.click(screen.getByRole("button", { name: /生成 related-work 综述草稿/ }))
@@ -115,13 +116,13 @@ describe("literature dialogue desk (staged)", () => {
     const seed = (extra: Record<string, unknown>) => JSON.stringify({
       v: 2, workspaceId: "w-2", hypothesesText: "恢复出来的假设", hypothesesDone: true,
       keywordsText: "偏好对齐; RLHF reasoning", selectedKeywords: [], candidates: [], selected: [],
-      searchQuery: "", claimText: "", claimAck: false, confirmedGapIds: [], ...extra,
+      searchQueries: [], claimText: "", claimAck: false, confirmedGapIds: [], ...extra,
     })
     window.sessionStorage.setItem("cui:dialogue-draft:v2:w-2", seed({ savedAt: new Date().toISOString() }))
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       const path = String(url)
       if (path.endsWith("/api/v2/workspaces/w-2") && (init?.method ?? "GET") === "GET") return response(desk)
-      if (path.endsWith("/dialogue/literature-search")) return response({ query: "偏好对齐", candidates: [] })
+      if (path.endsWith("/dialogue/literature-search")) return response({ suggested_query: "偏好对齐", executed_queries: ["preference alignment"], candidates: [] })
       return response({ detail: path }, 404)
     })
     renderDesk("w-2")
@@ -165,7 +166,7 @@ describe("literature dialogue desk (staged)", () => {
   it("blocks solidifying a claim while skeleton blanks remain, with a hint", async () => {
     window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({
       v: 2, workspaceId: "w-1", hypothesesText: "h", hypothesesDone: true, keywordsText: "RLHF reasoning", selectedKeywords: ["RLHF reasoning"],
-      candidates, selected: ["arxiv:2401.00009"], searchQuery: "RLHF reasoning", summary: "## 这几篇覆盖了什么\n评测。", claimText: "", claimAck: false, confirmedGapIds: [], savedAt: new Date().toISOString(),
+      candidates, selected: ["arxiv:2401.00009"], searchQueries: ["RLHF reasoning"], summary: "## 这几篇覆盖了什么\n评测。", claimText: "", claimAck: false, confirmedGapIds: [], savedAt: new Date().toISOString(),
     }))
     mockFullJourney()
     renderDesk("w-1")

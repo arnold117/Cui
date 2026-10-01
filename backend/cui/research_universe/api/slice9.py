@@ -49,7 +49,6 @@ SYSTEM_LANDSCAPE_SUMMARY = """你是 Cui,和一个研究者一起梳理现状。
 
 SYSTEM_GAP_DRAFT = """你是 Cui 的 gap 起草助手。基于给定的研究问题(及研究者的 claim)与所选文献,起草一个 gap 候选。缺口必须相对这个研究问题来表述:文献里与问题无关的子话题不算缺口。只输出 JSON,键为:
 coverage_statement(字符串:覆盖范围声明——哪些已被覆盖、缺口在哪,至少 10 字,不要说"所以你应该做 Y"),
-search_query(字符串:可复现检索词),
 counterexample_invitation(字符串:邀请反例的措辞)。
 用中文。
 每篇文献标注了你能看到的范围:仅摘要的,不要断言摘要之外的细节。"""
@@ -132,7 +131,8 @@ class DialogueCandidate(BaseModel):
 
 
 class LiteratureSearchResponse(BaseModel):
-    query: str
+    suggested_query: str  # LLM 建议词,仅作提示;不是检索记录
+    executed_queries: list[str]  # 实际发给语料/外部源的检索词(含 CJK→英文翻译后),S20 可复现检索记录的来源
     candidates: list[DialogueCandidate]
 
 
@@ -152,7 +152,6 @@ class DraftTextResponse(BaseModel):
 
 class GapDraftResponse(BaseModel):
     coverage_statement: str
-    search_query: str
     counterexample_invitation: str
     citation_check_status: Literal["ok", "unavailable"] = "ok"
     citation_checks: list[CitationCheck] = Field(default_factory=list)
@@ -239,7 +238,7 @@ def _parse_draft_json(text: str) -> dict:
     if not match:
         raise HTTPException(502, "gap draft did not return JSON")
     data = json.loads(match.group(0))
-    for key in ("coverage_statement", "search_query", "counterexample_invitation"):
+    for key in ("coverage_statement", "counterexample_invitation"):
         if not isinstance(data.get(key), str) or not data[key].strip():
             raise HTTPException(502, f"gap draft missing field: {key}")
     return data
@@ -365,6 +364,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                 pass
         corpus_query = translated_en or query
         external_query = translated_en or query
+        executed_queries = list(dict.fromkeys([corpus_query, *([external_query] if body.external else [])]))
         ranked = ranked_corpus_hits(store, _active(store, context), "active", corpus_query, 10)
         pool: list[dict] = []
         seen: set[str] = set()
@@ -378,7 +378,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                 seen.add(ext["locator"])
                 pool.append({**ext, "source": ext["source"], "material_id": None})
         if not pool:
-            return {"query": query, "candidates": []}
+            return {"suggested_query": query, "executed_queries": executed_queries, "candidates": []}
         candidate_lines = "\n".join(f"- [{c['locator']}] ({c['source']}) {c['title']}" for c in pool)
         prompt_context = f"问题:{body.question}"
         if translated_en and translated_en != query:
@@ -406,7 +406,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                 })
             if len(picks) >= 8:
                 break
-        return {"query": (text.get("query") if isinstance(text, dict) else None) or query, "candidates": picks}
+        return {"suggested_query": (text.get("query") if isinstance(text, dict) else None) or query, "executed_queries": executed_queries, "candidates": picks}
 
     def _llm():
         if client is None:

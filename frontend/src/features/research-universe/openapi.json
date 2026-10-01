@@ -1035,15 +1035,10 @@
           "coverage_statement": {
             "title": "Coverage Statement",
             "type": "string"
-          },
-          "search_query": {
-            "title": "Search Query",
-            "type": "string"
           }
         },
         "required": [
           "coverage_statement",
-          "search_query",
           "counterexample_invitation"
         ],
         "title": "GapDraftResponse",
@@ -1159,13 +1154,21 @@
             "title": "Candidates",
             "type": "array"
           },
-          "query": {
-            "title": "Query",
+          "executed_queries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Executed Queries",
+            "type": "array"
+          },
+          "suggested_query": {
+            "title": "Suggested Query",
             "type": "string"
           }
         },
         "required": [
-          "query",
+          "suggested_query",
+          "executed_queries",
           "candidates"
         ],
         "title": "LiteratureSearchResponse",

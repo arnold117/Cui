@@ -115,7 +115,7 @@ def test_transient_endpoints_need_client_and_work_with_fake():
         def complete_json(self, system, user, retries=2): raise AssertionError("unused")
     fake = _Fake([
         "## 这几篇覆盖了什么\nRLHF 评测覆盖了指令遵循。",
-        json.dumps({"coverage_statement": "文献覆盖了评测方法,但没有覆盖推理链上的真实应用缺口。", "search_query": "RLHF reasoning evaluation", "counterexample_invitation": "如有推理任务上的 RLHF 数据请指正。"}),
+        json.dumps({"coverage_statement": "文献覆盖了评测方法,但没有覆盖推理链上的真实应用缺口。", "counterexample_invitation": "如有推理任务上的 RLHF 数据请指正。"}),
         "Related work paragraph body with [arxiv:2401.00001].",
     ])
     app = FastAPI()
@@ -166,6 +166,17 @@ def test_literature_search_endpoint_picks_valid_locators_only(monkeypatch):
     assert locators == ["arxiv:2401.00009"]
     assert body["candidates"][0]["material_id"]
     assert body["candidates"][0]["source"] == "corpus"
+    assert body["executed_queries"] == ["rlhf"] and body["suggested_query"] == "rlhf reasoning"
+
+
+def test_gap_draft_does_not_require_or_invent_search_query():
+    store, universe, service, wid, mat, rid = _seed()
+    fake = type("F", (), {"complete": lambda self, s, u: '{"coverage_statement": "文献覆盖了评测方法,但缺推理应用的缺口。", "counterexample_invitation": "c"}', "complete_json": lambda self, s, u, retries=2: {}})()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/gap-draft", json={"material_ids": [mat]})
+    assert resp.status_code == 200, resp.text
+    assert "search_query" not in resp.json()
 
 
 def test_corpus_materials_allowed_in_any_workspace_dialogue_and_challenge():
@@ -263,7 +274,10 @@ def test_cjk_question_translates_query_for_external_sources(monkeypatch):
     resp = TestClient(app).post(f"/api/v2/workspaces/{wid}/dialogue/literature-search", json={"question": "为什么美国最强大?", "query": "美国霸权"})
     assert resp.status_code == 200
     assert captured.get("query") == "US hegemony international order"
-    candidates = resp.json()["candidates"]
+    body = resp.json()
+    assert body["executed_queries"] == [captured["query"]]  # S20: 记录的是实际执行的(翻译后)检索,不是 LLM 建议词
+    assert body["suggested_query"] == "美国霸权"
+    candidates = body["candidates"]
     assert candidates and candidates[0]["locator"] == "doi:10.1000/hegemony-test"
 
 

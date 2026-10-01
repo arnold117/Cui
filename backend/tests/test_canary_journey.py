@@ -13,6 +13,13 @@ def test_camp_structure_check():
     assert cj.check_related_work_not_claim_shaped(cj.CLAIM_TEXT, "已有工作从评测基准角度考察推理能力的变化 [arxiv:1]。")[0]
 
 
+def test_gap_search_record_check():
+    assert cj.check_gap_search_record(["RLHF reasoning"], "RLHF reasoning")[0]
+    assert cj.check_gap_search_record(["a b", "c d"], "a b ; c d")[0]
+    assert not cj.check_gap_search_record(["RLHF reasoning"], "LLM invented query")[0]
+    assert not cj.check_gap_search_record([], "x")[0]
+
+
 def test_anchor_and_flag_ratio():
     assert cj.check_anchored("x", "RLHF 与 Reasoning", cj.DEFAULT_CORE_TERMS)[0]
     assert not cj.check_anchored("x", "完全无关", cj.DEFAULT_CORE_TERMS)[0]

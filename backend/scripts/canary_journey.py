@@ -72,6 +72,12 @@ def check_no_empty_locators(candidates: list[dict]) -> tuple[bool, str]:
     return (not bad, f"{len(candidates)} candidates, empty-id locators={bad}")
 
 
+def check_gap_search_record(executed_queries: list[str], stored: str) -> tuple[bool, str]:
+    """S20: the persisted gap search_query must be the query actually executed, not an LLM suggestion."""
+    ok = bool(executed_queries) and all(q in stored for q in executed_queries)
+    return (ok, f"executed={executed_queries!r}, stored={stored!r}")
+
+
 def check_anchored(label: str, text: str, core_terms) -> tuple[bool, str]:
     hit = [t for t in core_terms if t.lower() in (text or "").lower()]
     return (bool(hit), f"{label}: core terms hit={hit} of {list(core_terms)}")
@@ -183,7 +189,7 @@ def run(question: str, core_terms: tuple[str, ...] | None) -> int:
 
         search = call("literature-search", f"/workspaces/{wid}/dialogue/literature-search", {"question": question, "query": ori["keywords"][0], "external": True})
         cands = search["candidates"]
-        rep.check("literature-search >=3 candidates", len(cands) >= 3, f"{len(cands)} candidates, query={search['query']!r}")
+        rep.check("literature-search >=3 candidates", len(cands) >= 3, f"{len(cands)} candidates, executed={search['executed_queries']!r}")
         rep.check("no empty-id locators", *check_no_empty_locators(cands))
         usable = [c for c in cands if c["excerpt"].strip() and c["locator"].strip()][:3]
         refs = [{"locator": c["locator"], "excerpt": c["excerpt"], "url": c.get("url")} for c in usable]
@@ -200,7 +206,7 @@ def run(question: str, core_terms: tuple[str, ...] | None) -> int:
 
         gap = call("gap-draft", f"/workspaces/{wid}/dialogue/gap-draft", sel)
         prop = call("propose-gap", f"/workspaces/{wid}/gap-candidates", {
-            "command_id": "g", "expected_sequence": 0, "coverage_statement": gap["coverage_statement"], "search_query": gap["search_query"] or search["query"],
+            "command_id": "g", "expected_sequence": 0, "coverage_statement": gap["coverage_statement"], "search_query": " ; ".join(search["executed_queries"]),
             "matched_locators": picked, "counterexample_invitation": gap["counterexample_invitation"] or "请指出反例", "external_refs": refs})
         call("confirm-gap", f"/gap-candidates/{prop['result']['gap_candidate_id']}/confirm", {"command_id": "gc", "expected_sequence": 1})
         related = call("related-work-draft", f"/workspaces/{wid}/dialogue/related-work-draft", {**sel, "gap_ids": []})
@@ -218,6 +224,7 @@ def run(question: str, core_terms: tuple[str, ...] | None) -> int:
     rep.check("challenge basis_refs resolve to stored materials", *check_refs_resolve(events, [r for c in lit for r in c.basis_refs]))
     gaps = [e.validated_payload() for e in events if e.event_type == "gap_candidate_proposed"]
     rep.check("gap matched_locators resolve to stored materials", *check_refs_resolve(events, [r for g in gaps for r in g.matched_locators]))
+    rep.check("gap search_query = executed literature-search query", *check_gap_search_record(search["executed_queries"], gaps[-1].search_query if gaps else ""))
     kinds = [e.validated_payload().kind for e in events if e.event_type == "claim_created"]
     rep.check("claim event carries kind", kinds == [CLAIM_KIND], f"kinds={kinds}")
 

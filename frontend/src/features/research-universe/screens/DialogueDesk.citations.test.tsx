@@ -9,7 +9,7 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 const desk = { id: "w-1", question: { version_id: "q-1", text: "Why does RLHF improve reasoning?" }, sequence: 0, note: null, note_revisions: [], anchors: [], claims: [], review_rounds: [], pending_challenges: [] }
 const candidates = [{ material_id: "m1", locator: "arxiv:2401.00009", title: "RLHF reasoning paper", reason: "r", source: "corpus", stance: "s", relation: { kind: "supports", note: "n" } }]
 
-const gapWithCheck = { coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用 [arxiv:2401.00009]。", search_query: "q", counterexample_invitation: "请指正。", citation_check_status: "ok", citation_checks: [{ sentence: "文献覆盖了评测方法 [arxiv:2401.00009]。", locator: "arxiv:2401.00009", verdict: "unsupported", scope: "abstract" }] }
+const gapWithCheck = { coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用 [arxiv:2401.00009]。", counterexample_invitation: "请指正。", citation_check_status: "ok", citation_checks: [{ sentence: "文献覆盖了评测方法 [arxiv:2401.00009]。", locator: "arxiv:2401.00009", verdict: "unsupported", scope: "abstract" }] }
 
 function mockApi() {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -20,7 +20,7 @@ function mockApi() {
   })
 }
 
-const base = { v: 2, hypothesesText: "h", hypothesesDone: true, keywordsText: "", selectedKeywords: [], candidates, selected: ["arxiv:2401.00009"], searchQuery: "q", summary: "## 这几篇覆盖了什么\n评测。", claimText: "c", roundId: "r1", claimAck: true, confirmedGapIds: [] as string[] }
+const base = { v: 2, hypothesesText: "h", hypothesesDone: true, keywordsText: "", selectedKeywords: [], candidates, selected: ["arxiv:2401.00009"], searchQueries: ["q"], summary: "## 这几篇覆盖了什么\n评测。", claimText: "c", roundId: "r1", claimAck: true, confirmedGapIds: [] as string[] }
 const seed = (extra: Record<string, unknown>) => window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({ ...base, workspaceId: "w-1", ...extra, savedAt: new Date().toISOString() }))
 const renderDesk = () => render(<AppRouter><DialogueDesk workspaceId="w-1" /></AppRouter>)
 

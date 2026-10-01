@@ -23,7 +23,8 @@ export interface DialogueDraft {
   selectedKeywords: string[]
   candidates: DialogueCandidate[]
   selected: string[] // locators
-  searchQuery: string
+  /** literature-search 实际执行的检索词(S20 可复现检索记录);LLM 建议词不入档。 */
+  searchQueries: string[]
   summary?: string
   summaryCheck?: CitationReport
   claimKind?: ClaimKind
@@ -40,7 +41,7 @@ export interface DialogueDraft {
 }
 
 export function emptyDraft(workspaceId: string): DialogueDraft {
-  return { v: 2, workspaceId, hypothesesText: "", hypothesesDone: false, keywordsText: "", selectedKeywords: [], candidates: [], selected: [], searchQuery: "", claimText: "", claimAck: false, confirmedGapIds: [] }
+  return { v: 2, workspaceId, hypothesesText: "", hypothesesDone: false, keywordsText: "", selectedKeywords: [], candidates: [], selected: [], searchQueries: [], claimText: "", claimAck: false, confirmedGapIds: [] }
 }
 
 export const STAGE_COUNT = 6

@@ -44,12 +44,12 @@ async function mockJourney(page: Page, calls: Call[]) {
     if (url === "/api/v2/universes/active" && method === "GET") return json({ id: "u-1" })
     if (url === "/api/v2/workspaces/w-1" && method === "GET") return json(desk)
     if (url.endsWith("/dialogue/orientation")) return json({ hypotheses: ["RLHF 通过偏好对齐减少分布外漂移从而提升推理", "推理提升来自训练数据的分布而非对齐"], keywords: ["RLHF reasoning", "偏好对齐"] } satisfies S["OrientationResponse"])
-    if (url.endsWith("/dialogue/literature-search")) return json({ query: "RLHF reasoning", candidates } satisfies S["LiteratureSearchResponse"])
+    if (url.endsWith("/dialogue/literature-search")) return json({ suggested_query: "LLM free-text suggestion", executed_queries: ["RLHF reasoning"], candidates } satisfies S["LiteratureSearchResponse"])
     if (url.endsWith("/dialogue/landscape-summary")) return json({ text: "## 这几篇覆盖了什么\nRLHF 评测覆盖了指令遵循与对齐。\n## 还没有被覆盖的\n推理链上的真实应用表现未被覆盖。" } satisfies S["DraftTextResponse"])
     if (url.endsWith("/claims") && method === "POST") return json({ result: { claim_id: "c1" } })
     if (url.endsWith("/review-rounds") && method === "POST") return json({ result: { review_round_id: "r1" } })
     if (url.endsWith("/literature-challenges")) return json({ result: { challenge_id: "ch-lit" } })
-    if (url.endsWith("/dialogue/gap-draft")) return json({ coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。", search_query: "rlhf reasoning", counterexample_invitation: "如有推理任务上的 RLHF 长期数据请指正。" } satisfies S["GapDraftResponse"])
+    if (url.endsWith("/dialogue/gap-draft")) return json({ coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。", counterexample_invitation: "如有推理任务上的 RLHF 长期数据请指正。" } satisfies S["GapDraftResponse"])
     if (url.endsWith("/gap-candidates") && method === "POST") return json({ result: { gap_candidate_id: "g1" } })
     if (url.endsWith("/gap-candidates/g1/confirm")) return json({ result: { gap_candidate_id: "g1" } })
     if (url.endsWith("/dialogue/related-work-draft")) return json({ text: "Existing work covers RLHF evaluations [arxiv:2401.00009] while the real-task gap stays open." } satisfies S["DraftTextResponse"])
@@ -138,7 +138,7 @@ test("walks the six-stage dialogue journey with real layout assertions", async (
   await expect(page.getByText(/✓ gap 已确认 ×1/)).toBeVisible({ timeout: 8000 })
   const propose = of(calls, "/gap-candidates")[0]
   expect(propose.body?.matched_locators).toEqual(["arxiv:2401.00009", "arxiv:2402.00001", "arxiv:2402.00002"])
-  expect(propose.body?.search_query).toBe("rlhf reasoning")
+  expect(propose.body?.search_query).toBe("RLHF reasoning")
   expect(of(calls, "/gap-candidates/g1/confirm")[0].body?.user_reason).toBe("人审确认")
 
   // ── 第 6 步:related-work 草稿 ──

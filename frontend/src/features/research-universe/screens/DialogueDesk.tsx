@@ -139,7 +139,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     try {
       const result = await researchUniverse.literatureSearch(workspaceId, { question, query: q || undefined })
       setSearchedEmpty(result.candidates.length === 0)
-      invalidateDownstream({ candidates: result.candidates, selected: [], searchQuery: result.query })
+      invalidateDownstream({ candidates: result.candidates, selected: [], searchQueries: result.executed_queries })
     } catch (e) { setError(e instanceof Error ? e.message : "检索失败") } finally { setBusy(false) }
   }
 
@@ -202,7 +202,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     try {
       const proposed = await researchUniverse.proposeGapCandidate(workspaceId, command({
         coverage_statement: coverage,
-        search_query: state.gapDraft.search_query.trim() || state.searchQuery || "(未检索,手工登记)",
+        search_query: state.searchQueries.join(" ; ") || "(未检索,手工登记)",
         search_scope: "active",
         matched_locators: state.selected,
         external_refs: externalRefs,
@@ -442,6 +442,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       </div>}
       {state.gapDraft && !gapConfirmed && <div className="ru-material-form">
         <p className="ru-kicker">gap 形状:覆盖声明 + 检索记录 + 反例邀请(Cui 起草,你改,你署名)</p>
+        <p className="ru-copy">检索记录(实际执行):{state.searchQueries.join(" ; ") || "(未检索,手工登记)"}</p>
         <label htmlFor="d-coverage">覆盖范围声明(哪些已被覆盖、缺口在哪)</label>
         <textarea id="d-coverage" className="ru-conclusion-text" value={state.gapDraft.coverage_statement} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, coverage_statement: e.target.value, citation_checks: [], citation_check_status: "ok" } })} /* 改写后旧核对不再适用 */ />
         <CitationCheckList report={state.gapDraft} />

@@ -1297,8 +1297,6 @@ export interface components {
             counterexample_invitation: string;
             /** Coverage Statement */
             coverage_statement: string;
-            /** Search Query */
-            search_query: string;
         };
         /** GenerateEvidenceCandidateCommand */
         GenerateEvidenceCandidateCommand: {
@@ -1341,8 +1339,10 @@ export interface components {
         LiteratureSearchResponse: {
             /** Candidates */
             candidates: components["schemas"]["DialogueCandidate"][];
-            /** Query */
-            query: string;
+            /** Executed Queries */
+            executed_queries: string[];
+            /** Suggested Query */
+            suggested_query: string;
         };
         /** MaterialCommand */
         MaterialCommand: {
