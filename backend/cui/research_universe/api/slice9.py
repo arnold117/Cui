@@ -31,6 +31,7 @@ from cui.research_universe.application import (
     Slice1Service,
     review_round_projection,
 )
+from cui.tools.v4_importer import first_title
 from cui.research_universe.store.event_store import (
     CommandFingerprintConflict,
     ExpectedSequenceConflict,
@@ -117,7 +118,7 @@ def _selected_materials(store, universe_id: str, workspace_id: str, material_ids
         payload = event.validated_payload()
         if payload.workspace_id not in allowed:
             continue
-        by_id[payload.material_id] = {"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "title": payload.excerpt.splitlines()[0][:80] if payload.excerpt else "", "excerpt": payload.excerpt}
+        by_id[payload.material_id] = {"material_id": payload.material_id, "locator": payload.source_locator or payload.material_id, "title": first_title(payload.excerpt)[:80] if payload.excerpt else "", "excerpt": payload.excerpt}
     missing = set(material_ids) - set(by_id)
     if missing:
         raise HTTPException(404, f"material not in workspace nor corpus: {sorted(missing)[0]}")

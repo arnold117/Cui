@@ -92,9 +92,13 @@ def first_title(markdown: str) -> str:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.startswith("#"):
-            return stripped.lstrip("#").strip()
-        return stripped[:120]
+        # v4 material text is markdown: drop heading marks and emphasis
+        # (`**A** **B**` splits collapse to one space) so titles render plain.
+        title = re.sub(r"^#+\s*", "", stripped)
+        title = re.sub(r"(\*\*|__)\s+(\*\*|__)", " ", title)
+        title = re.sub(r"\*\*|__", "", title).strip("*_ ")
+        if title:
+            return title[:120]
     return "(untitled)"
 
 

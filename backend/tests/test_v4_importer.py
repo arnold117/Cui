@@ -41,6 +41,17 @@ def test_first_title_from_markdown_heading():
     assert imp.first_title(md) == "Attention Is All You Need"
 
 
+
+def test_first_title_strips_markdown_emphasis():
+    assert imp.first_title("**Instruction Tuning for Large Language Models: A Survey**\n\nbody") == (
+        "Instruction Tuning for Large Language Models: A Survey"
+    )
+    assert imp.first_title("**Vision-R1: Incentivizing Reasoning** **via Vision-Guided RL**") == (
+        "Vision-R1: Incentivizing Reasoning via Vision-Guided RL"
+    )
+    assert imp.first_title("## __Plain Heading__") == "Plain Heading"
+    assert imp.first_title("A Plain snake_case Title") == "A Plain snake_case Title"
+
 def test_sanitize_text_strips_control_chars_keeps_newlines():
     dirty = "line one\x00\x01\x02\x1ftwo\n\tthree\rfour"
     assert imp.sanitize_text(dirty) == "line onetwo\n\tthree\rfour"
