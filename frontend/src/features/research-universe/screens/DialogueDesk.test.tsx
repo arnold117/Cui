@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppRouter } from "../../../router"
 import { DialogueDesk } from "./DialogueDesk"
@@ -178,7 +178,7 @@ describe("literature dialogue desk (staged)", () => {
     expect(solidify).toBeEnabled()
     expect(screen.queryByText("还有 ____ 没填")).not.toBeInTheDocument()
   })
-  it("step 5: a confirmed gap can be challenged by signing a pre-filled vacancy claim into a review round", async () => {
+  it("step 6: a confirmed gap can be challenged (entry visible without expanding step 5) by signing a pre-filled vacancy claim into a review round", async () => {
     const coverage = "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。"
     window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({
       v: 2, workspaceId: "w-1", hypothesesText: "h", hypothesesDone: true, keywordsText: "x", selectedKeywords: [],
@@ -194,7 +194,7 @@ describe("literature dialogue desk (staged)", () => {
       return base(url, init)
     })
     renderDesk("w-1")
-    fireEvent.click(within(await screen.findByLabelText(/已完成:第 5 步/, {}, { timeout: 3000 })).getByRole("button"))
+    // gap 确认后停在第 6 步:入口直接可见,无需展开已折叠的第 5 步
     fireEvent.click(await screen.findByRole("button", { name: "对这个 gap 发起反证" }, { timeout: 3000 }))
     const box = screen.getByLabelText("反证用 claim(空缺断言)") as HTMLTextAreaElement
     expect(box.value).toContain("没有覆盖推理链真实应用的长期表现")
