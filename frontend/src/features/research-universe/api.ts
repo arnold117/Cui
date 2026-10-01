@@ -1,5 +1,7 @@
+import type { components } from "./api.gen"
 import type { AbsorbWorkspaceEnvelope, DialogueExternalRef, GapDraftFields, LiteratureChallengeEnvelope, LiteratureSearchResponse, CorpusSearchResponse, GapDecisionEnvelope, GapProposeEnvelope, AddMaterialEnvelope, AnswerChallengeEnvelope, AttachCrystallizationEnvelope, AttachDirectionEnvelope, BranchWorkspaceEnvelope, Claim, CommandEnvelope, CommandResponse, ConcludeWorkspaceEnvelope, ConfirmVerdictEnvelope, CorrectEvidenceEnvelope, CreateDirectionEnvelope, DecideEvidenceEnvelope, DeclareDirectionStatusEnvelope, DeferChallengeEnvelope, DetachDirectionLinkEnvelope, Direction, ExplorationAnchor, ExplorationNote, GenerateEvidenceCandidateEnvelope, HomeProjection, PauseWorkspaceEnvelope, ProposeEvidenceCandidateEnvelope, ReopenWorkspaceEnvelope, RephraseDirectionEnvelope, ReviewRound, WithdrawChallengeEnvelope, WorkspaceDesk } from "./types"
 
+type S = components["schemas"]
 const BASE = "/api/v2"
 function commandId() { return globalThis.crypto?.randomUUID?.() ?? `cmd-${Date.now()}-${Math.random().toString(16).slice(2)}` }
 export function command<T extends object>(payload: T, expected_sequence: CommandEnvelope["expected_sequence"], existing?: CommandEnvelope): T & CommandEnvelope { return existing ? { ...payload, ...existing } : { ...payload, command_id: commandId(), expected_sequence } }
@@ -21,13 +23,13 @@ export interface ActiveUniverse { id: string; library_id?: string }
 export const researchUniverse = {
   active: () => read<ActiveUniverse>("/universes/active"),
   home: (universeId: string) => read<HomeProjection>(`/universes/${universeId}/home`),
-  createWorkspace: (universeId: string, envelope: CommandEnvelope & { question: string }) => send<CommandResponse<{ workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/universes/${universeId}/workspaces`, envelope),
+  createWorkspace: (universeId: string, envelope: S["WorkspaceCommand"]) => send<CommandResponse<{ workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/universes/${universeId}/workspaces`, envelope),
   desk: (workspaceId: string) => read<WorkspaceDesk>(`/workspaces/${workspaceId}`),
-  saveNote: (workspaceId: string, envelope: CommandEnvelope & { text: string }) => send<CommandResponse<{ note_id: string; note_revision_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/notes`, envelope),
-  createAnchor: (workspaceId: string, envelope: CommandEnvelope & { note_id: string; note_revision_id: string; start: number; end: number; selected_text: string }) => send<CommandResponse<{ anchor_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/anchors`, envelope),
-  createClaim: (workspaceId: string, envelope: CommandEnvelope & { text: string }) => send<CommandResponse<{ claim_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims`, envelope),
-  forgeProvenance: (workspaceId: string, envelope: CommandEnvelope & { claim_id: string; capture_id: string; release_id: string }) => send<CommandResponse<{ aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims/forge-provenance`, envelope),
-  startReview: (claimId: string, envelope: CommandEnvelope) => send<CommandResponse<{ review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/claims/${claimId}/review-rounds`, envelope),
+  saveNote: (workspaceId: string, envelope: S["NoteCommand"]) => send<CommandResponse<{ note_id: string; note_revision_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/notes`, envelope),
+  createAnchor: (workspaceId: string, envelope: S["AnchorCommand"]) => send<CommandResponse<{ anchor_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/anchors`, envelope),
+  createClaim: (workspaceId: string, envelope: S["ClaimCommand"]) => send<CommandResponse<{ claim_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims`, envelope),
+  forgeProvenance: (workspaceId: string, envelope: S["ForgeCommand"]) => send<CommandResponse<{ aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/claims/forge-provenance`, envelope),
+  startReview: (claimId: string, envelope: S["Command"]) => send<CommandResponse<{ review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/claims/${claimId}/review-rounds`, envelope),
   reviewRound: (roundId: string) => read<ReviewRound>(`/review-rounds/${roundId}`),
   answerChallenge: (challengeId: string, envelope: AnswerChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; answer_version_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/answers`, envelope),
   deferChallenge: (challengeId: string, envelope: DeferChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/challenges/${challengeId}/defer`, envelope),
@@ -36,7 +38,7 @@ export const researchUniverse = {
   addMaterial: (workspaceId: string, envelope: AddMaterialEnvelope) => send<CommandResponse<{ material_id: string; workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/materials`, envelope),
   proposeEvidenceCandidate: (roundId: string, envelope: ProposeEvidenceCandidateEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/evidence-candidates`, envelope),
   // Slice 6 — expanded LLM generation
-  generateAdditionalChallenge: (roundId: string, envelope: CommandEnvelope) => send<CommandResponse<{ challenge_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/challenges`, envelope),
+  generateAdditionalChallenge: (roundId: string, envelope: S["Command"]) => send<CommandResponse<{ challenge_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/challenges`, envelope),
   generateEvidenceCandidate: (roundId: string, envelope: GenerateEvidenceCandidateEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/evidence-candidate-generation`, envelope),
   confirmEvidence: (candidateId: string, envelope: DecideEvidenceEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; relation: string; challenge_id?: string; aggregate_sequences?: Record<string, number> }>>(`/evidence-candidates/${candidateId}/confirm`, envelope),
   correctEvidence: (candidateId: string, envelope: CorrectEvidenceEnvelope) => send<CommandResponse<{ candidate_id: string; round_id: string; relation: string; challenge_id?: string; aggregate_sequences?: Record<string, number> }>>(`/evidence-candidates/${candidateId}/correct`, envelope),
@@ -61,11 +63,11 @@ export const researchUniverse = {
   confirmGapCandidate: (candidateId: string, envelope: GapDecisionEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/gap-candidates/${candidateId}/confirm`, envelope),
   rejectGapCandidate: (candidateId: string, envelope: GapDecisionEnvelope) => send<CommandResponse<{ gap_candidate_id: string; aggregate_sequences?: Record<string, number> }>>(`/gap-candidates/${candidateId}/reject`, envelope),
   // slice1 second cut — literature dialogue surface
-  orientation: (workspaceId: string, question: string) => send<{ hypotheses: string[]; keywords: string[] }>(`/workspaces/${workspaceId}/dialogue/orientation`, { question }),
-  literatureSearch: (workspaceId: string, body: { question: string; query?: string }) => send<LiteratureSearchResponse>(`/workspaces/${workspaceId}/dialogue/literature-search`, body),
-  landscapeSummary: (workspaceId: string, materialIds: string[], externalRefs: DialogueExternalRef[] = []) => send<{ text: string }>(`/workspaces/${workspaceId}/dialogue/landscape-summary`, { material_ids: materialIds, external_refs: externalRefs }),
-  gapDraft: (workspaceId: string, materialIds: string[], externalRefs: DialogueExternalRef[] = []) => send<GapDraftFields>(`/workspaces/${workspaceId}/dialogue/gap-draft`, { material_ids: materialIds, external_refs: externalRefs }),
-  relatedWorkDraft: (workspaceId: string, materialIds: string[], gapIds: string[], externalRefs: DialogueExternalRef[] = []) => send<{ text: string }>(`/workspaces/${workspaceId}/dialogue/related-work-draft`, { material_ids: materialIds, gap_ids: gapIds, external_refs: externalRefs }),
+  orientation: (workspaceId: string, question: string) => send<S["OrientationResponse"]>(`/workspaces/${workspaceId}/dialogue/orientation`, { question } satisfies S["OrientationCommand"]),
+  literatureSearch: (workspaceId: string, body: S["LiteratureSearchCommand"]) => send<LiteratureSearchResponse>(`/workspaces/${workspaceId}/dialogue/literature-search`, body),
+  landscapeSummary: (workspaceId: string, materialIds: string[], externalRefs: DialogueExternalRef[] = []) => send<S["DraftTextResponse"]>(`/workspaces/${workspaceId}/dialogue/landscape-summary`, { material_ids: materialIds, external_refs: externalRefs } satisfies S["MaterialSelectionCommand"]),
+  gapDraft: (workspaceId: string, materialIds: string[], externalRefs: DialogueExternalRef[] = []) => send<GapDraftFields>(`/workspaces/${workspaceId}/dialogue/gap-draft`, { material_ids: materialIds, external_refs: externalRefs } satisfies S["MaterialSelectionCommand"]),
+  relatedWorkDraft: (workspaceId: string, materialIds: string[], gapIds: string[], externalRefs: DialogueExternalRef[] = []) => send<S["DraftTextResponse"]>(`/workspaces/${workspaceId}/dialogue/related-work-draft`, { material_ids: materialIds, gap_ids: gapIds, external_refs: externalRefs } satisfies S["RelatedWorkDraftCommand"]),
   literatureChallenge: (roundId: string, envelope: LiteratureChallengeEnvelope) => send<CommandResponse<{ challenge_id: string; review_round_id: string; aggregate_sequences?: Record<string, number> }>>(`/review-rounds/${roundId}/literature-challenges`, envelope),
 }
 export type { Claim, ExplorationAnchor, ExplorationNote }

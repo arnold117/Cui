@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
@@ -104,6 +105,43 @@ class MaterialSelectionCommand(BaseModel):
 
 class RelatedWorkDraftCommand(MaterialSelectionCommand):
     gap_ids: list[str] = Field(default_factory=list)
+
+
+class OrientationResponse(BaseModel):
+    hypotheses: list[str]
+    keywords: list[str]
+
+
+class CandidateRelation(BaseModel):
+    kind: Literal["supports", "partial", "opposes", "background"]
+    note: str
+
+
+class DialogueCandidate(BaseModel):
+    material_id: str | None = None
+    locator: str
+    title: str
+    reason: str
+    source: str
+    url: str | None = None
+    excerpt: str
+    stance: str
+    relation: CandidateRelation
+
+
+class LiteratureSearchResponse(BaseModel):
+    query: str
+    candidates: list[DialogueCandidate]
+
+
+class DraftTextResponse(BaseModel):
+    text: str
+
+
+class GapDraftResponse(BaseModel):
+    coverage_statement: str
+    search_query: str
+    counterexample_invitation: str
 
 
 def _selected_materials(store, universe_id: str, workspace_id: str, material_ids: list[str]) -> list[dict]:
@@ -217,7 +255,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         except Exception as exc:
             fail(exc)
 
-    @router.post("/workspaces/{workspace_id}/dialogue/orientation")
+    @router.post("/workspaces/{workspace_id}/dialogue/orientation", response_model=OrientationResponse)
     def orientation(workspace_id: str, body: OrientationCommand):
         """Fresh-question gate (product journey §0/§1): candidate hypotheses +
         search keywords for a brand-new question. Transient; nothing stored."""
@@ -232,7 +270,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             raise HTTPException(502, "orientation returned no usable hypotheses/keywords")
         return {"hypotheses": hypotheses, "keywords": keywords}
 
-    @router.post("/workspaces/{workspace_id}/dialogue/literature-search")
+    @router.post("/workspaces/{workspace_id}/dialogue/literature-search", response_model=LiteratureSearchResponse)
     def literature_search(workspace_id: str, body: LiteratureSearchCommand):
         # sync def + asyncio.run: LLM client is synchronous, so an async handler
         # would freeze the whole event loop for every request (DeepSeek can take
@@ -302,7 +340,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
             raise HTTPException(503, "LLM client not configured in this app")
         return client
 
-    @router.post("/workspaces/{workspace_id}/dialogue/landscape-summary")
+    @router.post("/workspaces/{workspace_id}/dialogue/landscape-summary", response_model=DraftTextResponse)
     def landscape_summary(workspace_id: str, body: MaterialSelectionCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
         items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
@@ -316,7 +354,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         except Exception as exc:
             raise HTTPException(502, f"landscape summary failed: {exc}") from exc
 
-    @router.post("/workspaces/{workspace_id}/dialogue/gap-draft")
+    @router.post("/workspaces/{workspace_id}/dialogue/gap-draft", response_model=GapDraftResponse)
     def gap_draft(workspace_id: str, body: MaterialSelectionCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
         items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])
@@ -330,7 +368,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         except Exception as exc:
             raise HTTPException(502, f"gap draft failed: {exc}") from exc
 
-    @router.post("/workspaces/{workspace_id}/dialogue/related-work-draft")
+    @router.post("/workspaces/{workspace_id}/dialogue/related-work-draft", response_model=DraftTextResponse)
     def related_work_draft(workspace_id: str, body: RelatedWorkDraftCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
         items = _chosen_items(store, universe_id, workspace_id, body.material_ids, [r.model_dump() for r in body.external_refs])

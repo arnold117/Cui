@@ -1,0 +1,4343 @@
+{
+  "components": {
+    "schemas": {
+      "AbsorbCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "target_workspace_id": {
+            "title": "Target Workspace Id",
+            "type": "string"
+          },
+          "user_reason": {
+            "minLength": 1,
+            "title": "User Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "target_workspace_id",
+          "user_reason"
+        ],
+        "title": "AbsorbCommand",
+        "type": "object"
+      },
+      "AnchorCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "end": {
+            "exclusiveMinimum": 0.0,
+            "title": "End",
+            "type": "integer"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "note_id": {
+            "title": "Note Id",
+            "type": "string"
+          },
+          "note_revision_id": {
+            "title": "Note Revision Id",
+            "type": "string"
+          },
+          "selected_text": {
+            "minLength": 1,
+            "title": "Selected Text",
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "note_id",
+          "note_revision_id",
+          "start",
+          "end",
+          "selected_text"
+        ],
+        "title": "AnchorCommand",
+        "type": "object"
+      },
+      "AnswerCommand": {
+        "properties": {
+          "answer_text": {
+            "minLength": 1,
+            "title": "Answer Text",
+            "type": "string"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "provisional_anchor_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Provisional Anchor Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "answer_text"
+        ],
+        "title": "AnswerCommand",
+        "type": "object"
+      },
+      "ArchiveArtifactDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "additionalProperties": true,
+            "title": "Artifact",
+            "type": "object"
+          },
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "conversations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Conversations",
+            "type": "array"
+          },
+          "materials": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "projects": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "trajectory": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Trajectory",
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifact",
+          "claims",
+          "materials",
+          "projects",
+          "conversations",
+          "trajectory"
+        ],
+        "title": "ArchiveArtifactDetail",
+        "type": "object"
+      },
+      "AttachCrystallizationCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "conclusion_id": {
+            "title": "Conclusion Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "workspace_id",
+          "conclusion_id"
+        ],
+        "title": "AttachCrystallizationCommand",
+        "type": "object"
+      },
+      "AttachDirectionCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "direction_id": {
+            "title": "Direction Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "direction_id"
+        ],
+        "title": "AttachDirectionCommand",
+        "type": "object"
+      },
+      "BranchCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "new_question": {
+            "minLength": 1,
+            "title": "New Question",
+            "type": "string"
+          },
+          "user_reason": {
+            "minLength": 1,
+            "title": "User Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "new_question",
+          "user_reason"
+        ],
+        "title": "BranchCommand",
+        "type": "object"
+      },
+      "CandidateRelation": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "supports",
+              "partial",
+              "opposes",
+              "background"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "note"
+        ],
+        "title": "CandidateRelation",
+        "type": "object"
+      },
+      "CaptureCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "original_text": {
+            "minLength": 1,
+            "title": "Original Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "original_text"
+        ],
+        "title": "CaptureCommand",
+        "type": "object"
+      },
+      "ClaimCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "text"
+        ],
+        "title": "ClaimCommand",
+        "type": "object"
+      },
+      "Command": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "Command",
+        "type": "object"
+      },
+      "CommandResponse": {
+        "properties": {
+          "commit_position": {
+            "title": "Commit Position",
+            "type": "integer"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Ids",
+            "type": "array"
+          },
+          "fragment": {
+            "additionalProperties": true,
+            "title": "Fragment",
+            "type": "object"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          }
+        },
+        "required": [
+          "commit_position",
+          "event_ids",
+          "result",
+          "fragment"
+        ],
+        "title": "CommandResponse",
+        "type": "object"
+      },
+      "ConcludeCommand": {
+        "properties": {
+          "basis_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Basis Refs",
+            "type": "array"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "conclusion_text": {
+            "minLength": 1,
+            "title": "Conclusion Text",
+            "type": "string"
+          },
+          "conclusion_type": {
+            "enum": [
+              "tentative_answer",
+              "negated_path",
+              "boundary",
+              "key_unknown",
+              "deferred",
+              "split_or_turn"
+            ],
+            "title": "Conclusion Type",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "revival_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revival Condition"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "conclusion_type",
+          "conclusion_text"
+        ],
+        "title": "ConcludeCommand",
+        "type": "object"
+      },
+      "ConfirmCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "ConfirmCommand",
+        "type": "object"
+      },
+      "CorpusSearchHit": {
+        "properties": {
+          "matched_terms": {
+            "title": "Matched Terms",
+            "type": "integer"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "source_locator": {
+            "title": "Source Locator",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id",
+          "source_locator",
+          "title",
+          "matched_terms",
+          "snippet"
+        ],
+        "title": "CorpusSearchHit",
+        "type": "object"
+      },
+      "CorpusSearchResponse": {
+        "properties": {
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/CorpusSearchHit"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query",
+          "group",
+          "total",
+          "results"
+        ],
+        "title": "CorpusSearchResponse",
+        "type": "object"
+      },
+      "CorrectCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "corrected_relation": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "silent",
+              "cannot_assess"
+            ],
+            "title": "Corrected Relation",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "corrected_relation"
+        ],
+        "title": "CorrectCommand",
+        "type": "object"
+      },
+      "CorrectGapCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "corrected_coverage_statement": {
+            "minLength": 10,
+            "title": "Corrected Coverage Statement",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "corrected_coverage_statement"
+        ],
+        "title": "CorrectGapCommand",
+        "type": "object"
+      },
+      "CreateDirectionCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "proposition": {
+            "minLength": 1,
+            "title": "Proposition",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "proposition"
+        ],
+        "title": "CreateDirectionCommand",
+        "type": "object"
+      },
+      "DeclareStatusCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "on_hold",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "user_reason": {
+            "minLength": 1,
+            "title": "User Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "status",
+          "user_reason"
+        ],
+        "title": "DeclareStatusCommand",
+        "type": "object"
+      },
+      "DeferCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "condition": {
+            "minLength": 1,
+            "title": "Condition",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "reason",
+          "condition"
+        ],
+        "title": "DeferCommand",
+        "type": "object"
+      },
+      "DetachDirectionLinkCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "DetachDirectionLinkCommand",
+        "type": "object"
+      },
+      "DialogueCandidate": {
+        "properties": {
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/CandidateRelation"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "stance": {
+            "title": "Stance",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "locator",
+          "title",
+          "reason",
+          "source",
+          "excerpt",
+          "stance",
+          "relation"
+        ],
+        "title": "DialogueCandidate",
+        "type": "object"
+      },
+      "DraftTextResponse": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "DraftTextResponse",
+        "type": "object"
+      },
+      "ExternalRef": {
+        "properties": {
+          "excerpt": {
+            "minLength": 1,
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "locator": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Locator",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "locator",
+          "excerpt"
+        ],
+        "title": "ExternalRef",
+        "type": "object"
+      },
+      "ForgeCommand": {
+        "properties": {
+          "capture_id": {
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "claim_id": {
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "release_id": {
+            "title": "Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "claim_id",
+          "capture_id",
+          "release_id"
+        ],
+        "title": "ForgeCommand",
+        "type": "object"
+      },
+      "GapDecisionCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "GapDecisionCommand",
+        "type": "object"
+      },
+      "GapDraftResponse": {
+        "properties": {
+          "counterexample_invitation": {
+            "title": "Counterexample Invitation",
+            "type": "string"
+          },
+          "coverage_statement": {
+            "title": "Coverage Statement",
+            "type": "string"
+          },
+          "search_query": {
+            "title": "Search Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "coverage_statement",
+          "search_query",
+          "counterexample_invitation"
+        ],
+        "title": "GapDraftResponse",
+        "type": "object"
+      },
+      "GenerateEvidenceCandidateCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "material_id"
+        ],
+        "title": "GenerateEvidenceCandidateCommand",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LiteratureChallengeCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "external_refs": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalRef"
+            },
+            "title": "External Refs",
+            "type": "array"
+          },
+          "material_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Material Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "LiteratureChallengeCommand",
+        "type": "object"
+      },
+      "LiteratureSearchCommand": {
+        "properties": {
+          "external": {
+            "default": true,
+            "title": "External",
+            "type": "boolean"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "question": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "LiteratureSearchCommand",
+        "type": "object"
+      },
+      "LiteratureSearchResponse": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DialogueCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "candidates"
+        ],
+        "title": "LiteratureSearchResponse",
+        "type": "object"
+      },
+      "MaterialCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "minLength": 1,
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "parse_status": {
+            "enum": [
+              "parsed",
+              "failed"
+            ],
+            "title": "Parse Status",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "evidence",
+              "reference"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "source_locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Locator"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "excerpt",
+          "parse_status",
+          "purpose"
+        ],
+        "title": "MaterialCommand",
+        "type": "object"
+      },
+      "MaterialSelectionCommand": {
+        "properties": {
+          "external_refs": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalRef"
+            },
+            "title": "External Refs",
+            "type": "array"
+          },
+          "material_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Material Ids",
+            "type": "array"
+          }
+        },
+        "title": "MaterialSelectionCommand",
+        "type": "object"
+      },
+      "NoteCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "text"
+        ],
+        "title": "NoteCommand",
+        "type": "object"
+      },
+      "OrientationCommand": {
+        "properties": {
+          "question": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "OrientationCommand",
+        "type": "object"
+      },
+      "OrientationResponse": {
+        "properties": {
+          "hypotheses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hypotheses",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          }
+        },
+        "required": [
+          "hypotheses",
+          "keywords"
+        ],
+        "title": "OrientationResponse",
+        "type": "object"
+      },
+      "PauseCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "PauseCommand",
+        "type": "object"
+      },
+      "ProposeCandidateCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "silent",
+              "cannot_assess"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "material_id",
+          "relation"
+        ],
+        "title": "ProposeCandidateCommand",
+        "type": "object"
+      },
+      "ProposeGapCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "counterexample_invitation": {
+            "minLength": 1,
+            "title": "Counterexample Invitation",
+            "type": "string"
+          },
+          "coverage_statement": {
+            "minLength": 10,
+            "title": "Coverage Statement",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "matched_locators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locators",
+            "type": "array"
+          },
+          "search_query": {
+            "minLength": 1,
+            "title": "Search Query",
+            "type": "string"
+          },
+          "search_scope": {
+            "default": "active",
+            "enum": [
+              "active",
+              "legacy"
+            ],
+            "title": "Search Scope",
+            "type": "string"
+          },
+          "searched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Searched At"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "coverage_statement",
+          "search_query",
+          "counterexample_invitation"
+        ],
+        "title": "ProposeGapCommand",
+        "type": "object"
+      },
+      "RelatedWorkDraftCommand": {
+        "properties": {
+          "external_refs": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalRef"
+            },
+            "title": "External Refs",
+            "type": "array"
+          },
+          "gap_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gap Ids",
+            "type": "array"
+          },
+          "material_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Material Ids",
+            "type": "array"
+          }
+        },
+        "title": "RelatedWorkDraftCommand",
+        "type": "object"
+      },
+      "ReleaseCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "provisional_role": {
+            "enum": [
+              "trigger_question",
+              "exploration_context",
+              "material_lead",
+              "unnamed"
+            ],
+            "title": "Provisional Role",
+            "type": "string"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "workspace_expected_sequence": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Workspace Expected Sequence",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "provisional_role"
+        ],
+        "title": "ReleaseCommand",
+        "type": "object"
+      },
+      "ReopenCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence"
+        ],
+        "title": "ReopenCommand",
+        "type": "object"
+      },
+      "RephraseDirectionCommand": {
+        "properties": {
+          "change_type": {
+            "enum": [
+              "clarify",
+              "narrow_or_widen",
+              "turning",
+              "unnamed"
+            ],
+            "title": "Change Type",
+            "type": "string"
+          },
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "new_proposition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Proposition"
+          },
+          "source_conclusion_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Conclusion Ref"
+          },
+          "user_reason": {
+            "minLength": 1,
+            "title": "User Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "change_type",
+          "user_reason"
+        ],
+        "title": "RephraseDirectionCommand",
+        "type": "object"
+      },
+      "UniverseResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "library_id"
+        ],
+        "title": "UniverseResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerdictCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "revival_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revival Condition"
+          },
+          "user_reason": {
+            "minLength": 1,
+            "title": "User Reason",
+            "type": "string"
+          },
+          "verdict_type": {
+            "enum": [
+              "survived",
+              "refuted",
+              "not_worth",
+              "boundary",
+              "circumstantial"
+            ],
+            "title": "Verdict Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "verdict_type",
+          "user_reason"
+        ],
+        "title": "VerdictCommand",
+        "type": "object"
+      },
+      "WithdrawCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "reason"
+        ],
+        "title": "WithdrawCommand",
+        "type": "object"
+      },
+      "WorkspaceCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "question": {
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "question"
+        ],
+        "title": "WorkspaceCommand",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Cui native test",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v2/challenges/{challenge_id}/answers": {
+      "post": {
+        "operationId": "answer_api_v2_challenges__challenge_id__answers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "challenge_id",
+            "required": true,
+            "schema": {
+              "title": "Challenge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer",
+        "tags": [
+          "research-universe-slice3-review"
+        ]
+      }
+    },
+    "/api/v2/challenges/{challenge_id}/defer": {
+      "post": {
+        "operationId": "defer_api_v2_challenges__challenge_id__defer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "challenge_id",
+            "required": true,
+            "schema": {
+              "title": "Challenge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeferCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Defer",
+        "tags": [
+          "research-universe-slice3-review"
+        ]
+      }
+    },
+    "/api/v2/challenges/{challenge_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_api_v2_challenges__challenge_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "challenge_id",
+            "required": true,
+            "schema": {
+              "title": "Challenge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw",
+        "tags": [
+          "research-universe-slice3-review"
+        ]
+      }
+    },
+    "/api/v2/claims/{claim_id}/review-rounds": {
+      "post": {
+        "operationId": "round_api_v2_claims__claim_id__review_rounds_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Command"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Round",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/corpus/search": {
+      "get": {
+        "operationId": "search_api_v2_corpus_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "default": "active",
+              "enum": [
+                "active",
+                "legacy"
+              ],
+              "title": "Group",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "research-universe-corpus-search"
+        ]
+      }
+    },
+    "/api/v2/directions/{direction_id}": {
+      "get": {
+        "operationId": "direction_api_v2_directions__direction_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "direction_id",
+            "required": true,
+            "schema": {
+              "title": "Direction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Direction",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/directions/{direction_id}/crystallizations": {
+      "post": {
+        "operationId": "attach_crystallization_api_v2_directions__direction_id__crystallizations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "direction_id",
+            "required": true,
+            "schema": {
+              "title": "Direction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachCrystallizationCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Crystallization",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/directions/{direction_id}/rephrasings": {
+      "post": {
+        "operationId": "rephrase_api_v2_directions__direction_id__rephrasings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "direction_id",
+            "required": true,
+            "schema": {
+              "title": "Direction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RephraseDirectionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rephrase",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/directions/{direction_id}/status-declarations": {
+      "post": {
+        "operationId": "declare_status_api_v2_directions__direction_id__status_declarations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "direction_id",
+            "required": true,
+            "schema": {
+              "title": "Direction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclareStatusCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Status",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/evidence-candidates/{candidate_id}/confirm": {
+      "post": {
+        "operationId": "confirm_api_v2_evidence_candidates__candidate_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "research-universe-slice4-evidence"
+        ]
+      }
+    },
+    "/api/v2/evidence-candidates/{candidate_id}/correct": {
+      "post": {
+        "operationId": "correct_api_v2_evidence_candidates__candidate_id__correct_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Correct",
+        "tags": [
+          "research-universe-slice4-evidence"
+        ]
+      }
+    },
+    "/api/v2/evidence-candidates/{candidate_id}/reject": {
+      "post": {
+        "operationId": "reject_api_v2_evidence_candidates__candidate_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject",
+        "tags": [
+          "research-universe-slice4-evidence"
+        ]
+      }
+    },
+    "/api/v2/evidence-candidates/{candidate_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_api_v2_evidence_candidates__candidate_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw",
+        "tags": [
+          "research-universe-slice4-evidence"
+        ]
+      }
+    },
+    "/api/v2/gap-candidates/{candidate_id}/confirm": {
+      "post": {
+        "operationId": "confirm_api_v2_gap_candidates__candidate_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GapDecisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "research-universe-slice8-gap"
+        ]
+      }
+    },
+    "/api/v2/gap-candidates/{candidate_id}/correct": {
+      "post": {
+        "operationId": "correct_api_v2_gap_candidates__candidate_id__correct_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectGapCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Correct",
+        "tags": [
+          "research-universe-slice8-gap"
+        ]
+      }
+    },
+    "/api/v2/gap-candidates/{candidate_id}/reject": {
+      "post": {
+        "operationId": "reject_api_v2_gap_candidates__candidate_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GapDecisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject",
+        "tags": [
+          "research-universe-slice8-gap"
+        ]
+      }
+    },
+    "/api/v2/gap-candidates/{candidate_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_api_v2_gap_candidates__candidate_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GapDecisionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw",
+        "tags": [
+          "research-universe-slice8-gap"
+        ]
+      }
+    },
+    "/api/v2/legacy-archive": {
+      "get": {
+        "operationId": "archive_index_api_v2_legacy_archive_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Archive Index",
+        "tags": [
+          "legacy-archive"
+        ]
+      }
+    },
+    "/api/v2/legacy-archive/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "detail_api_v2_legacy_archive_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveArtifactDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detail",
+        "tags": [
+          "legacy-archive"
+        ]
+      }
+    },
+    "/api/v2/legacy-archive/artifacts/{artifact_id}/trajectory": {
+      "get": {
+        "operationId": "trajectory_api_v2_legacy_archive_artifacts__artifact_id__trajectory_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trajectory",
+        "tags": [
+          "legacy-archive"
+        ]
+      }
+    },
+    "/api/v2/park-captures": {
+      "get": {
+        "operationId": "captures_api_v2_park_captures_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Captures",
+        "tags": [
+          "research-universe-slice2-park"
+        ]
+      },
+      "post": {
+        "operationId": "capture_api_v2_park_captures_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture",
+        "tags": [
+          "research-universe-slice2-park"
+        ]
+      }
+    },
+    "/api/v2/park-captures/{capture_id}": {
+      "get": {
+        "operationId": "get_api_v2_park_captures__capture_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "title": "Capture Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get",
+        "tags": [
+          "research-universe-slice2-park"
+        ]
+      }
+    },
+    "/api/v2/park-captures/{capture_id}/release": {
+      "post": {
+        "operationId": "release_api_v2_park_captures__capture_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "title": "Capture Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release",
+        "tags": [
+          "research-universe-slice2-park"
+        ]
+      }
+    },
+    "/api/v2/review-rounds/{round_id}": {
+      "get": {
+        "operationId": "review_round_api_v2_review_rounds__round_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Round",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/review-rounds/{round_id}/challenges": {
+      "post": {
+        "operationId": "generate_additional_challenge_api_v2_review_rounds__round_id__challenges_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Command"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Additional Challenge",
+        "tags": [
+          "research-universe-slice6-llm-generation"
+        ]
+      }
+    },
+    "/api/v2/review-rounds/{round_id}/evidence-candidate-generation": {
+      "post": {
+        "operationId": "generate_evidence_candidate_api_v2_review_rounds__round_id__evidence_candidate_generation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateEvidenceCandidateCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Evidence Candidate",
+        "tags": [
+          "research-universe-slice6-llm-generation"
+        ]
+      }
+    },
+    "/api/v2/review-rounds/{round_id}/evidence-candidates": {
+      "post": {
+        "operationId": "propose_api_v2_review_rounds__round_id__evidence_candidates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeCandidateCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose",
+        "tags": [
+          "research-universe-slice4-evidence"
+        ]
+      }
+    },
+    "/api/v2/review-rounds/{round_id}/literature-challenges": {
+      "post": {
+        "operationId": "literature_challenge_api_v2_review_rounds__round_id__literature_challenges_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiteratureChallengeCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Literature Challenge",
+        "tags": [
+          "research-universe-dialogue"
+        ]
+      }
+    },
+    "/api/v2/review-rounds/{round_id}/verdicts": {
+      "post": {
+        "operationId": "verdict_api_v2_review_rounds__round_id__verdicts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerdictCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verdict",
+        "tags": [
+          "research-universe-slice3-review"
+        ]
+      }
+    },
+    "/api/v2/universes": {
+      "post": {
+        "operationId": "provision_active_api_v2_universes_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Provision Active",
+        "tags": [
+          "research-universe"
+        ]
+      }
+    },
+    "/api/v2/universes/active": {
+      "get": {
+        "operationId": "get_active_api_v2_universes_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Active",
+        "tags": [
+          "research-universe"
+        ]
+      }
+    },
+    "/api/v2/universes/{universe_id}/directions": {
+      "post": {
+        "operationId": "create_direction_api_v2_universes__universe_id__directions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "universe_id",
+            "required": true,
+            "schema": {
+              "title": "Universe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDirectionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Direction",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/universes/{universe_id}/home": {
+      "get": {
+        "operationId": "home_api_v2_universes__universe_id__home_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "universe_id",
+            "required": true,
+            "schema": {
+              "title": "Universe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Home",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/universes/{universe_id}/workspaces": {
+      "post": {
+        "operationId": "create_workspace_api_v2_universes__universe_id__workspaces_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "universe_id",
+            "required": true,
+            "schema": {
+              "title": "Universe Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workspace",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/workspace-direction-links/{link_id}/detach": {
+      "post": {
+        "operationId": "detach_direction_link_api_v2_workspace_direction_links__link_id__detach_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetachDirectionLinkCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detach Direction Link",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}": {
+      "get": {
+        "operationId": "workspace_api_v2_workspaces__workspace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Workspace",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/absorb": {
+      "post": {
+        "operationId": "absorb_api_v2_workspaces__workspace_id__absorb_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AbsorbCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Absorb",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/anchors": {
+      "post": {
+        "operationId": "anchor_api_v2_workspaces__workspace_id__anchors_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnchorCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Anchor",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/branch": {
+      "post": {
+        "operationId": "branch_api_v2_workspaces__workspace_id__branch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Branch",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/claims": {
+      "post": {
+        "operationId": "claim_api_v2_workspaces__workspace_id__claims_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/claims/forge-provenance": {
+      "post": {
+        "operationId": "forge_api_v2_workspaces__workspace_id__claims_forge_provenance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgeCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forge",
+        "tags": [
+          "research-universe-slice2-park"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/conclusions": {
+      "post": {
+        "operationId": "conclude_api_v2_workspaces__workspace_id__conclusions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConcludeCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Conclude",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/dialogue/gap-draft": {
+      "post": {
+        "operationId": "gap_draft_api_v2_workspaces__workspace_id__dialogue_gap_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialSelectionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Gap Draft",
+        "tags": [
+          "research-universe-dialogue"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/dialogue/landscape-summary": {
+      "post": {
+        "operationId": "landscape_summary_api_v2_workspaces__workspace_id__dialogue_landscape_summary_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialSelectionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Landscape Summary",
+        "tags": [
+          "research-universe-dialogue"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/dialogue/literature-search": {
+      "post": {
+        "operationId": "literature_search_api_v2_workspaces__workspace_id__dialogue_literature_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiteratureSearchCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteratureSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Literature Search",
+        "tags": [
+          "research-universe-dialogue"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/dialogue/orientation": {
+      "post": {
+        "description": "Fresh-question gate (product journey §0/§1): candidate hypotheses +\nsearch keywords for a brand-new question. Transient; nothing stored.",
+        "operationId": "orientation_api_v2_workspaces__workspace_id__dialogue_orientation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrientationCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrientationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Orientation",
+        "tags": [
+          "research-universe-dialogue"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/dialogue/related-work-draft": {
+      "post": {
+        "operationId": "related_work_draft_api_v2_workspaces__workspace_id__dialogue_related_work_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelatedWorkDraftCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Related Work Draft",
+        "tags": [
+          "research-universe-dialogue"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/direction-links": {
+      "post": {
+        "operationId": "attach_direction_api_v2_workspaces__workspace_id__direction_links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachDirectionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Direction",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/gap-candidates": {
+      "post": {
+        "operationId": "propose_api_v2_workspaces__workspace_id__gap_candidates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeGapCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose",
+        "tags": [
+          "research-universe-slice8-gap"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/landscape": {
+      "get": {
+        "operationId": "landscape_api_v2_workspaces__workspace_id__landscape_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Landscape",
+        "tags": [
+          "research-universe-slice8-gap"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/materials": {
+      "post": {
+        "operationId": "add_material_api_v2_workspaces__workspace_id__materials_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Material",
+        "tags": [
+          "research-universe-slice4-evidence"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/notes": {
+      "post": {
+        "operationId": "save_note_api_v2_workspaces__workspace_id__notes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Note",
+        "tags": [
+          "research-universe-slice1"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/pause": {
+      "post": {
+        "operationId": "pause_api_v2_workspaces__workspace_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/reopen": {
+      "post": {
+        "operationId": "reopen_api_v2_workspaces__workspace_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reopen",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    }
+  }
+}

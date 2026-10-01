@@ -1,3 +1,7 @@
+import type { components } from "./api.gen"
+// 请求体 / 对话端点响应来自后端 OpenAPI(api.gen.ts,`make contract` 生成);其余响应仍为手写形状
+type S = components["schemas"]
+
 export type ExpectedSequence = number
 
 export interface CommandEnvelope { command_id: string; expected_sequence: ExpectedSequence }
@@ -73,15 +77,15 @@ export interface EvidenceCandidate {
 }
 export interface ConfirmedFact { id: string; relation: EvidenceRelation; material_anchor: MaterialAnchor; claim_snapshot: Snapshot }
 
-export interface AnswerChallengeEnvelope extends CommandEnvelope { answer_text: string; provisional_anchor_refs: string[] }
-export interface DeferChallengeEnvelope extends CommandEnvelope { reason: string; condition: string }
-export interface WithdrawChallengeEnvelope extends CommandEnvelope { reason: string }
-export interface ConfirmVerdictEnvelope extends CommandEnvelope { verdict_type: VerdictType; user_reason: string; revival_condition?: string | null }
-export interface AddMaterialEnvelope extends CommandEnvelope { excerpt: string; source_locator?: string | null; parse_status: MaterialParseStatus; purpose: MaterialPurpose }
-export interface ProposeEvidenceCandidateEnvelope extends CommandEnvelope { material_id: string; relation: EvidenceRelation; uncertainty?: string | null }
-export interface GenerateEvidenceCandidateEnvelope extends CommandEnvelope { material_id: string }
-export interface DecideEvidenceEnvelope extends CommandEnvelope { user_reason?: string | null }
-export interface CorrectEvidenceEnvelope extends DecideEvidenceEnvelope { corrected_relation: EvidenceRelation }
+export type AnswerChallengeEnvelope = S["AnswerCommand"]
+export type DeferChallengeEnvelope = S["DeferCommand"]
+export type WithdrawChallengeEnvelope = S["WithdrawCommand"]
+export type ConfirmVerdictEnvelope = S["VerdictCommand"]
+export type AddMaterialEnvelope = S["MaterialCommand"]
+export type ProposeEvidenceCandidateEnvelope = S["ProposeCandidateCommand"]
+export type GenerateEvidenceCandidateEnvelope = S["GenerateEvidenceCandidateCommand"]
+export type DecideEvidenceEnvelope = S["ConfirmCommand"]
+export type CorrectEvidenceEnvelope = S["CorrectCommand"]
 
 // Slice 5 — crystallization / direction impact
 export type WorkspacePosition = "exploring" | "paused" | "concluded" | "branched" | "absorbed"
@@ -96,17 +100,17 @@ export interface Crystallization { crystallization_id: string; direction_id?: st
 export interface Direction { id: string; proposition: { version_id: string; text: string | null }; status: DirectionStatus; sequence?: number; rephrase_history: DirectionRephraseEntry[]; attached_workspaces: DirectionAttachedWorkspace[]; crystallizations: Crystallization[] }
 export interface HomeDirection { id: string; proposition: string; status: DirectionStatus; crystallizations: Crystallization[]; crystallizations_count: number; attached_workspaces_count: number }
 
-export interface PauseWorkspaceEnvelope extends CommandEnvelope { user_reason?: string | null }
-export interface ReopenWorkspaceEnvelope extends CommandEnvelope { user_reason?: string | null }
-export interface ConcludeWorkspaceEnvelope extends CommandEnvelope { conclusion_type: ConclusionType; conclusion_text: string; user_reason?: string | null; basis_refs?: string[]; revival_condition?: string | null }
-export interface BranchWorkspaceEnvelope extends CommandEnvelope { new_question: string; user_reason: string }
-export interface AbsorbWorkspaceEnvelope extends CommandEnvelope { target_workspace_id: string; user_reason: string }
-export interface AttachDirectionEnvelope extends CommandEnvelope { direction_id: string; user_reason?: string | null }
-export interface DetachDirectionLinkEnvelope extends CommandEnvelope { user_reason?: string | null }
-export interface CreateDirectionEnvelope extends CommandEnvelope { proposition: string }
-export interface DeclareDirectionStatusEnvelope extends CommandEnvelope { status: DirectionStatus; user_reason: string }
-export interface RephraseDirectionEnvelope extends CommandEnvelope { new_proposition?: string | null; change_type: DirectionChangeType; user_reason: string; source_conclusion_ref?: string | null }
-export interface AttachCrystallizationEnvelope extends CommandEnvelope { workspace_id: string; conclusion_id: string; user_reason?: string | null }
+export type PauseWorkspaceEnvelope = S["PauseCommand"]
+export type ReopenWorkspaceEnvelope = S["ReopenCommand"]
+export type ConcludeWorkspaceEnvelope = S["ConcludeCommand"]
+export type BranchWorkspaceEnvelope = S["BranchCommand"]
+export type AbsorbWorkspaceEnvelope = S["AbsorbCommand"]
+export type AttachDirectionEnvelope = S["AttachDirectionCommand"]
+export type DetachDirectionLinkEnvelope = S["DetachDirectionLinkCommand"]
+export type CreateDirectionEnvelope = S["CreateDirectionCommand"]
+export type DeclareDirectionStatusEnvelope = S["DeclareStatusCommand"]
+export type RephraseDirectionEnvelope = S["RephraseDirectionCommand"]
+export type AttachCrystallizationEnvelope = S["AttachCrystallizationCommand"]
 
 // slice1 — gap candidates / workspace landscape
 export type GapStatus = "pending" | "confirmed" | "corrected" | "rejected" | "withdrawn"
@@ -134,22 +138,12 @@ export interface WorkspaceLandscape {
 }
 export interface CorpusSearchHit { material_id: string; source_locator: string; title: string; matched_terms: number; snippet: string }
 export interface CorpusSearchResponse { query: string; group: string; total: number; results: CorpusSearchHit[] }
-export interface GapProposeEnvelope extends CommandEnvelope { coverage_statement: string; search_query: string; search_scope: "active" | "legacy"; matched_locators: string[]; searched_at?: string | null; counterexample_invitation: string }
-export interface GapDecisionEnvelope extends CommandEnvelope { user_reason?: string | null }
+export type GapProposeEnvelope = S["ProposeGapCommand"]
+export type GapDecisionEnvelope = S["GapDecisionCommand"]
 
 // slice1 second cut — literature dialogue surface
-export interface LiteratureChallengeEnvelope extends CommandEnvelope { material_ids: string[]; external_refs?: DialogueExternalRef[] }
-export interface DialogueExternalRef { locator: string; excerpt: string; url?: string | null }
-export interface DialogueCandidate {
-  material_id?: string | null
-  locator: string
-  title: string
-  reason: string
-  source?: string
-  url?: string | null
-  excerpt?: string
-  stance?: string
-  relation?: { kind: string; note: string }
-}
-export interface LiteratureSearchResponse { query: string; candidates: DialogueCandidate[] }
-export interface GapDraftFields { coverage_statement: string; search_query: string; counterexample_invitation: string }
+export type LiteratureChallengeEnvelope = S["LiteratureChallengeCommand"]
+export type DialogueExternalRef = S["ExternalRef"]
+export type DialogueCandidate = S["DialogueCandidate"]
+export type LiteratureSearchResponse = S["LiteratureSearchResponse"]
+export type GapDraftFields = S["GapDraftResponse"]
