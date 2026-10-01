@@ -30,6 +30,7 @@ from cui.research_universe.application import (
     NotFound,
     Slice1Service,
     review_round_projection,
+    workspace_projection,
 )
 from cui.tools.v4_importer import first_title
 from cui.research_universe.store.event_store import (
@@ -44,13 +45,13 @@ SYSTEM_LANDSCAPE_SUMMARY = """你是 Cui,和一个研究者一起梳理现状。
 ## 还没有被覆盖的
 只陈述"未被这些文献覆盖/未被它们支持"的观察,不要建议研究课题、不要替用户下判断。"""
 
-SYSTEM_GAP_DRAFT = """你是 Cui 的 gap 起草助手。基于给定的问题方向与所选文献,起草一个 gap 候选,只输出 JSON,键为:
+SYSTEM_GAP_DRAFT = """你是 Cui 的 gap 起草助手。基于给定的研究问题(及研究者的 claim)与所选文献,起草一个 gap 候选。缺口必须相对这个研究问题来表述:文献里与问题无关的子话题不算缺口。只输出 JSON,键为:
 coverage_statement(字符串:覆盖范围声明——哪些已被覆盖、缺口在哪,至少 10 字,不要说"所以你应该做 Y"),
 search_query(字符串:可复现检索词),
 counterexample_invitation(字符串:邀请反例的措辞)。
 用中文。"""
 
-SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与 claim 同语言),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。"""
+SYSTEM_RELATED_WORK = """你是 Cui 的 related-work 起草助手。基于现状梳理与已确认的 gap,写一段投稿 related-work 段落草稿(≤500 词,中文或与 claim 同语言),围绕给定的研究问题组织(而不是围绕文献各自的主题),客观陈述已有工作与缺口的边界,引用以 [locator] 标注,不要评价自己的工作。"""
 
 
 SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题(以及候选假设),从候选文献中挑出真正相关的最多 8 篇。对每篇给出:
@@ -123,6 +124,15 @@ def _selected_materials(store, universe_id: str, workspace_id: str, material_ids
     if missing:
         raise HTTPException(404, f"material not in workspace nor corpus: {sorted(missing)[0]}")
     return [by_id[m] for m in material_ids]
+
+
+def _anchor(store, universe_id: str, workspace_id: str) -> str:
+    """问题(+最新 claim)是起草的锚:不带它,LLM 只会顺着所选文献的主题漂移(#10)。"""
+    ws = workspace_projection(store, universe_id, workspace_id)
+    lines = [f"研究问题:{ws['question']['text']}"]
+    if ws["claims"]:
+        lines.append(f"研究者的 claim:{ws['claims'][-1]['text']}")
+    return "\n".join(lines)
 
 
 def _item_lines(items: list[dict]) -> str:
@@ -299,7 +309,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         llm = _llm()
         try:
             user = _item_lines(items)
-            text = llm.complete(SYSTEM_LANDSCAPE_SUMMARY, f"问题方向:{workspace_id}\n所选文献:\n{user}")
+            text = llm.complete(SYSTEM_LANDSCAPE_SUMMARY, f"{_anchor(store, universe_id, workspace_id)}\n所选文献:\n{user}")
             return {"text": text}
         except HTTPException:
             raise
@@ -313,7 +323,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
         llm = _llm()
         try:
             user = _item_lines(items)
-            text = llm.complete(SYSTEM_GAP_DRAFT, f"所选文献:\n{user}")
+            text = llm.complete(SYSTEM_GAP_DRAFT, f"{_anchor(store, universe_id, workspace_id)}\n所选文献:\n{user}")
             return _parse_draft_json(text)
         except HTTPException:
             raise
@@ -333,7 +343,7 @@ def create_dialogue_router(service: Slice1Service, store, context: LibraryContex
                     gaps_text += f"\n- {state['coverage_statement']}"
         except Exception:
             pass
-        prompt = _render_related_work_prompt(items, gaps_text)
+        prompt = _render_related_work_prompt(items, f"{_anchor(store, universe_id, workspace_id)}\n已确认的 gap:{gaps_text}")
         try:
             text = llm.complete(SYSTEM_RELATED_WORK, prompt)
             return {"text": text}

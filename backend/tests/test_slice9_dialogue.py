@@ -280,3 +280,24 @@ def test_literature_challenge_accepts_external_refs_only():
     empty = client.post(f"/api/v2/review-rounds/{rid}/literature-challenges", json={
         "command_id": "lit-none", "expected_sequence": 0, "material_ids": [], "external_refs": []})
     assert empty.status_code == 409  # 本 router 约定 BoundaryViolation → 409
+
+
+def test_draft_prompts_are_anchored_on_question_and_claim():
+    """#10: 覆盖梳理/gap/related-work 都要带研究问题(+claim),否则草稿顺着文献主题漂移。
+    这里只证明接线;锚定效果须真模型复跑(feedback_prompt_change_live_verify)。"""
+    store, universe, service, wid, mat, rid = _seed()
+    seen: list[str] = []
+    fake = type("F", (), {
+        "complete": lambda self, s, u: seen.append(u) or '{"coverage_statement": "覆盖了对齐但缺推理评测", "search_query": "q", "counterexample_invitation": "c"}',
+        "complete_json": lambda self, s, u, retries=2: {}})()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=fake), prefix="/api/v2")
+    client = TestClient(app)
+    for path in ("landscape-summary", "gap-draft", "related-work-draft"):
+        assert client.post(f"/api/v2/workspaces/{wid}/dialogue/{path}", json={"material_ids": [mat]}).status_code == 200
+    summary, gap, related = seen
+    for prompt in seen:
+        assert "Why does RLHF improve reasoning?" in prompt
+    assert wid not in summary  # 以前把 workspace UUID 当成"问题方向"
+    assert "RLHF improves reasoning because it aligns preferences." in gap
+    assert "RLHF improves reasoning because it aligns preferences." in related
