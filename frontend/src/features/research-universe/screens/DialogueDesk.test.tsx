@@ -83,6 +83,7 @@ describe("literature dialogue desk (staged)", () => {
     fireEvent.change(claimInput, { target: { value: "对齐偏好分布才是推理提升的主因。" } })
     fireEvent.click(screen.getByRole("button", { name: /固化 claim 并开审查轮/ }))
     await screen.findByText(/✓ claim 已固化,审查轮已开/, {}, { timeout: 3000 })
+    expect(JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))![1].body as string).kind).toBe("division")
 
     // 文献发难把所选材料带进审查轮
     fireEvent.click(screen.getByRole("button", { name: /用所选文献发难/ }))
@@ -102,6 +103,7 @@ describe("literature dialogue desk (staged)", () => {
     const propose = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/gap-candidates"))
     expect(propose).toBeTruthy()
     expect(JSON.parse(propose![1].body as string).matched_locators).toEqual(["arxiv:2401.00009", "arxiv:2402.00001", "arxiv:2402.00002"])
+    expect(JSON.parse(propose![1].body as string).external_refs).toEqual([])  // 全是语料库内文献,无外部快照
 
     // 第 6 步:related-work 草稿
     fireEvent.click(screen.getByRole("button", { name: /生成 related-work 综述草稿/ }))

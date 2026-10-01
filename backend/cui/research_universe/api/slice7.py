@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from cui.legacy_archive.search.ranking import extract_core_terms, rank_by_idf
 from cui.research_universe.api.routes import LibraryContext
 from cui.research_universe.api.slice1 import _active
+from cui.research_universe.corpus import EXTERNAL_WS_COMMAND
 from cui.tools.v4_importer import ACTIVE_WS_COMMAND, LEGACY_WS_COMMAND, first_title, workspace_id_for
 
 
@@ -35,14 +36,19 @@ class CorpusSearchResponse(BaseModel):
     results: list[CorpusSearchHit]
 
 
-def _corpus_materials(store, universe_id: str, workspace_id: str) -> list[dict]:
-    """material_added payloads in the given corpus workspace (evidence, parsed)."""
+def _group_workspaces(group: str) -> set[str]:
+    """active 组 = v4 active + 外部捕获(被定见引用的外部文献并入检索,库越用越厚)。"""
+    return {workspace_id_for(ACTIVE_WS_COMMAND), workspace_id_for(EXTERNAL_WS_COMMAND)} if group == "active" else {workspace_id_for(LEGACY_WS_COMMAND)}
+
+
+def _corpus_materials(store, universe_id: str, workspace_ids: set[str]) -> list[dict]:
+    """material_added payloads in the given corpus workspaces (evidence, parsed)."""
     materials = []
     for event in store.read_events(universe_id):
         if event.event_type != "material_added":
             continue
         payload = event.validated_payload()
-        if payload.workspace_id != workspace_id:
+        if payload.workspace_id not in workspace_ids:
             continue
         if payload.purpose != "evidence" or payload.parse_status != "parsed":
             continue
@@ -53,8 +59,7 @@ def _corpus_materials(store, universe_id: str, workspace_id: str) -> list[dict]:
 def ranked_corpus_hits(store, universe_id: str, group: str, q: str, limit: int) -> list[CorpusSearchHit]:
     """IDF-ranked corpus hits (shared by the search route and the dialogue
     surface's agent search)."""
-    workspace_id = workspace_id_for(ACTIVE_WS_COMMAND if group == "active" else LEGACY_WS_COMMAND)
-    materials = _corpus_materials(store, universe_id, workspace_id)
+    materials = _corpus_materials(store, universe_id, _group_workspaces(group))
     if not materials:
         return []
     texts = [(first_title(m["excerpt"]), m["excerpt"]) for m in materials]
@@ -93,7 +98,7 @@ def create_corpus_search_router(store, context: LibraryContext) -> APIRouter:
         if not q.strip():
             raise HTTPException(422, "q must not be blank")
         hits = ranked_corpus_hits(store, universe_id, group, q, limit)
-        materials = _corpus_materials(store, universe_id, workspace_id_for(ACTIVE_WS_COMMAND if group == "active" else LEGACY_WS_COMMAND))
+        materials = _corpus_materials(store, universe_id, _group_workspaces(group))
         return CorpusSearchResponse(query=q, group=group, total=len(materials), results=hits)
 
     return router

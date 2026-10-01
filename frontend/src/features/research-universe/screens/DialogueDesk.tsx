@@ -150,7 +150,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
     if (busy || !state.claimText.trim() || hasClaimBlanks(state.claimText)) return
     setBusy(true); setError(undefined)
     try {
-      const made = await researchUniverse.createClaim(workspaceId, command({ text: state.claimText.trim() }, 0))
+      const made = await researchUniverse.createClaim(workspaceId, command({ text: state.claimText.trim(), ...(state.claimKind && state.claimKind !== "custom" ? { kind: state.claimKind } : {}) }, 0))
       const review = await researchUniverse.startReview(made.result.claim_id!, command({}, 0))
       patch({ roundId: review.result.review_round_id, claimAck: false })
     } catch (e) { setError(e instanceof Error ? e.message : "开审查轮失败") } finally { setBusy(false) }
@@ -186,6 +186,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
         search_query: state.gapDraft.search_query.trim() || state.searchQuery || "(未检索,手工登记)",
         search_scope: "active",
         matched_locators: state.selected,
+        external_refs: externalRefs,
         searched_at: new Date().toISOString().slice(0, 10),
         counterexample_invitation: invitation,
       }, 0))

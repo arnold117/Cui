@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from cui.research_universe.api.routes import LibraryContext, LocalPrincipal
+from cui.research_universe.api.slice9 import ExternalRef
 from cui.research_universe.api.slice1 import Command, CommandResponse, _active, _universe_for_workspace
 from cui.research_universe.application import (
     BoundaryViolation,
@@ -33,6 +34,7 @@ class ProposeGapCommand(Command):
     search_query: str = Field(min_length=1)
     search_scope: Literal["active", "legacy"] = "active"
     matched_locators: list[str] = Field(default_factory=list)
+    external_refs: list[ExternalRef] = Field(default_factory=list)  # 被引外部文献:随 gap 原子快照入「外部捕获」
     searched_at: str | None = None
     counterexample_invitation: str = Field(min_length=1)
 
@@ -71,6 +73,7 @@ def create_slice8_router(service: Slice1Service, store, context: LibraryContext,
                 universe_id, workspace_id, body.coverage_statement, body.search_query,
                 body.search_scope, body.matched_locators, body.counterexample_invitation,
                 body.searched_at, body.command_id, body.expected_sequence,
+                [r.model_dump() for r in body.external_refs],
             )
             return commit(result, workspace_id)
         except Exception as exc:

@@ -1057,6 +1057,8 @@ export interface components {
             command_id: string;
             /** Expected Sequence */
             expected_sequence: number;
+            /** Kind */
+            kind?: ("consensus" | "division" | "vacancy") | null;
             /** Text */
             text: string;
         };
@@ -1396,6 +1398,8 @@ export interface components {
             coverage_statement: string;
             /** Expected Sequence */
             expected_sequence: number;
+            /** External Refs */
+            external_refs?: components["schemas"]["ExternalRef"][];
             /** Matched Locators */
             matched_locators?: string[];
             /** Search Query */

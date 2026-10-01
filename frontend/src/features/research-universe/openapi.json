@@ -336,6 +336,22 @@
             "title": "Expected Sequence",
             "type": "integer"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "consensus",
+                  "division",
+                  "vacancy"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
           "text": {
             "minLength": 1,
             "title": "Text",
@@ -1313,6 +1329,13 @@
             "minimum": 0.0,
             "title": "Expected Sequence",
             "type": "integer"
+          },
+          "external_refs": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalRef"
+            },
+            "title": "External Refs",
+            "type": "array"
           },
           "matched_locators": {
             "items": {

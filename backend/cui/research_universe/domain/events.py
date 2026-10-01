@@ -45,6 +45,7 @@ class ClaimCreatedPayload(Payload):
     claim_version_id: str
     claim_text: str
     author: Literal["user"] = "user"
+    kind: Literal["consensus", "division", "vacancy"] | None = None  # 对话第 3 步的断言类型;自写=空
 
 
 class ReviewRoundStartedPayload(Payload):
@@ -140,6 +141,7 @@ class MaterialAddedPayload(Payload):
     parse_status: Literal["parsed", "failed"]
     purpose: Literal["evidence", "reference"]
     author: Literal["user"] = "user"
+    content_scope: Literal["full", "abstract"] = "full"  # 外部捕获快照只有摘要
 
 
 class EvidenceRelationProposedPayload(Payload):

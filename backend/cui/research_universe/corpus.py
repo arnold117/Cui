@@ -12,11 +12,13 @@ from uuid import NAMESPACE_URL, uuid5
 
 ACTIVE_WS_COMMAND = "v4-corpus-active"
 LEGACY_WS_COMMAND = "v4-corpus-legacy"
+EXTERNAL_WS_COMMAND = "external-capture"  # 定见引用外部文献时快照入此容器(按 locator 全局去重)
 WS_QUESTIONS = {
     ACTIVE_WS_COMMAND: "语料库·active — v4 迁移 LLM 时代 arXiv 群(2026-09-02 importer)",
     LEGACY_WS_COMMAND: "语料库·legacy — v4 迁移生物工艺/DOI/老 arXiv 群(2026-09-02 importer)",
+    EXTERNAL_WS_COMMAND: "外部捕获 — 被定见引用的外部文献",
 }
-CORPUS_COMMANDS = (ACTIVE_WS_COMMAND, LEGACY_WS_COMMAND)
+CORPUS_COMMANDS = (ACTIVE_WS_COMMAND, LEGACY_WS_COMMAND, EXTERNAL_WS_COMMAND)
 
 
 def workspace_id_for(command_id: str) -> str:

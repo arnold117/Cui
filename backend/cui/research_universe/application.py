@@ -512,6 +512,45 @@ class Slice1Service:
         if prior: return prior
         return self.store.append(universe_id=universe_id, command_id=command_id, command_type=command_type, command_payload=payload, actor_kind="user", actor_id=self.actor_id, expected_sequences=expected, events=events, result_payload=result)
 
+    def _replay_commit(self, universe_id: str, command_id: str, command_type: str, payload: dict, primary: tuple[str, str, int]) -> CommitResult | None:
+        """捕获型命令的幂等重放:新建的快照 material/workspace 只在首次提交里出现,重试时已存在,
+        故按首次提交的真实 targets(同 commit 的全部聚合)重建指纹再查;payload(含 external locators)不同 → 指纹冲突。"""
+        kind, ident, expected = primary
+        events = _events(self.store, universe_id)
+        first = next((e for e in events if e.aggregate_type == kind and e.aggregate_id == ident), None)
+        if first is None: return None
+        siblings = {(e.aggregate_type, e.aggregate_id, 0) for e in events if e.commit_position == first.commit_position and (e.aggregate_type, e.aggregate_id) != (kind, ident)}
+        return self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, command_type, payload, [(kind, ident, expected), *sorted(siblings)]))
+
+    def _capture_externals(self, universe_id: str, externals: list[dict]) -> tuple[list[PendingNativeEvent], dict[tuple[str, str], int]]:
+        """外部文献摘要快照(Q4/Q5/Q6):只在定见引用时调用,与定见同一次 _append_many 提交。
+        「外部捕获」容器惰性创建;material id = uuid5(universe, locator),已存在则复用不重快照。"""
+        from cui.research_universe.corpus import EXTERNAL_WS_COMMAND, WS_QUESTIONS, workspace_id_for
+        events = _events(self.store, universe_id)
+        wid = workspace_id_for(EXTERNAL_WS_COMMAND)
+        have_ws = any(e.event_type == "workspace_created" and e.validated_payload().workspace_id == wid for e in events)
+        have = {e.validated_payload().material_id for e in events if e.event_type == "material_added"}
+        pending: list[PendingNativeEvent] = []; expected: dict[tuple[str, str], int] = {}
+        for ref in sorted(externals, key=lambda r: r["locator"]):
+            mid = str(uuid5(NAMESPACE_URL, f"{universe_id}:external-capture:{ref['locator']}"))
+            if mid in have: continue
+            if not have_ws:
+                have_ws = True
+                wp = WorkspaceCreatedPayload(workspace_id=wid, initial_question_version_id=self._id(EXTERNAL_WS_COMMAND, "question"), initial_question_text=WS_QUESTIONS[EXTERNAL_WS_COMMAND])
+                pending.append(PendingNativeEvent(event_type="workspace_created", payload=wp.model_dump(), aggregate_type="workspace", aggregate_id=wid)); expected[("workspace", wid)] = 0
+            mp = MaterialAddedPayload(material_id=mid, workspace_id=wid, excerpt=ref["excerpt"], source_locator=ref["locator"], parse_status="parsed", purpose="evidence", content_scope="abstract")
+            pending.append(PendingNativeEvent(event_type="material_added", payload=mp.model_dump(), aggregate_type="material", aggregate_id=mid)); expected[("material", mid)] = 0
+        return pending, expected
+
+    @staticmethod
+    def _usable_externals(externals: list[dict] | None) -> list[dict]:
+        """去空、按 locator 去重(先到先得);excerpt ≤1500。"""
+        seen: dict[str, dict] = {}
+        for ref in externals or []:
+            excerpt = (ref.get("excerpt") or "").strip(); locator = (ref.get("locator") or "").strip()
+            if locator and excerpt: seen.setdefault(locator, {"locator": locator, "excerpt": excerpt[:1500]})
+        return list(seen.values())
+
     def release_park(self, universe_id: str, capture_id: str, command_id: str, expected_sequence: int, provisional_role: str, workspace_id: str | None = None, question: str | None = None, workspace_expected_sequence: int = 0) -> CommitResult:
         if (workspace_id is None) == (question is None): raise BoundaryViolation("release requires exactly one target: existing workspace or new user-authored question")
         release_id = self._id(command_id, "park-release")
@@ -557,10 +596,10 @@ class Slice1Service:
         p = ExplorationAnchorCreatedPayload(anchor_id=self._id(command_id, "anchor"), workspace_id=workspace_id, note_id=note_id, note_revision_id=note_revision_id, start=start, end=end, selected_text=selected_text)
         return self._append(universe_id, command_id, "create_anchor", p.model_dump(), {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="exploration_anchor_created", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"anchor_id": p.anchor_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
 
-    def create_claim(self, universe_id: str, workspace_id: str, command_id: str, expected_sequence: int, text: str) -> CommitResult:
+    def create_claim(self, universe_id: str, workspace_id: str, command_id: str, expected_sequence: int, text: str, kind: str | None = None) -> CommitResult:
         workspace_projection(self.store, universe_id, workspace_id)
-        cid, vid = self._id(command_id, "claim"), self._id(command_id, "claim-version"); p = ClaimCreatedPayload(claim_id=cid, origin_workspace_id=workspace_id, claim_version_id=vid, claim_text=text)
-        return self._append(universe_id, command_id, "create_claim", {"workspace_id": workspace_id, "text": text}, {("claim", cid): expected_sequence}, PendingNativeEvent(event_type="claim_created", payload=p.model_dump(), aggregate_type="claim", aggregate_id=cid), {"claim_id": cid, "claim_version_id": vid, "aggregate_sequences": {"claim": expected_sequence + 1}})
+        cid, vid = self._id(command_id, "claim"), self._id(command_id, "claim-version"); p = ClaimCreatedPayload(claim_id=cid, origin_workspace_id=workspace_id, claim_version_id=vid, claim_text=text, kind=kind)  # type: ignore[arg-type]
+        return self._append(universe_id, command_id, "create_claim", {"workspace_id": workspace_id, "text": text, **({"kind": kind} if kind else {})}, {("claim", cid): expected_sequence}, PendingNativeEvent(event_type="claim_created", payload=p.model_dump(), aggregate_type="claim", aggregate_id=cid), {"claim_id": cid, "claim_version_id": vid, "aggregate_sequences": {"claim": expected_sequence + 1}})
 
     def start_review_round(self, universe_id: str, claim_id: str, command_id: str, expected_sequence: int) -> CommitResult:
         claim = next((e.validated_payload() for e in _events(self.store, universe_id) if e.event_type == "claim_created" and e.validated_payload().claim_id == claim_id), None)
@@ -634,24 +673,24 @@ class Slice1Service:
         missing = set(material_ids) - {m["material_id"] for m in materials}
         if missing:
             raise NotFound(sorted(missing)[0])
-        for ref in externals or []:
-            excerpt = (ref.get("excerpt") or "").strip()
-            locator = (ref.get("locator") or "").strip()
-            if not locator or not excerpt:
-                continue
-            materials.append({"material_id": None, "locator": locator, "excerpt": excerpt[:1500]})
+        externals = self._usable_externals(externals)
+        materials.extend({"material_id": None, "locator": r["locator"], "excerpt": r["excerpt"]} for r in externals)
         if not materials:
             raise BoundaryViolation("literature challenge needs at least one corpus material or external reference")
         gen = getattr(self.generator, "generate_literature", None)
         if gen is None:
             raise BoundaryViolation("challenge generator has no literature support")
+        challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
+        command_payload = {"round_id": round_id, "material_ids": material_ids, **({"external_locators": sorted(r["locator"] for r in externals)} if externals else {})}
+        prior = self._replay_commit(universe_id, command_id, "generate_literature_challenge", command_payload, ("challenge", challenge_id, expected_sequence))
+        if prior: return prior
         try:
             draft = gen(question=round_payload.question_text, claim=round_payload.claim_text, materials=materials)
         except Exception as exc:
             raise ChallengeGenerationFailed(str(exc)) from exc
-        challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
         p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty)
-        return self._append(universe_id, command_id, "generate_literature_challenge", {"round_id": round_id, "material_ids": material_ids}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
+        captured, cap_expected = self._capture_externals(universe_id, externals)
+        return self._append_many(universe_id, command_id, "generate_literature_challenge", command_payload, {**cap_expected, ("challenge", challenge_id): expected_sequence}, [*captured, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id)], {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
 
     def generate_evidence_candidate(self, universe_id: str, round_id: str, material_id: str, command_id: str, expected_sequence: int) -> CommitResult:
         """Explicit user command: ask the LLM to propose an evidence relation.
@@ -848,12 +887,16 @@ class Slice1Service:
             raise NotFound(candidate_id)
         return state
 
-    def propose_gap_candidate(self, universe_id: str, workspace_id: str, coverage_statement: str, search_query: str, search_scope: str, matched_locators: list[str], counterexample_invitation: str, searched_at: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+    def propose_gap_candidate(self, universe_id: str, workspace_id: str, coverage_statement: str, search_query: str, search_scope: str, matched_locators: list[str], counterexample_invitation: str, searched_at: str | None, command_id: str, expected_sequence: int, externals: list[dict] | None = None) -> CommitResult:
         workspace_projection(self.store, universe_id, workspace_id)
+        externals = self._usable_externals(externals)
         candidate_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:gap-candidate:{command_id}"))
         p = GapCandidateProposedPayload(gap_candidate_id=candidate_id, workspace_id=workspace_id, coverage_statement=coverage_statement, search_query=search_query, search_scope=search_scope, matched_locators=matched_locators, searched_at=searched_at, counterexample_invitation=counterexample_invitation)
-        command_payload = {"workspace_id": workspace_id, "coverage_statement": coverage_statement, "search_query": search_query, "search_scope": search_scope, "matched_locators": matched_locators, "counterexample_invitation": counterexample_invitation}
-        return self._append(universe_id, command_id, "propose_gap_candidate", command_payload, {("gap_candidate", candidate_id): expected_sequence}, PendingNativeEvent(event_type="gap_candidate_proposed", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id), {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
+        command_payload = {"workspace_id": workspace_id, "coverage_statement": coverage_statement, "search_query": search_query, "search_scope": search_scope, "matched_locators": matched_locators, "counterexample_invitation": counterexample_invitation, **({"external_locators": sorted(r["locator"] for r in externals)} if externals else {})}
+        prior = self._replay_commit(universe_id, command_id, "propose_gap_candidate", command_payload, ("gap_candidate", candidate_id, expected_sequence))
+        if prior: return prior
+        captured, cap_expected = self._capture_externals(universe_id, externals)
+        return self._append_many(universe_id, command_id, "propose_gap_candidate", command_payload, {**cap_expected, ("gap_candidate", candidate_id): expected_sequence}, [*captured, PendingNativeEvent(event_type="gap_candidate_proposed", payload=p.model_dump(), aggregate_type="gap_candidate", aggregate_id=candidate_id)], {"gap_candidate_id": candidate_id, "aggregate_sequences": {"gap_candidate": expected_sequence + 1}})
 
     def confirm_gap_candidate(self, universe_id: str, candidate_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
         state = self._gap_candidate_state(universe_id, candidate_id)
