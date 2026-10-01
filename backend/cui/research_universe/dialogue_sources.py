@@ -42,12 +42,15 @@ def _normalise(item: dict) -> dict | None:
     source = item.get("source") or ""
     if not title or not abstract:
         return None
-    url = item.get("url") or item.get("pdf_url") or ""
+    url = item.get("url") or next(iter(item.get("pdf_urls") or []), "")
     locator = ""
-    arxiv_id = (item.get("arxiv_id") or item.get("id") or "")
+    # map_arxiv puts the id in source_id; keep legacy keys as fallbacks.
+    arxiv_id = item.get("source_id") if source == "arxiv" else ""
+    arxiv_id = arxiv_id or item.get("arxiv_id") or item.get("id") or ""
     if source == "arxiv" or re.match(r"^\d{4}\.\d{4,5}", arxiv_id):
         arxiv_id = re.sub(r"v\d+$", "", arxiv_id)
-        locator = f"arxiv:{arxiv_id}"
+        if arxiv_id:  # never emit "arxiv:" with an empty id
+            locator = f"arxiv:{arxiv_id}"
     doi = (item.get("doi") or "").strip()
     # OpenAlex cites arXiv preprints as doi:10.48550/arxiv.XXXX — treat them as
     # the arXiv record (dedupes against the corpus, links resolve to arXiv).
@@ -57,7 +60,8 @@ def _normalise(item: dict) -> dict | None:
     elif doi:
         locator = f"doi:{doi.lower()}"
     if not locator:
-        match = re.search(r"/works/(W\d+)$", url)
+        # map_work: url = https://openalex.org/W123 (source_id = W123)
+        match = re.search(r"(?:^|/)(W\d+)$", item.get("source_id") or item.get("url") or "")
         if match:
             locator = f"openalex:{match.group(1)}"
     if not locator:
