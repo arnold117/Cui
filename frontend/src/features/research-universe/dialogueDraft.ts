@@ -10,6 +10,9 @@ export const CLAIM_KINDS: { kind: ClaimKind; label: string; hint: string; skelet
   { kind: "custom", label: "自写立场", hint: "按自己的话写一句可被攻击的断言", skeleton: "" },
 ]
 
+/** 骨架占位(三个及以上连续下划线)未填完 → 不可固化。 */
+export const hasClaimBlanks = (text: string) => /_{3,}/.test(text)
+
 export interface DialogueDraft {
   v: 2
   workspaceId: string

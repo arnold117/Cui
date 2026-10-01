@@ -159,4 +159,20 @@ describe("literature dialogue desk (staged)", () => {
     expect(after.hypothesesDone).toBe(false)
     expect(after.keywordsText).toBe("")
   })
+
+  it("blocks solidifying a claim while skeleton blanks remain, with a hint", async () => {
+    window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({
+      v: 2, workspaceId: "w-1", hypothesesText: "h", hypothesesDone: true, keywordsText: "RLHF reasoning", selectedKeywords: ["RLHF reasoning"],
+      candidates, selected: ["arxiv:2401.00009"], searchQuery: "RLHF reasoning", summary: "## 这几篇覆盖了什么\n评测。", claimText: "", claimAck: false, confirmedGapIds: [], savedAt: new Date().toISOString(),
+    }))
+    mockFullJourney()
+    renderDesk("w-1")
+    fireEvent.click(await screen.findByRole("button", { name: "分歧断言" }, { timeout: 3000 }))
+    const solidify = screen.getByRole("button", { name: /固化 claim 并开审查轮/ })
+    expect(solidify).toBeDisabled()
+    expect(screen.getByText("还有 ____ 没填")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("由你写下的 claim"), { target: { value: "文献在对齐机制上分成两派:一派认为偏好分布,另一派认为数据重复。" } })
+    expect(solidify).toBeEnabled()
+    expect(screen.queryByText("还有 ____ 没填")).not.toBeInTheDocument()
+  })
 })

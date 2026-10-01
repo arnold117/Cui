@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
 import type { DialogueCandidate } from "../types"
-import { CLAIM_KINDS, clearDialogueDraft, contentStage, emptyDraft, loadDialogueDraft, saveDialogueDraft, STAGE_DESCRIPTIONS, STAGE_LABELS, type ClaimKind, type DialogueDraft, dialogueProgress } from "../dialogueDraft"
+import { CLAIM_KINDS, clearDialogueDraft, hasClaimBlanks, contentStage, emptyDraft, loadDialogueDraft, saveDialogueDraft, STAGE_DESCRIPTIONS, STAGE_LABELS, type ClaimKind, type DialogueDraft, dialogueProgress } from "../dialogueDraft"
 
 const RELATION_LABELS: Record<string, string> = { supports: "支持", partial: "部分支持", opposes: "对立", background: "背景" }
 
@@ -147,7 +147,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
   }
 
   async function openReview() {
-    if (busy || !state.claimText.trim()) return
+    if (busy || !state.claimText.trim() || hasClaimBlanks(state.claimText)) return
     setBusy(true); setError(undefined)
     try {
       const made = await researchUniverse.createClaim(workspaceId, command({ text: state.claimText.trim() }, 0))
@@ -387,7 +387,8 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
             <textarea id="claim" className="ru-conclusion-text" rows={5} value={state.claimText} onChange={(e) => patch({ claimText: e.target.value })} placeholder="读了这些之后,你究竟要断言什么?" />
           </div>
           <div className="ru-stage-actions">
-            <button type="button" className="ru-ink-button ru-active" disabled={busy || !state.claimText.trim()} onClick={() => void openReview()}>{busy ? "正在固化…" : "固化 claim 并开审查轮"}</button>
+            <button type="button" className="ru-ink-button ru-active" disabled={busy || !state.claimText.trim() || hasClaimBlanks(state.claimText)} onClick={() => void openReview()}>{busy ? "正在固化…" : "固化 claim 并开审查轮"}</button>
+            {hasClaimBlanks(state.claimText) && <span className="ru-muted-note">还有 ____ 没填</span>}
           </div>
         </div>}
     </div>
