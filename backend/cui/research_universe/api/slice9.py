@@ -62,7 +62,7 @@ SYSTEM_LITERATURE_SEARCH = """你是 Cui。基于研究者的问题(以及候选
 
 
 class LiteratureChallengeCommand(Command):
-    material_ids: list[str] = Field(min_length=1)
+    material_ids: list[str] = Field(default_factory=list)  # 可空:全选外部检索候选时只有 external_refs
     external_refs: list[ExternalRef] = Field(default_factory=list)
 
 

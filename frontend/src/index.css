@@ -197,6 +197,11 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-resume-note { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; justify-content: space-between; margin: .9rem 0 0; padding: .55rem .9rem; border: 1px dashed var(--line); border-radius: 10px; background: color-mix(in srgb, var(--stone) 45%, var(--paper)); color: var(--muted); font-size: .87rem; line-height: 1.6; }
 .ru-ok-note { margin: .7rem 0; padding: .55rem .85rem; border-left: 3px solid var(--teal); background: color-mix(in srgb, var(--teal) 9%, transparent); color: #1E6B50; font-size: .9rem; line-height: 1.6; }
 
+/* 对话页的错误/成功提示渲染在页首;用户停在下方卡片时也要看得见 → 吸顶 */
+.ru-dialogue-new > .ru-error, .ru-dialogue-new > .ru-ok-note { position: sticky; top: .75rem; z-index: 5; padding: .55rem .85rem; box-shadow: 0 2px 10px rgb(0 0 0 / .08); }
+.ru-dialogue-new > .ru-error { background: var(--paper); }
+.ru-dialogue-new > .ru-ok-note { background: color-mix(in srgb, var(--teal) 9%, var(--paper)); }
+
 /* 阶段条 */
 .ru-stage-rail { display: flex; flex-wrap: wrap; gap: .45rem .4rem; margin: 1.6rem 0 .5rem; padding: 0; list-style: none; align-items: center; }
 .ru-stage-li button { display: inline-flex; gap: .45rem; align-items: center; border: 0; background: transparent; padding: .34rem .6rem; border-radius: 999px; font-size: .88rem; color: var(--muted); cursor: pointer; }

@@ -638,6 +638,8 @@ class Slice1Service:
             if not locator or not excerpt:
                 continue
             materials.append({"material_id": None, "locator": locator, "excerpt": excerpt[:1500]})
+        if not materials:
+            raise BoundaryViolation("literature challenge needs at least one corpus material or external reference")
         gen = getattr(self.generator, "generate_literature", None)
         if gen is None:
             raise BoundaryViolation("challenge generator has no literature support")

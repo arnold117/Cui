@@ -265,3 +265,18 @@ def test_cjk_question_translates_query_for_external_sources(monkeypatch):
     assert captured.get("query") == "US hegemony international order"
     candidates = resp.json()["candidates"]
     assert candidates and candidates[0]["locator"] == "doi:10.1000/hegemony-test"
+
+
+def test_literature_challenge_accepts_external_refs_only():
+    """外部检索是主路径:全选 arXiv/OpenAlex 候选时 material_ids 为空,不能被 schema 拦掉。"""
+    store, universe, service, wid, mat, rid = _seed()
+    app = FastAPI()
+    app.include_router(create_dialogue_router(service, store, LibraryContext("lib"), None, client=None), prefix="/api/v2")
+    client = TestClient(app)
+    ext = [{"locator": "doi:10.1000/only-external", "excerpt": "external abstract on RLHF alignment tax.", "url": None}]
+    ok = client.post(f"/api/v2/review-rounds/{rid}/literature-challenges", json={
+        "command_id": "lit-ext-only", "expected_sequence": 0, "material_ids": [], "external_refs": ext})
+    assert ok.status_code == 201, ok.text
+    empty = client.post(f"/api/v2/review-rounds/{rid}/literature-challenges", json={
+        "command_id": "lit-none", "expected_sequence": 0, "material_ids": [], "external_refs": []})
+    assert empty.status_code == 409  # 本 router 约定 BoundaryViolation → 409
