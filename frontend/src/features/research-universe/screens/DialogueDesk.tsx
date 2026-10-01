@@ -443,7 +443,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
       {state.gapDraft && !gapConfirmed && <div className="ru-material-form">
         <p className="ru-kicker">gap 形状:覆盖声明 + 检索记录 + 反例邀请(Cui 起草,你改,你署名)</p>
         <label htmlFor="d-coverage">覆盖范围声明(哪些已被覆盖、缺口在哪)</label>
-        <textarea id="d-coverage" className="ru-conclusion-text" value={state.gapDraft.coverage_statement} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, coverage_statement: e.target.value } })} />
+        <textarea id="d-coverage" className="ru-conclusion-text" value={state.gapDraft.coverage_statement} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, coverage_statement: e.target.value, citation_checks: [], citation_check_status: "ok" } })} /* 改写后旧核对不再适用 */ />
         <CitationCheckList report={state.gapDraft} />
         <label htmlFor="d-invitation">邀请反例</label>
         <input id="d-invitation" className="ru-revival-input" value={state.gapDraft.counterexample_invitation} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, counterexample_invitation: e.target.value } })} />
