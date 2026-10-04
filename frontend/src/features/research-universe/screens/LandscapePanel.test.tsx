@@ -81,17 +81,20 @@ describe("landscape panel", () => {
     expect(screen.getByText(/裁决:存活/)).toBeInTheDocument()
   })
   describe("challenge a confirmed gap", () => {
-    const withStatus = (status: "pending" | "confirmed" | "rejected"): WorkspaceLandscape => ({ ...landscapeWithPendingGap, gaps: [{ ...landscapeWithPendingGap.gaps[0], status }] })
+    const withStatus = (status: "pending" | "confirmed" | "corrected" | "rejected"): WorkspaceLandscape => ({ ...landscapeWithPendingGap, gaps: [{ ...landscapeWithPendingGap.gaps[0], status }] })
     const renderPanel = (l: WorkspaceLandscape) => render(<AppRouter><LandscapePanel landscape={l} onChanged={onChanged} /></AppRouter>)
 
-    it("offers the challenge button only on confirmed gaps", () => {
+    it("offers the challenge button only on confirmed / corrected gaps", () => {
       for (const status of ["pending", "rejected"] as const) {
         renderPanel(withStatus(status))
         expect(screen.queryByRole("button", { name: "对这个 gap 发起反证" })).not.toBeInTheDocument()
         cleanup()
       }
-      renderPanel(withStatus("confirmed"))
-      expect(screen.getByRole("button", { name: "对这个 gap 发起反证" })).toBeInTheDocument()
+      for (const status of ["confirmed", "corrected"] as const) {
+        renderPanel(withStatus(status))
+        expect(screen.getByRole("button", { name: "对这个 gap 发起反证" })).toBeInTheDocument()
+        cleanup()
+      }
     })
 
     it("pre-fills a draft, creates nothing until signed, then creates a vacancy claim, opens a round and navigates", async () => {

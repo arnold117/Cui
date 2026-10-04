@@ -116,7 +116,7 @@ export function LandscapePanel({ landscape, onChanged }: { landscape: WorkspaceL
         <p className="ru-provenance">检索:{gap.search_record.query}{gap.search_record.matched_locators.length > 0 ? ` · 命中 ${gap.search_record.matched_locators.length} 篇` : ""}{gap.search_record.searched_at ? ` · ${gap.search_record.searched_at}` : ""}</p>
         {gap.status === "pending" && <div className="ru-crystal-actions"><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "reject")}>拒绝</button><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void decide(gap, "confirm")}>确认这个 gap</button></div>}
         {gap.challenges && gap.challenges.length > 0 && <GapChallengeLines challenges={gap.challenges} />}
-        {gap.status === "confirmed" && <GapChallengeComposer workspaceId={landscape.workspace_id} gapId={gap.id} coverage={gap.coverage_statement} />}
+        {(gap.status === "confirmed" || gap.status === "corrected") && <GapChallengeComposer workspaceId={landscape.workspace_id} gapId={gap.id} coverage={gap.coverage_statement} />}
       </article>)}
     </div>
     {!open && <button className="ru-quiet-button" onClick={() => setOpen(true)}>登记一个 gap 候选</button>}
