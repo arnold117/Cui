@@ -396,6 +396,17 @@
             ],
             "title": "Kind"
           },
+          "origin_gap_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Gap Id"
+          },
           "text": {
             "minLength": 1,
             "title": "Text",

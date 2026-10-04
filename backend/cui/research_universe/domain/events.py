@@ -46,6 +46,7 @@ class ClaimCreatedPayload(Payload):
     claim_text: str
     author: Literal["user"] = "user"
     kind: Literal["consensus", "division", "vacancy"] | None = None  # 对话第 3 步的断言类型;自写=空
+    origin_gap_id: str | None = None  # 由哪个已确认 gap 转出(只链接,不改 gap 状态)
 
 
 class ReviewRoundStartedPayload(Payload):

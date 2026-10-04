@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { command, researchUniverse } from "../api"
+import { useNavigation } from "../../../router"
 import { GapChallengeComposer } from "./GapChallengeComposer"
-import type { CorpusSearchHit, GapCandidate, WorkspaceLandscape } from "../types"
+import type { CorpusSearchHit, GapCandidate, GapChallenge, WorkspaceLandscape } from "../types"
 
 const STATUS_LABELS: Record<GapCandidate["status"], string> = {
   pending: "待你裁决",
@@ -9,6 +10,17 @@ const STATUS_LABELS: Record<GapCandidate["status"], string> = {
   corrected: "已修订",
   rejected: "已拒绝",
   withdrawn: "已撤回",
+}
+/** 反证进展只展示,gap 状态由用户自己裁决(永不自动化定见) */
+function outcomeLabel(outcome: string): string {
+  if (outcome === "open") return "反证中"
+  if (outcome === "survived") return "反证结果:未能推翻"
+  if (outcome === "refuted") return "反证结果:已被推翻 — 这个 gap 可能需要你重新判断"
+  return `反证结果:${VERDICT_LABELS[outcome] ?? outcome}`
+}
+function GapChallengeLines({ challenges }: { challenges: GapChallenge[] }) {
+  const { navigate } = useNavigation()
+  return <>{challenges.map((c) => <p key={c.claim_id} className="ru-provenance">{outcomeLabel(c.outcome)} · {c.claim_text.length > 40 ? `${c.claim_text.slice(0, 40)}…` : c.claim_text}{c.round_id && <> · <button type="button" className="ru-quiet-button" onClick={() => navigate(`/review-rounds/${c.round_id}`)}>查看审查轮</button></>}</p>)}</>
 }
 const VERDICT_LABELS: Record<string, string> = {
   survived: "存活", circumstantial: "有条件存活", refuted: "已证伪", not_worth: "不值一探", boundary: "划界", open: "未裁决",
@@ -103,7 +115,8 @@ export function LandscapePanel({ landscape, onChanged }: { landscape: WorkspaceL
         <p className="ru-reading-copy"><strong>邀请反例:</strong>{gap.counterexample_invitation}</p>
         <p className="ru-provenance">检索:{gap.search_record.query}{gap.search_record.matched_locators.length > 0 ? ` · 命中 ${gap.search_record.matched_locators.length} 篇` : ""}{gap.search_record.searched_at ? ` · ${gap.search_record.searched_at}` : ""}</p>
         {gap.status === "pending" && <div className="ru-crystal-actions"><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "reject")}>拒绝</button><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void decide(gap, "confirm")}>确认这个 gap</button></div>}
-        {gap.status === "confirmed" && <GapChallengeComposer workspaceId={landscape.workspace_id} coverage={gap.coverage_statement} />}
+        {gap.challenges && gap.challenges.length > 0 && <GapChallengeLines challenges={gap.challenges} />}
+        {gap.status === "confirmed" && <GapChallengeComposer workspaceId={landscape.workspace_id} gapId={gap.id} coverage={gap.coverage_statement} />}
       </article>)}
     </div>
     {!open && <button className="ru-quiet-button" onClick={() => setOpen(true)}>登记一个 gap 候选</button>}

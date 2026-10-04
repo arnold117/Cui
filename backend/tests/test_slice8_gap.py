@@ -22,7 +22,8 @@ def _seed():
     service = Slice1Service(store, "local", _Gen())
     wid = service.create_workspace(universe, "w1", 0, "Why does X matter?").result_payload["workspace_id"]
     app = create_native_test_app(store, LibraryContext("lib"), principal=None, challenge_generator=_Gen())
-    return TestClient(app), wid
+    client = TestClient(app); client.service, client.universe = service, universe
+    return client, wid
 
 
 def _propose(client, wid, command_id="g1", expected_sequence=0, **overrides):
@@ -108,3 +109,55 @@ def test_gap_unknown_workspace_404_and_validation_errors():
     assert client.post("/api/v2/workspaces/nope/gap-candidates",
                        json={"command_id": "x", "expected_sequence": 0, "coverage_statement": "覆盖声明足够长十个字了吧", "search_query": "q", "counterexample_invitation": "邀请"}).status_code == 404
     assert _propose(client, wid, coverage_statement="太短").status_code == 422
+
+
+# --- #19 origin_gap_id: link only, gap.status never changes ---
+
+def _confirmed_gap(client, wid, command_id="og"):
+    gap_id = _propose(client, wid, command_id=command_id).json()["result"]["gap_candidate_id"]
+    assert client.post(f"/api/v2/gap-candidates/{gap_id}/confirm", json={"command_id": f"{command_id}-c", "expected_sequence": 1, "user_reason": "ok"}).status_code in (200, 201)
+    return gap_id
+
+
+def _claim(client, wid, command_id="oc", **extra):
+    return client.post(f"/api/v2/workspaces/{wid}/claims", json={"command_id": command_id, "expected_sequence": 0, "text": "空缺断言", "kind": "vacancy", **extra})
+
+
+def test_origin_gap_id_old_events_validate_and_round_trip():
+    base = {"claim_id": "c", "origin_workspace_id": "w", "claim_version_id": "v", "claim_text": "t"}
+    assert validate_payload("claim_created", 1, base).origin_gap_id is None
+    client, wid = _seed(); gap_id = _confirmed_gap(client, wid)
+    assert _claim(client, wid, origin_gap_id=gap_id).status_code == 201
+    landscape = client.get(f"/api/v2/workspaces/{wid}/landscape").json()
+    assert [c["claim_text"] for c in landscape["gaps"][0]["challenges"]] == ["空缺断言"]
+
+
+def test_origin_gap_id_rejects_unknown_other_workspace_and_unconfirmed():
+    client, wid = _seed()
+    assert _claim(client, wid, origin_gap_id="nope").status_code == 422
+    pending = _propose(client, wid, command_id="pg").json()["result"]["gap_candidate_id"]
+    assert _claim(client, wid, command_id="oc2", origin_gap_id=pending).status_code == 422
+    gap_id = _confirmed_gap(client, wid, "og2")
+    owid = client.service.create_workspace(client.universe, "w2", 0, "Other?").result_payload["workspace_id"]
+    assert _claim(client, owid, command_id="oc3", origin_gap_id=gap_id).status_code == 422
+
+
+def test_origin_gap_id_fingerprint_unchanged_and_conflicts_on_change():
+    client, wid = _seed(); gap_id = _confirmed_gap(client, wid)
+    assert _claim(client, wid, command_id="same").status_code == 201
+    assert _claim(client, wid, command_id="same").status_code == 201  # idempotent replay, same fingerprint
+    assert _claim(client, wid, command_id="same", origin_gap_id=gap_id).status_code == 409
+
+
+def test_gap_challenge_outcome_shown_but_status_never_changes():
+    client, wid = _seed(); gap_id = _confirmed_gap(client, wid)
+    claim_id = _claim(client, wid, origin_gap_id=gap_id).json()["result"]["claim_id"]
+    gap = lambda: client.get(f"/api/v2/workspaces/{wid}/landscape").json()["gaps"][0]
+    assert gap()["challenges"][0]["outcome"] == "open" and gap()["challenges"][0]["round_id"] is None
+    rnd = client.post(f"/api/v2/claims/{claim_id}/review-rounds", json={"command_id": "r1", "expected_sequence": 0})
+    round_id = rnd.json()["result"]["review_round_id"]
+    assert gap()["challenges"][0]["round_id"] == round_id
+    v = client.post(f"/api/v2/review-rounds/{round_id}/verdicts", json={"command_id": "v1", "expected_sequence": 1, "verdict_type": "refuted", "user_reason": "被反例推翻"})
+    assert v.status_code in (200, 201), v.text
+    g = gap()
+    assert g["challenges"][0]["outcome"] == "refuted" and g["status"] == "confirmed"

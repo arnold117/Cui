@@ -112,8 +112,29 @@ describe("landscape panel", () => {
       fireEvent.click(sign)
       await waitFor(() => expect(window.location.pathname).toBe("/review-rounds/r-9"))
       const claimCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))!
-      expect(JSON.parse(claimCall[1].body)).toMatchObject({ text: "我改写的空缺断言。", kind: "vacancy" })
+      expect(JSON.parse(claimCall[1].body)).toMatchObject({ text: "我改写的空缺断言。", kind: "vacancy", origin_gap_id: "gap-1" })
       expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/claims/c-9/review-rounds") || String(u).endsWith("/review-rounds"))).toBe(true)
+    })
+  })
+
+  describe("challenge progress on the gap card (display only)", () => {
+    const withChallenge = (outcome: string, round_id: string | null = "r-1"): WorkspaceLandscape => ({ ...landscapeWithPendingGap, gaps: [{ ...landscapeWithPendingGap.gaps[0], status: "confirmed", challenges: [{ claim_id: "c-1", claim_text: "目前没有文献覆盖真实任务表现", round_id, outcome }] }] })
+    const renderPanel = (l: WorkspaceLandscape) => render(<AppRouter><LandscapePanel landscape={l} onChanged={onChanged} /></AppRouter>)
+
+    it("shows reviewing / survived lines with a link to the round", () => {
+      renderPanel(withChallenge("open"))
+      expect(screen.getByText(/反证中/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "查看审查轮" }))
+      expect(window.location.pathname).toBe("/review-rounds/r-1")
+      cleanup()
+      renderPanel(withChallenge("survived"))
+      expect(screen.getByText(/反证结果:未能推翻/)).toBeInTheDocument()
+    })
+
+    it("refuted: shows the re-judge prompt but leaves the gap status label untouched", () => {
+      renderPanel(withChallenge("refuted"))
+      expect(screen.getByText(/反证结果:已被推翻 — 这个 gap 可能需要你重新判断/)).toBeInTheDocument()
+      expect(screen.getByText(/已确认 gap/)).toBeInTheDocument()
     })
   })
 })

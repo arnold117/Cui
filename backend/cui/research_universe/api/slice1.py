@@ -12,7 +12,7 @@ class Command(BaseModel): command_id: str; expected_sequence: int = Field(ge=0)
 class WorkspaceCommand(Command): question: str = Field(min_length=1)
 class NoteCommand(Command): text: str = Field(min_length=1)
 class AnchorCommand(Command): note_id: str; note_revision_id: str; start: int = Field(ge=0); end: int = Field(gt=0); selected_text: str = Field(min_length=1)
-class ClaimCommand(Command): text: str = Field(min_length=1); kind: Literal["consensus", "division", "vacancy"] | None = None
+class ClaimCommand(Command): text: str = Field(min_length=1); kind: Literal["consensus", "division", "vacancy"] | None = None; origin_gap_id: str | None = None
 class CommandResponse(BaseModel): commit_position: int; event_ids: list[str]; result: dict[str, object]; fragment: dict[str, object]
 
 def create_slice1_router(service: Slice1Service, store, context: LibraryContext, principal: LocalPrincipal) -> APIRouter:
@@ -47,7 +47,7 @@ def create_slice1_router(service: Slice1Service, store, context: LibraryContext,
     def claim(workspace_id: str, body: ClaimCommand):
         universe_id=_universe_for_workspace(store, context, workspace_id)
         try:
-            r=service.create_claim(universe_id, workspace_id, body.command_id, body.expected_sequence, body.text, body.kind); return commit(r, workspace_projection(store, universe_id, workspace_id))
+            r=service.create_claim(universe_id, workspace_id, body.command_id, body.expected_sequence, body.text, body.kind, body.origin_gap_id); return commit(r, workspace_projection(store, universe_id, workspace_id))
         except Exception as e: fail(e)
     @router.post("/claims/{claim_id}/review-rounds", status_code=status.HTTP_201_CREATED, response_model=CommandResponse)
     def round(claim_id: str, body: Command):

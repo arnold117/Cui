@@ -1073,6 +1073,8 @@ export interface components {
             expected_sequence: number;
             /** Kind */
             kind?: ("consensus" | "division" | "vacancy") | null;
+            /** Origin Gap Id */
+            origin_gap_id?: string | null;
             /** Text */
             text: string;
         };

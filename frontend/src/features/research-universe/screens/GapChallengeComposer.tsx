@@ -3,7 +3,7 @@ import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
 
 /** 对已确认 gap 发起反证:预填 claim 草稿,用户改写并署名后才创建 claim、开审查轮(永不自动化定见)。 */
-export function GapChallengeComposer({ workspaceId, coverage }: { workspaceId: string; coverage: string }) {
+export function GapChallengeComposer({ workspaceId, gapId, coverage }: { workspaceId: string; gapId: string; coverage: string }) {
   const { navigate } = useNavigation()
   const [open, setOpen] = useState(false)
   const [text, setText] = useState("")
@@ -14,7 +14,7 @@ export function GapChallengeComposer({ workspaceId, coverage }: { workspaceId: s
     if (busy || !text.trim()) return
     setBusy(true); setError(undefined)
     try {
-      const made = await researchUniverse.createClaim(workspaceId, command({ text: text.trim(), kind: "vacancy" }, 0))
+      const made = await researchUniverse.createClaim(workspaceId, command({ text: text.trim(), kind: "vacancy", origin_gap_id: gapId }, 0))
       const review = await researchUniverse.startReview(made.result.claim_id!, command({}, 0))
       navigate(`/review-rounds/${review.result.review_round_id}`)
     } catch (e) { setError(e instanceof Error ? e.message : "开审查轮失败") } finally { setBusy(false) }

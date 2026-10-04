@@ -444,6 +444,12 @@ def workspace_landscape_projection(store: NativeEventStore, universe_id: str, wo
         })
     gaps = [state for state in _gap_candidate_states(events).values() if state["workspace_id"] == workspace_id]
     gaps.sort(key=lambda g: g["id"])
+    # 反证进展:只读派生,绝不改 gap.status(永不自动化定见)
+    round_of_claim = {e.validated_payload().claim_id: e.validated_payload().round_id for e in events if e.event_type == "review_round_started"}
+    claim_text = {c["id"]: c["text"] for c in claims}
+    origins = [(e.validated_payload().origin_gap_id, e.validated_payload().claim_id) for e in events if e.event_type == "claim_created" and e.validated_payload().origin_gap_id]
+    for g in gaps:
+        g["challenges"] = [{"claim_id": cid, "claim_text": claim_text[cid], "round_id": round_of_claim.get(cid), "outcome": verdict_by_claim.get(cid, "open")} for gid, cid in origins if gid == g["id"] and cid in claim_text]
     _DEAD = {"refuted", "not_worth"}
     alive = [c for c in claims if verdict_by_claim.get(c["id"], "open") not in _DEAD]
     return {
@@ -596,10 +602,14 @@ class Slice1Service:
         p = ExplorationAnchorCreatedPayload(anchor_id=self._id(command_id, "anchor"), workspace_id=workspace_id, note_id=note_id, note_revision_id=note_revision_id, start=start, end=end, selected_text=selected_text)
         return self._append(universe_id, command_id, "create_anchor", p.model_dump(), {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="exploration_anchor_created", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"anchor_id": p.anchor_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
 
-    def create_claim(self, universe_id: str, workspace_id: str, command_id: str, expected_sequence: int, text: str, kind: str | None = None) -> CommitResult:
+    def create_claim(self, universe_id: str, workspace_id: str, command_id: str, expected_sequence: int, text: str, kind: str | None = None, origin_gap_id: str | None = None) -> CommitResult:
+        if origin_gap_id is not None:
+            gap = _gap_candidate_states(_events(self.store, universe_id)).get(origin_gap_id)
+            if gap is None or gap["workspace_id"] != workspace_id: raise BoundaryViolation("origin gap not found in this workspace")
+            if gap["status"] not in ("confirmed", "corrected"): raise BoundaryViolation(f"origin gap is {gap['status']}; only a confirmed gap can be challenged")
         workspace_projection(self.store, universe_id, workspace_id)
-        cid, vid = self._id(command_id, "claim"), self._id(command_id, "claim-version"); p = ClaimCreatedPayload(claim_id=cid, origin_workspace_id=workspace_id, claim_version_id=vid, claim_text=text, kind=kind)  # type: ignore[arg-type]
-        return self._append(universe_id, command_id, "create_claim", {"workspace_id": workspace_id, "text": text, **({"kind": kind} if kind else {})}, {("claim", cid): expected_sequence}, PendingNativeEvent(event_type="claim_created", payload=p.model_dump(), aggregate_type="claim", aggregate_id=cid), {"claim_id": cid, "claim_version_id": vid, "aggregate_sequences": {"claim": expected_sequence + 1}})
+        cid, vid = self._id(command_id, "claim"), self._id(command_id, "claim-version"); p = ClaimCreatedPayload(claim_id=cid, origin_workspace_id=workspace_id, claim_version_id=vid, claim_text=text, kind=kind, origin_gap_id=origin_gap_id)  # type: ignore[arg-type]
+        return self._append(universe_id, command_id, "create_claim", {"workspace_id": workspace_id, "text": text, **({"kind": kind} if kind else {}), **({"origin_gap_id": origin_gap_id} if origin_gap_id else {})}, {("claim", cid): expected_sequence}, PendingNativeEvent(event_type="claim_created", payload=p.model_dump(), aggregate_type="claim", aggregate_id=cid), {"claim_id": cid, "claim_version_id": vid, "aggregate_sequences": {"claim": expected_sequence + 1}})
 
     def start_review_round(self, universe_id: str, claim_id: str, command_id: str, expected_sequence: int) -> CommitResult:
         claim = next((e.validated_payload() for e in _events(self.store, universe_id) if e.event_type == "claim_created" and e.validated_payload().claim_id == claim_id), None)

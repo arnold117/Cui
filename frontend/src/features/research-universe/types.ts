@@ -115,6 +115,8 @@ export type AttachCrystallizationEnvelope = S["AttachCrystallizationCommand"]
 // slice1 — gap candidates / workspace landscape
 export type GapStatus = "pending" | "confirmed" | "corrected" | "rejected" | "withdrawn"
 export interface GapSearchRecord { query: string; scope: "active" | "legacy"; matched_locators: string[]; searched_at?: string | null }
+/** 由该 gap 转出的反证 claim 及其当前审查结果(只读派生;不改 gap.status)。outcome = 裁决类型,未裁决为 open */
+export interface GapChallenge { claim_id: string; claim_text: string; round_id: string | null; outcome: string }
 export interface GapCandidate {
   id: string
   workspace_id: string
@@ -125,6 +127,7 @@ export interface GapCandidate {
   status: GapStatus
   sequence?: number
   decision_reason?: string | null
+  challenges?: GapChallenge[]
 }
 export interface LandscapeClaim { id: string; text: string; sequence?: number }
 export interface LandscapeFact { candidate_id: string; claim_id: string; claim_text: string; relation: EvidenceRelation; material_locator?: string | null; decision_reason?: string | null }

@@ -483,7 +483,7 @@ export function DialogueDesk({ workspaceId }: { workspaceId: string }) {
         <p className="ru-quiet-hint">会话走完。草稿与选料存本机;claim 与 gap 已入轨迹。随时可从工作区"继续文献探讨"回到这里继续改。</p>
       </div>}
       {/* gap 确认后第 5 步即折叠,反证入口放在用户实际停留的第 6 步 */}
-      {state.confirmedGapIds.filter((id) => gapCoverage[id]).map((id) => <GapChallengeComposer key={id} workspaceId={workspaceId} coverage={gapCoverage[id]} />)}
+      {state.confirmedGapIds.filter((id) => gapCoverage[id]).map((id) => <GapChallengeComposer key={id} workspaceId={workspaceId} gapId={id} coverage={gapCoverage[id]} />)}
     </div>
   }
 }
