@@ -1,40 +1,80 @@
 # 淬 · Cui
 
-> **让严肃研究者持续经营一个会反过来质询自己的研究宇宙。**
+**A research environment that argues with you, and never decides for you.**
 
-An AI-native research environment. Cui starts from questions, not documents: users explore in problem workspaces, submit self-authored claims to adversarial examination, confirm evidence and conclusions, and let those traceable changes shape private research directions. Documents are downstream, externally-facing forms—not the center.
+Cui starts from a question, not a document. You explore the literature, write your own claims, and put them through adversarial review rounds: the system digs up supporting and contradicting evidence and raises challenges, and you rule on what lives and what dies. Every challenge, answer and verdict is kept as a trajectory, and that history is meant to compound into a personal **Lens**: a model of how *you* read papers and defend claims.
 
-## v5 — LitScribe 融入升级(slice0 迁移完成,2026-09-02)
+> **Status: early, under active development.** Solo project. The core loop works; the UI is mid-redesign, so expect rough edges and breaking changes. Feedback and arguments are welcome in [Issues](https://github.com/arnold117/Cui/issues).
 
-- **主名 Cui(淬);前身 = LitScribe(文献综述引擎,v4 归档于 `arnold117/LitScribe`,只读)**。一条产品线叙事:"Cui,前身 LitScribe,持续开发自 2026-01"。
-- **架构**:kernel(事件+围栏+投影+守门,零 LLM/HTTP)+ SDK(python 接口规范 + REST thin adapter)+ host + 插件;层间由 import-linter 机器执法(`make lint-contracts`)。
-- **本里程碑已落地**:包与 conda env rename anneal→cui;legacy v1 垂直归档 `cui/legacy_archive/`;v4 语料 **163 篇**入厂(native `material_added`,active/legacy 双语料 workspace,幂等);v4 纯逻辑 cherry-pick(ranking/pdf/exporters/templates/contradictions-diff)归档待 slice1 接线。
-- **产物终点方向**:现状图景 → gap 清单 → 可行方向(综述文档只是导出形式);决策真相见 `docs/spec-v5-merge.md`(已收敛);执行记录见 `docs/plan-v5-slice0.md` §5–§11;新 session 启动包 `docs/v5-handoff.md`。
-- **slice0 验收数字**:pytest **530 passed / 15 skipped**;canary L3 8/8、slice6 6/6 双绿;前端 vitest 66 + build;Playwright native 主路径 mock 冒烟 10 passed;importer 重跑幂等(0 新增)。
+## The one rule
 
-## Product authority
+> **Automate evidence-gathering. Never automate verdicts.**
 
-- [v5 merge spec(决策真相)](docs/spec-v5-merge.md)
-- [v5 slice0 plan(任务清单与执行记录)](docs/plan-v5-slice0.md)
-- [v4 corpus inventory(入厂盘点)](docs/v4-corpus-inventory.md)
-- [Product requirements — Research Universe](docs/prd-research-universe.md)
-- [Phase 1 specification — Minimal Research Universe](docs/spec-research-universe-mvp.md)
-- [Phase 1 UX / interaction specification](docs/spec-research-universe-ux.md)
-- [Phase 1 visual specification](docs/spec-research-universe-visual.md)
-- [Phase 1 native rebuild implementation plan](docs/plan-research-universe-phase1.md)
-- [Domain glossary](CONTEXT.md)
-- [Pre-redesign specs (historical archive)](docs/archive/pre-research-universe/)
+The model searches, grounds, finds contradictions and attacks your claim. Only you decide whether it survives.
 
-## Principles
+**Enforced in the code today:**
 
-- Automate evidence-gathering; never automate verdicts.
-- Preserve evolution: questions, claims, conclusions, and directions may change, but never without provenance.
-- Lens learns only from user-released, gated trajectories—not PARK or unconfirmed exploration.
-- A survived claim passed a gate; it is not a truth certificate.
+- **No machine-written verdicts.** No code path writes one, not even as a suggestion. A verdict is a user action and requires a written reason.
+- **A verdict isn't a boolean:** survived, or one of four causes of death: refuted, not worth it, boundary, or circumstantial. Circumstantial requires a revival condition.
+- **Evidence is supports / contradicts / silent / cannot assess.** "Nothing found" is a first-class result, kept apart from "couldn't tell": a failed parse is never recorded as silent.
+- **Confirmed counter-evidence always gets raised.** Confirming a contradiction puts a challenge on the board from a fixed template, with no LLM call.
+- ***Survived* means the claim held up this round, not that it's true**, and the UI says so.
 
-## Status
+**Design rules, not fully built yet:**
 
-slice0(迁移里程碑)已完成:Native Research Universe 基线 + 语料库 163 篇 + 边界机器执法全绿。slice1 第一刀(gap 闭环)+ 第二刀后端与「文献探讨」模式页已就位。当前可用主路径:问题工作区 → 探索 → 自写 claim → 不可变审查轮(LLM 挑战)→ 证据候选三态闸 → 人裁决 → 现状图景/gap;「文献探讨」模式(问题 → agent 从语料挑文献并给理由 → 你勾选 → 现状梳理 → 文献发难 → gap → related-work 草稿);archive 只读保留旧轨迹。
+- **The attacker may read your history; the judge never does.** Only kills feed the challenger, never survivals. (Prototyped June–July 2026; archived in the redesign, not in the current code.)
+- **Precedents are picked by cause of death, not topic.** A cause of death that recurs across topics is a habit of your method, and topic-overlap retrieval throws exactly those away.
+- **No ghost-writing.** While an idea is still forming, the system asks and never drafts your claim. (The free-form claim path follows this; the guided literature mode doesn't yet.)
+- **The Lens reads only gated trajectories.** (Not in the current code; parked ideas already live in a separate sealed store.)
+
+Full write-up: [Automate the evidence, never the verdict](https://arnold117.github.io/blog/2026/automate-evidence-never-verdicts/)
+
+## What works today
+
+- **Question workspaces:** explore → write a claim → immutable review rounds (LLM challenges) → evidence candidates through the evidence gate → your verdict → landscape summary and gap list.
+- **Literature dialogue:** a guided six-step session. Question → candidate hypotheses and search terms → the agent proposes papers (from your corpus, or arXiv / OpenAlex) with reasons → you pick → landscape summary → challenge from the literature → gap → related-work draft.
+
+## Running locally
+
+You need Python 3.11+, Node 20+, PostgreSQL, and an LLM key (Anthropic, or any OpenAI-compatible provider such as DeepSeek).
+
+```bash
+# backend
+cd backend
+pip install -e ".[llm,dev]"            # in a fresh venv / conda env
+cp .env.example .env                   # fill in CUI_LLM_* and CUI_DATABASE_URL
+export $(grep '^CUI_DATABASE_URL=' .env) && alembic upgrade head
+uvicorn "cui.api.app:create_app" --factory --port 8000
+
+# frontend (second terminal)
+cd frontend
+npm install && npm run dev             # proxies /api to :8000
+```
+
+- Tests: `cd backend && pytest`
+- Layer contracts: `make lint-contracts`
+- Real-LLM journey canary (makes paid API calls, not part of CI): `make canary-journey`
+
+## Architecture
+
+- **kernel:** events, fences, projections, gates. No LLM or HTTP imports, checked by import-linter (`make lint-contracts`).
+- **SDK:** Python interfaces plus a thin REST adapter (FastAPI).
+- **host and plugins:** LLM providers, literature search, and the React + TypeScript UI.
+
+Every claim's history is an append-only event stream, and its status is computed from those events, never stored.
+
+## Docs
+
+The design docs are mostly in Chinese.
+
+- [Domain glossary](CONTEXT.md): the vocabulary behind the rules above (it also covers concepts from the archived June–July prototype)
+- [Product requirements](docs/prd-research-universe.md) · [MVP spec](docs/spec-research-universe-mvp.md) · [UX spec](docs/spec-research-universe-ux.md) · [Visual spec](docs/spec-research-universe-visual.md)
+- Development notes: [v5 merge spec](docs/spec-v5-merge.md) · [handoff](docs/v5-handoff.md) · [slice0 plan](docs/plan-v5-slice0.md) · [slice1 plan](docs/plan-v5-slice1.md)
+- [Historical specs](docs/archive/pre-research-universe/)
+
+## History
+
+Cui (formerly [LitScribe](https://github.com/arnold117/LitScribe), a literature-review engine) has been in development since January 2026. The current version is a redesign started in June 2026.
 
 ## License
 
