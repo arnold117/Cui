@@ -63,6 +63,11 @@ class NotFound(Exception): pass
 class BoundaryViolation(Exception): pass
 
 
+def _forbid_silent_unparsed(relation: str, parse_status: str | None) -> None:
+    """Iron rule, shared by propose AND correct: a parse failure can never masquerade as silent."""
+    if relation == "silent" and parse_status != "parsed": raise BoundaryViolation("parse failure can never masquerade as silent; use cannot_assess")
+
+
 def _events(store: NativeEventStore, universe_id: str):
     return store.read_events(universe_id)
 
@@ -819,7 +824,7 @@ class Slice1Service:
         if material_payload is None: raise NotFound(material_id)
         if material_payload.workspace_id != round_payload.workspace_id: raise BoundaryViolation("material does not belong to the round's workspace")
         if material_payload.purpose != "evidence": raise BoundaryViolation("reference material never enters the evidence candidate flow")
-        if relation == "silent" and material_payload.parse_status != "parsed": raise BoundaryViolation("parse failure can never masquerade as silent; use cannot_assess")
+        _forbid_silent_unparsed(relation, material_payload.parse_status)
         candidate_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:evidence-candidate:{command_id}"))
         p = EvidenceRelationProposedPayload(candidate_id=candidate_id, round_id=round_id, workspace_id=round_payload.workspace_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, material_id=material_payload.material_id, material_excerpt=material_payload.excerpt, material_source_locator=material_payload.source_locator, relation=relation, uncertainty=uncertainty)
         return self._append(universe_id, command_id, "propose_evidence_candidate", {"round_id": round_id, "material_id": material_id, "relation": relation, "uncertainty": uncertainty}, {("evidence_candidate", candidate_id): expected_sequence}, PendingNativeEvent(event_type="evidence_relation_proposed", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id), {"candidate_id": candidate_id, "round_id": round_id, "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}})
@@ -850,6 +855,7 @@ class Slice1Service:
         if prior: return prior
         self._require_pending(state)
         if corrected_relation == state["relation"]: raise BoundaryViolation("correct must change the relation")
+        _forbid_silent_unparsed(corrected_relation, next((e.validated_payload().parse_status for e in _events(self.store, universe_id) if e.event_type == "material_added" and e.validated_payload().material_id == state["material_anchor"]["id"]), None))
         p = EvidenceRelationCorrectedPayload(candidate_id=candidate_id, round_id=state["round_id"], claim_id=state["claim_snapshot"]["id"], prior_relation=state["relation"], corrected_relation=corrected_relation, user_reason=user_reason)
         events = [PendingNativeEvent(event_type="evidence_relation_corrected", payload=p.model_dump(), aggregate_type="evidence_candidate", aggregate_id=candidate_id)]
         result = {"candidate_id": candidate_id, "round_id": state["round_id"], "relation": corrected_relation, "aggregate_sequences": {"evidence_candidate": expected_sequence + 1}}

@@ -116,4 +116,16 @@ describe("ReviewRoundDesk evidence surface", () => {
     fireEvent.click(screen.getByRole("button", { name: "提出候选" }))
     await waitFor(() => expect(researchUniverse.proposeEvidenceCandidate).toHaveBeenCalledWith("r-1", expect.objectContaining({ material_id: "m-3", relation: "cannot_assess", expected_sequence: 0 })))
   })
+
+  it("never offers silent as a correction for a parse-failed candidate, still does for a parsed one", async () => {
+    const failed = { ...candidate, id: "ec-fail", material_anchor: { id: "m-3", excerpt: "garbled", source_locator: null }, relation: "cannot_assess" as const }
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ evidence_candidates: [failed, candidate] }))
+    vi.mocked(researchUniverse.desk).mockResolvedValue(desk)
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    await screen.findByText("Reference note")
+    screen.getAllByRole("button", { name: "改为…" }).forEach((b) => fireEvent.click(b))
+    const options = (id: string) => Array.from((screen.getByLabelText(`改为什么（候选 ${id}）`) as HTMLSelectElement).options).map((o) => o.value)
+    expect(options("ec-fail")).toEqual(["", "supports", "contradicts"])
+    expect(options("ec-1")).toEqual(["", "supports", "silent", "cannot_assess"])
+  })
 })

@@ -124,7 +124,7 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
               {inline[candidate.id] === "correct" && <div className="ru-inline-action">
                 <select aria-label={`改为什么（候选 ${candidate.id.slice(0, 8)}）`} value={correctValue[candidate.id] ?? ""} onChange={(e) => setCorrectValue((v) => ({ ...v, [candidate.id]: e.target.value as EvidenceRelation }))}>
                   <option value="">选择改为什么</option>
-                  {RELATIONS.filter((r) => r !== candidate.relation).map((r) => <option key={r} value={r}>{RELATION_LABELS[r]}</option>)}
+                  {RELATIONS.filter((r) => r !== candidate.relation && !(r === "silent" && materials.find((m) => m.id === candidate.material_anchor.id)?.parse_status === "failed")).map((r) => <option key={r} value={r}>{RELATION_LABELS[r]}</option>)}
                 </select>
                 <button className="ru-quiet-button" disabled={decisionBusy !== null || !correctValue[candidate.id]} onClick={() => void correct(candidate)}>确认修正</button>
                 <button className="ru-quiet-button" onClick={() => toggleInline(candidate.id, "correct")}>取消</button>

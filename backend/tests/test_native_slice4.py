@@ -99,6 +99,21 @@ def test_silent_requires_parsed_and_cannot_assess_allowed_for_failed():
     assert _propose(client, rid, material_id, command_id="p2", relation="cannot_assess").status_code == 201
 
 
+def test_correct_cannot_turn_failed_parse_into_silent():
+    store, uid, client, wid, cid, rid = setup()
+    _add_material(client, wid, command_id="m-fail", parse_status="failed"); _add_material(client, wid, command_id="m-ok")
+    mids = {m["parse_status"]: m["id"] for m in client.get(f"/api/v2/workspaces/{wid}").json()["materials"]}
+    failed = _propose(client, rid, mids["failed"], command_id="p1", relation="cannot_assess").json()["result"]["candidate_id"]
+    parsed = _propose(client, rid, mids["parsed"], command_id="p2", relation="supports").json()["result"]["candidate_id"]
+    before = len(store.read_events(uid))
+    r = client.post(f"/api/v2/evidence-candidates/{failed}/correct", json={"command_id":"d1","expected_sequence":1,"corrected_relation":"silent"})
+    assert r.status_code == 409 and "masquerade" in r.json()["detail"]
+    assert len(store.read_events(uid)) == before
+    # only silent is blocked: the same candidate can still be corrected to an assessable relation; parsed material may still go silent
+    assert client.post(f"/api/v2/evidence-candidates/{failed}/correct", json={"command_id":"d2","expected_sequence":1,"corrected_relation":"supports"}).status_code == 200
+    assert client.post(f"/api/v2/evidence-candidates/{parsed}/correct", json={"command_id":"d3","expected_sequence":1,"corrected_relation":"silent"}).status_code == 200
+
+
 def test_propose_unknown_round_or_material_is_not_found():
     store, uid, client, wid, cid, rid = setup()
     _add_material(client, wid)
