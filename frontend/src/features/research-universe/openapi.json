@@ -736,6 +736,64 @@
         "title": "CreateDirectionCommand",
         "type": "object"
       },
+      "CrystallizeIntoDirectionCommand": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "conclusion_id": {
+            "title": "Conclusion Id",
+            "type": "string"
+          },
+          "direction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Id"
+          },
+          "expected_sequence": {
+            "minimum": 0.0,
+            "title": "Expected Sequence",
+            "type": "integer"
+          },
+          "new_proposition": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Proposition"
+          },
+          "user_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Reason"
+          }
+        },
+        "required": [
+          "command_id",
+          "expected_sequence",
+          "conclusion_id"
+        ],
+        "title": "CrystallizeIntoDirectionCommand",
+        "type": "object"
+      },
       "DeclareStatusCommand": {
         "properties": {
           "command_id": {
@@ -1189,6 +1247,15 @@
         "properties": {
           "command_id": {
             "title": "Command Id",
+            "type": "string"
+          },
+          "content_scope": {
+            "default": "full",
+            "enum": [
+              "full",
+              "abstract"
+            ],
+            "title": "Content Scope",
             "type": "string"
           },
           "excerpt": {
@@ -3834,6 +3901,58 @@
           }
         },
         "summary": "Conclude",
+        "tags": [
+          "research-universe-slice5-crystallization"
+        ]
+      }
+    },
+    "/api/v2/workspaces/{workspace_id}/crystallize-into-direction": {
+      "post": {
+        "operationId": "crystallize_into_direction_api_v2_workspaces__workspace_id__crystallize_into_direction_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrystallizeIntoDirectionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crystallize Into Direction",
         "tags": [
           "research-universe-slice5-crystallization"
         ]

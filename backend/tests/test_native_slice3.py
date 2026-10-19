@@ -24,6 +24,12 @@ def setup():
     return store, uid, client, wid, cid, rid, challenge_id
 
 
+def _anchor(client, wid):
+    """A real exploration anchor in wid (E3: answer refs must be this workspace's material/anchor ids)."""
+    note = client.post(f"/api/v2/workspaces/{wid}/notes", json={"command_id":"n", "expected_sequence":1, "text":"A useful fragment."}).json()["result"]
+    return client.post(f"/api/v2/workspaces/{wid}/anchors", json={"command_id":"an", "expected_sequence":2, "note_id":note["note_id"], "note_revision_id":note["note_revision_id"], "start":0, "end":6, "selected_text":"A usef"}).json()["result"]["anchor_id"]
+
+
 # --- payload catalogue -------------------------------------------------------
 
 def test_slice3_payload_catalogue_validates_and_rejects_malformed():
@@ -44,12 +50,12 @@ def test_slice3_payload_catalogue_validates_and_rejects_malformed():
 # --- lifecycle ---------------------------------------------------------------
 
 def test_answer_keeps_challenge_open_and_appends():
-    store, uid, client, wid, cid, rid, chid = setup()
-    first = client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a1", "expected_sequence":1, "answer_text":"my reply", "provisional_anchor_refs":["note-frag-1"]})
+    store, uid, client, wid, cid, rid, chid = setup(); aid = _anchor(client, wid)
+    first = client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a1", "expected_sequence":1, "answer_text":"my reply", "provisional_anchor_refs":[aid]})
     assert first.status_code == 200
     ch = first.json()["fragment"]["challenges"][0]
     assert ch["status"] == "answered"
-    assert ch["answers"] == [{"version_id": first.json()["result"]["answer_version_id"], "text":"my reply", "provisional_anchor_refs":["note-frag-1"], "sequence":1}]
+    assert ch["answers"] == [{"version_id": first.json()["result"]["answer_version_id"], "text":"my reply", "provisional_anchor_refs":[aid], "sequence":1}]
     second = client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a2", "expected_sequence":2, "answer_text":"second reply", "provisional_anchor_refs":[]})
     assert second.status_code == 200
     assert len(second.json()["fragment"]["challenges"][0]["answers"]) == 2
@@ -83,7 +89,7 @@ def test_withdraw_is_terminal_and_preserves_reason():
 
 def test_verdict_rolls_pending_and_answered_to_resolved_and_is_immutable():
     store, uid, client, wid, cid, rid, chid = setup()
-    client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a", "expected_sequence":1, "answer_text":"reply", "provisional_anchor_refs":["nf"]})
+    assert client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a", "expected_sequence":1, "answer_text":"reply", "provisional_anchor_refs":[_anchor(client, wid)]}).status_code == 200
     r = client.post(f"/api/v2/review-rounds/{rid}/verdicts", json={"command_id":"v", "expected_sequence":1, "verdict_type":"survived", "user_reason":"stood this round"})
     assert r.status_code == 200
     frag = r.json()["fragment"]
@@ -165,7 +171,7 @@ def test_nothing_emits_verdict_except_explicit_command():
 
 def test_ledger_shape_and_workspace_home_drop_terminal():
     store, uid, client, wid, cid, rid, chid = setup()
-    client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a", "expected_sequence":1, "answer_text":"reply", "provisional_anchor_refs":["nf-1"]})
+    assert client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a", "expected_sequence":1, "answer_text":"reply", "provisional_anchor_refs":[_anchor(client, wid)]}).status_code == 200
     frag = client.get(f"/api/v2/review-rounds/{rid}").json()
     assert [c["id"] for c in frag["ledger"]["answered"]] == [chid]
     assert frag["ledger"]["pending"] == [] and frag["ledger"]["deferred"] == []

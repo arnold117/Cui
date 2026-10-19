@@ -24,8 +24,8 @@ def setup():
     return store, uid, client, wid, cid, rid
 
 
-def _add_material(client, wid, command_id="m", excerpt="Paper A observes Z.", source_locator="Paper A", parse_status="parsed", purpose="evidence"):
-    return client.post(f"/api/v2/workspaces/{wid}/materials", json={"command_id": command_id, "expected_sequence": 0, "excerpt": excerpt, "source_locator": source_locator, "parse_status": parse_status, "purpose": purpose})
+def _add_material(client, wid, command_id="m", excerpt="Paper A observes Z.", source_locator="Paper A", parse_status="parsed", purpose="evidence", content_scope="full"):
+    return client.post(f"/api/v2/workspaces/{wid}/materials", json={"command_id": command_id, "expected_sequence": 0, "excerpt": excerpt, "source_locator": source_locator, "parse_status": parse_status, "purpose": purpose, "content_scope": content_scope})
 
 
 def _propose(client, rid, material_id, command_id="p", relation="contradicts", uncertainty=None):
@@ -101,7 +101,7 @@ def test_silent_requires_parsed_and_cannot_assess_allowed_for_failed():
 
 def test_correct_cannot_turn_failed_parse_into_silent():
     store, uid, client, wid, cid, rid = setup()
-    _add_material(client, wid, command_id="m-fail", parse_status="failed"); _add_material(client, wid, command_id="m-ok")
+    _add_material(client, wid, command_id="m-fail", parse_status="failed"); _add_material(client, wid, command_id="m-ok", source_locator="Paper B")
     mids = {m["parse_status"]: m["id"] for m in client.get(f"/api/v2/workspaces/{wid}").json()["materials"]}
     failed = _propose(client, rid, mids["failed"], command_id="p1", relation="cannot_assess").json()["result"]["candidate_id"]
     parsed = _propose(client, rid, mids["parsed"], command_id="p2", relation="supports").json()["result"]["candidate_id"]
@@ -299,3 +299,53 @@ def test_reference_material_proposal_and_silent_failed_are_409():
     assert _propose(client, rid, by_purpose["reference"]["id"], command_id="p1", relation="supports").status_code == 409
     assert _propose(client, rid, by_purpose["evidence"]["id"], command_id="p2", relation="silent").status_code == 409
     assert _propose(client, rid, by_purpose["evidence"]["id"], command_id="p3", relation="cannot_assess").status_code == 201
+
+
+# --- S4 (#24): bring into evidence desk = dedup by locator; answer refs are validated (E3) ---
+
+def test_same_locator_evidence_dedups_without_event_but_null_locator_and_reference_never_do():
+    store, uid, client, wid, cid, rid = setup()
+    first = _add_material(client, wid, command_id="m1", content_scope="abstract").json()
+    mid = first["result"]["material_id"]
+    before = len(store.read_events(uid))
+    again = _add_material(client, wid, command_id="m2", excerpt="A re-fetched abstract.")
+    assert again.status_code == 201 and again.json()["event_ids"] == []
+    assert again.json()["result"] == {"material_id": mid, "workspace_id": wid, "deduplicated": True}
+    assert len(store.read_events(uid)) == before
+    # retrying the SAME command is an idempotent replay of the original commit, not a dedup
+    replay = _add_material(client, wid, command_id="m1", content_scope="abstract").json()
+    assert replay["event_ids"] == first["event_ids"] and "deduplicated" not in replay["result"]
+    other = _add_material(client, wid, command_id="m3", source_locator="Paper B").json()["result"]["material_id"]
+    ref = _add_material(client, wid, command_id="m4", purpose="reference").json()["result"]["material_id"]
+    n1 = _add_material(client, wid, command_id="n1", source_locator=None).json()["result"]["material_id"]
+    n2 = _add_material(client, wid, command_id="n2", source_locator=None).json()["result"]["material_id"]
+    assert len({mid, other, ref, n1, n2}) == 5
+    mats = client.get(f"/api/v2/workspaces/{wid}").json()["materials"]
+    assert [(m["id"], m["content_scope"]) for m in mats] == [(mid, "abstract"), (other, "full"), (ref, "full"), (n1, "full"), (n2, "full")]
+    assert mats[0]["excerpt"] == "Paper A observes Z."  # first snapshot kept, never updated
+    # a failed parse never blocks a later parsed one; the parsed one is what dedups afterwards
+    failed = _add_material(client, wid, command_id="fx", source_locator="Paper X", parse_status="failed").json()["result"]["material_id"]
+    before = len(store.read_events(uid))
+    parsed = _add_material(client, wid, command_id="px", source_locator="Paper X").json()
+    assert parsed["result"]["material_id"] != failed and len(parsed["event_ids"]) == 1 and len(store.read_events(uid)) == before + 1
+    assert _add_material(client, wid, command_id="px2", source_locator="Paper X").json()["result"] == {"material_id": parsed["result"]["material_id"], "workspace_id": wid, "deduplicated": True}
+
+
+def test_answer_refs_must_be_this_workspaces_material_or_anchor():
+    store, uid, client, wid, cid, rid = setup()
+    chid = client.get(f"/api/v2/review-rounds/{rid}").json()["challenges"][0]["id"]
+    evidence = _add_material(client, wid, command_id="me").json()["result"]["material_id"]
+    reference = _add_material(client, wid, command_id="mr", source_locator="Paper R", purpose="reference").json()["result"]["material_id"]
+    note = client.post(f"/api/v2/workspaces/{wid}/notes", json={"command_id": "n", "expected_sequence": 1, "text": "A useful fragment."}).json()["result"]
+    anchor = client.post(f"/api/v2/workspaces/{wid}/anchors", json={"command_id": "an", "expected_sequence": 2, "note_id": note["note_id"], "note_revision_id": note["note_revision_id"], "start": 0, "end": 6, "selected_text": "A usef"}).json()["result"]["anchor_id"]
+    other_wid = client.post(f"/api/v2/universes/{uid}/workspaces", json={"command_id": "w2", "expected_sequence": 0, "question": "Another question?"}).json()["result"]["workspace_id"]
+    foreign = _add_material(client, other_wid, command_id="mf").json()["result"]["material_id"]
+    before = len(store.read_events(uid))
+    for i, refs in enumerate([["nope"], [foreign], [evidence, "nope"]]):
+        r = client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id": f"bad{i}", "expected_sequence": 1, "answer_text": "reply", "provisional_anchor_refs": refs})
+        assert r.status_code == 409, refs
+    assert len(store.read_events(uid)) == before
+    ok = client.post(f"/api/v2/challenges/{chid}/answers", json={"command_id": "ok", "expected_sequence": 1, "answer_text": "reply", "provisional_anchor_refs": [evidence, reference, anchor]})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["fragment"]["challenges"][0]["answers"][0]["provisional_anchor_refs"] == [evidence, reference, anchor]
+    assert [c["id"] for c in ok.json()["fragment"]["ledger"]["brought_unconfirmed"]] == [chid]

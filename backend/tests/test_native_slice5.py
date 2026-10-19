@@ -363,3 +363,65 @@ def test_reopen_keeps_conclusion_as_history():
     ws = client.get(f"/api/v2/workspaces/{wid}").json()
     assert ws["user_position"] == "exploring"
     assert ws["conclusion"]["text"] == "A first answer."  # recorded history stays
+
+
+# --- S6 (#24): crystallize-into-direction = one atomic command (E4) ---------
+
+def _crystallize(client, wid, conclusion_id, command_id="cx", **target):
+    return client.post(f"/api/v2/workspaces/{wid}/crystallize-into-direction", json={"command_id": command_id, "expected_sequence": 0, "conclusion_id": conclusion_id, **target})
+
+
+def test_crystallize_into_new_direction_writes_three_events_in_one_commit():
+    store, uid, client = setup()
+    wid = _workspace(client, uid)
+    conc = _conclude(client, wid).json()["result"]["conclusion_id"]
+    r = _crystallize(client, wid, conc, new_proposition="A thesis grown from this gap.", user_reason="it generalizes")
+    assert r.status_code == 201, r.text
+    res = r.json()["result"]
+    events = store.read_events(uid)
+    batch = [e for e in events if e.commit_position == events[-1].commit_position]
+    assert [(e.event_type, e.aggregate_id) for e in batch] == [("direction_created", res["direction_id"]), ("workspace_direction_attached", res["direction_link_id"]), ("workspace_crystallization_attached", res["crystallization_id"])]
+    assert [e.validated_payload().user_reason for e in batch[1:]] == ["it generalizes", "it generalizes"]
+    d = direction_projection(store, uid, res["direction_id"])
+    assert d["proposition"]["text"] == "A thesis grown from this gap."
+    assert [w["link_id"] for w in d["attached_workspaces"]] == [res["direction_link_id"]] and [c["conclusion_id"] for c in d["crystallizations"]] == [conc]
+    assert [l["direction_id"] for l in r.json()["fragment"]["direction_links"]] == [res["direction_id"]]
+    home = client.get(f"/api/v2/universes/{uid}/home").json()["directions"]
+    assert [(h["id"], h["crystallizations_count"]) for h in home] == [(res["direction_id"], 1)]
+    # retry with the same command_id replays; no second direction, link or crystallization
+    again = _crystallize(client, wid, conc, new_proposition="A thesis grown from this gap.", user_reason="it generalizes")
+    assert again.status_code == 201 and again.json()["event_ids"] == r.json()["event_ids"] and len(store.read_events(uid)) == len(events)
+
+
+def test_crystallize_into_existing_direction_attaches_once_and_reattaches_after_detach():
+    store, uid, client = setup()
+    wid = _workspace(client, uid); did = _direction(client, uid)
+    conc = _conclude(client, wid).json()["result"]["conclusion_id"]
+    first = _crystallize(client, wid, conc, "cx1", direction_id=did).json()
+    link = first["result"]["direction_link_id"]
+    assert first["result"]["direction_id"] == did and link is not None and len(first["event_ids"]) == 2
+    linked = _crystallize(client, wid, conc, "cx2", direction_id=did).json()
+    assert linked["result"]["direction_link_id"] is None and len(linked["event_ids"]) == 1
+    assert client.post(f"/api/v2/workspace-direction-links/{link}/detach", json={"command_id": "dt", "expected_sequence": 1}).status_code == 200
+    third = _crystallize(client, wid, conc, "cx3", direction_id=did).json()
+    relink = third["result"]["direction_link_id"]
+    assert relink not in (None, link) and len(third["event_ids"]) == 2
+    d = direction_projection(store, uid, did)
+    assert [w["link_id"] for w in d["attached_workspaces"]] == [relink] and len(d["crystallizations"]) == 3
+    assert [l["link_id"] for l in third["fragment"]["direction_links"]] == [relink]
+
+
+def test_crystallize_rejections_write_no_events():
+    store, uid, client = setup()
+    wid = _workspace(client, uid); did = _direction(client, uid)
+    conc = _conclude(client, wid).json()["result"]["conclusion_id"]
+    unconcluded = _workspace(client, uid, "w2", "Another question?")
+    before = len(store.read_events(uid))
+    # conclusion mismatch fails after the new-direction step is built: no orphan direction lands
+    assert _crystallize(client, wid, "not-the-conclusion", "x1", new_proposition="orphan?").status_code == 409
+    assert _crystallize(client, wid, "not-the-conclusion", "x2", direction_id=did).status_code == 409
+    assert _crystallize(client, unconcluded, conc, "x3", new_proposition="foreign conclusion").status_code == 409
+    assert _crystallize(client, wid, conc, "x4", direction_id="nope").status_code == 404
+    for i, target in enumerate([{}, {"direction_id": did, "new_proposition": "both"}, {"new_proposition": ""}]):
+        assert _crystallize(client, wid, conc, f"x5-{i}", **target).status_code == 422, target
+    assert len(store.read_events(uid)) == before

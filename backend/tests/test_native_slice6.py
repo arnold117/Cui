@@ -66,8 +66,8 @@ def setup(generator=None, evidence_generator=None):
     return store, uid, client, wid, cid, rid
 
 
-def _add_material(client, wid, command_id="m", excerpt="Paper A observes Z.", parse_status="parsed", purpose="evidence"):
-    return client.post(f"/api/v2/workspaces/{wid}/materials", json={"command_id": command_id, "expected_sequence": 0, "excerpt": excerpt, "source_locator": "Paper A", "parse_status": parse_status, "purpose": purpose})
+def _add_material(client, wid, command_id="m", excerpt="Paper A observes Z.", parse_status="parsed", purpose="evidence", source_locator="Paper A"):
+    return client.post(f"/api/v2/workspaces/{wid}/materials", json={"command_id": command_id, "expected_sequence": 0, "excerpt": excerpt, "source_locator": source_locator, "parse_status": parse_status, "purpose": purpose})
 
 
 def _material_id(client, wid):
@@ -239,7 +239,7 @@ def test_generate_stale_expected_sequence_409():
 def test_generate_unknown_round_404_and_fingerprint_conflict_409():
     store, uid, client, wid, cid, rid = setup()
     _add_material(client, wid, command_id="m1")
-    _add_material(client, wid, command_id="m2")
+    _add_material(client, wid, command_id="m2", source_locator="Paper B")  # 同 locator 会被 S4 去重
     ws = client.get(f"/api/v2/workspaces/{wid}").json()
     m1 = ws["materials"][0]["id"]; m2 = ws["materials"][1]["id"]
     assert _gen_challenge(client, "nope").status_code == 404

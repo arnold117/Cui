@@ -14,6 +14,7 @@ class MaterialCommand(Command):
     source_locator: str | None = None
     parse_status: Literal["parsed", "failed"]
     purpose: Literal["evidence", "reference"]
+    content_scope: Literal["full", "abstract"] = "full"
 
 
 class ProposeCandidateCommand(Command):
@@ -41,7 +42,7 @@ def create_slice4_router(service: Slice1Service, store, context: LibraryContext,
     def add_material(workspace_id: str, body: MaterialCommand):
         universe_id = _universe_for_workspace(store, context, workspace_id)
         try:
-            r = service.add_material(universe_id, workspace_id, body.excerpt, body.source_locator, body.parse_status, body.purpose, body.command_id, body.expected_sequence)
+            r = service.add_material(universe_id, workspace_id, body.excerpt, body.source_locator, body.parse_status, body.purpose, body.command_id, body.expected_sequence, body.content_scope)
             return commit(r, workspace_projection(store, universe_id, workspace_id))
         except Exception as e: fail(e)
     @router.post("/review-rounds/{round_id}/evidence-candidates", status_code=status.HTTP_201_CREATED, response_model=CommandResponse)

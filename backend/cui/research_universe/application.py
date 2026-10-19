@@ -327,7 +327,7 @@ def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id
         elif event.event_type == "review_round_started" and p.workspace_id == workspace_id:
             rounds.append({"id": p.round_id, "claim_id": p.claim_id, "question_snapshot": {"version_id": p.question_version_id, "text": p.question_text}, "claim_snapshot": {"id": p.claim_id, "version_id": p.claim_version_id, "text": p.claim_text}, "verdict": round_verdicts.get(p.round_id), "sequence": _round_next_sequence(events, p.round_id)})
         elif event.event_type == "material_added" and p.workspace_id == workspace_id:
-            materials.append({"id": p.material_id, "workspace_id": p.workspace_id, "excerpt": p.excerpt, "source_locator": p.source_locator, "parse_status": p.parse_status, "purpose": p.purpose, "sequence": event.sequence})
+            materials.append({"id": p.material_id, "workspace_id": p.workspace_id, "excerpt": p.excerpt, "source_locator": p.source_locator, "parse_status": p.parse_status, "purpose": p.purpose, "content_scope": p.content_scope, "sequence": event.sequence})
         elif event.event_type == "workspace_paused" and p.workspace_id == workspace_id:
             position = "paused"
         elif event.event_type == "workspace_reopened" and p.workspace_id == workspace_id:
@@ -748,6 +748,11 @@ class Slice1Service:
 
     def answer_challenge(self, universe_id: str, challenge_id: str, answer_text: str, provisional_anchor_refs: list[str], command_id: str, expected_sequence: int) -> CommitResult:
         state = self._challenge_state_or_raise(universe_id, challenge_id)
+        if provisional_anchor_refs:  # E3:事件不可撤,坏 ref 进不了轨迹;只认本工作区的 material(evidence/reference)或 anchor
+            wid = next(p.workspace_id for e in _events(self.store, universe_id) if e.event_type == "review_round_started" and (p := e.validated_payload()).round_id == state["review_round_id"])
+            w = workspace_projection(self.store, universe_id, wid)
+            unknown = set(provisional_anchor_refs) - {m["id"] for m in w["materials"]} - {a["id"] for a in w["anchors"]}
+            if unknown: raise BoundaryViolation(f"answer refs must be material or anchor ids of this workspace: {sorted(unknown)}")
         answer_version_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:answer-version:{command_id}"))
         p = ChallengeAnsweredPayload(challenge_id=challenge_id, round_id=state["review_round_id"], claim_id=state["claim_id"], answer_version_id=answer_version_id, answer_text=answer_text, provisional_anchor_refs=provisional_anchor_refs)
         return self._append(universe_id, command_id, "answer_challenge", {"challenge_id": challenge_id, "answer_text": answer_text, "provisional_anchor_refs": provisional_anchor_refs}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_answered", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "review_round_id": state["review_round_id"], "answer_version_id": answer_version_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
@@ -810,11 +815,20 @@ class Slice1Service:
         if state["status"] != "pending":
             raise BoundaryViolation(f"evidence candidate is already {state['status']}; old decisions are never reopened")
 
-    def add_material(self, universe_id: str, workspace_id: str, excerpt: str, source_locator: str | None, parse_status: str, purpose: str, command_id: str, expected_sequence: int) -> CommitResult:
+    def add_material(self, universe_id: str, workspace_id: str, excerpt: str, source_locator: str | None, parse_status: str, purpose: str, command_id: str, expected_sequence: int, content_scope: str = "full") -> CommitResult:
         workspace_projection(self.store, universe_id, workspace_id)
         material_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:material:{command_id}"))
-        p = MaterialAddedPayload(material_id=material_id, workspace_id=workspace_id, excerpt=excerpt, source_locator=source_locator, parse_status=parse_status, purpose=purpose)
-        return self._append(universe_id, command_id, "add_material", {"workspace_id": workspace_id, "excerpt": excerpt, "source_locator": source_locator, "parse_status": parse_status, "purpose": purpose}, {("material", material_id): expected_sequence}, PendingNativeEvent(event_type="material_added", payload=p.model_dump(), aggregate_type="material", aggregate_id=material_id), {"material_id": material_id, "workspace_id": workspace_id, "aggregate_sequences": {"material": expected_sequence + 1}})
+        p = MaterialAddedPayload(material_id=material_id, workspace_id=workspace_id, excerpt=excerpt, source_locator=source_locator, parse_status=parse_status, purpose=purpose, content_scope=content_scope)  # type: ignore[arg-type]
+        # content_scope 只在非默认时进指纹:旧命令(含 v4 导入)重放指纹不变
+        command_payload = {"workspace_id": workspace_id, "excerpt": excerpt, "source_locator": source_locator, "parse_status": parse_status, "purpose": purpose, **({"content_scope": content_scope} if content_scope != "full" else {})}
+        expected = {("material", material_id): expected_sequence}
+        # 先查 command_id 重放(重试自己那条不算去重),再按 S4 去重:同工作区同 locator 的 evidence 材料只带一次,保留首次快照
+        # ponytail: 先查后写不加锁,两条不同 command_id 并发带同一 locator 可能各落一条;要严格就让 material id 由 (workspace, locator) 确定
+        prior = self.store.lookup_command(universe_id, command_id, command_fingerprint(universe_id, "add_material", command_payload, [("material", material_id, expected_sequence)]))
+        if prior: return prior
+        dup = next((e for e in _events(self.store, universe_id) if e.event_type == "material_added" and (m := e.validated_payload()).workspace_id == workspace_id and m.purpose == "evidence" and m.parse_status == "parsed" and m.source_locator == source_locator), None) if purpose == "evidence" and (source_locator or "").strip() else None
+        if dup is not None: return CommitResult(dup.commit_position, [], {"material_id": dup.aggregate_id, "workspace_id": workspace_id, "deduplicated": True})
+        return self._append(universe_id, command_id, "add_material", command_payload, expected, PendingNativeEvent(event_type="material_added", payload=p.model_dump(), aggregate_type="material", aggregate_id=material_id), {"material_id": material_id, "workspace_id": workspace_id, "aggregate_sequences": {"material": expected_sequence + 1}})
 
     def propose_evidence_candidate(self, universe_id: str, round_id: str, material_id: str, relation: str, uncertainty: str | None, command_id: str, expected_sequence: int) -> CommitResult:
         events = _events(self.store, universe_id)
@@ -996,10 +1010,25 @@ class Slice1Service:
         p = WorkspaceAbsorbedPayload(workspace_id=workspace_id, target_workspace_id=target_workspace_id, user_reason=user_reason)
         return self._append(universe_id, command_id, "absorb_workspace", {"workspace_id": workspace_id, "target_workspace_id": target_workspace_id, "user_reason": user_reason}, {("workspace", workspace_id): expected_sequence}, PendingNativeEvent(event_type="workspace_absorbed", payload=p.model_dump(), aggregate_type="workspace", aggregate_id=workspace_id), {"workspace_id": workspace_id, "target_workspace_id": target_workspace_id, "aggregate_sequences": {"workspace": expected_sequence + 1}})
 
+    # 纯 builder:不读 store,同一批次里可串起「新建方向 → 挂 → 结晶」(S6 crystallize_into_direction);存在性校验留给调用方
+    def _direction_created_event(self, command_id: str, proposition: str) -> PendingNativeEvent:
+        p = DirectionCreatedPayload(direction_id=self._id(command_id, "direction"), proposition_version_id=self._id(command_id, "direction-proposition"), proposition_text=proposition)
+        return PendingNativeEvent(event_type="direction_created", payload=p.model_dump(), aggregate_type="direction", aggregate_id=p.direction_id)
+
+    def _direction_attached_event(self, command_id: str, workspace_id: str, direction_id: str, user_reason: str | None) -> PendingNativeEvent:
+        p = WorkspaceDirectionAttachedPayload(direction_link_id=self._id(command_id, "direction-link"), workspace_id=workspace_id, direction_id=direction_id, user_reason=user_reason)
+        return PendingNativeEvent(event_type="workspace_direction_attached", payload=p.model_dump(), aggregate_type="workspace_direction_link", aggregate_id=p.direction_link_id)
+
+    def _crystallization_attached_event(self, command_id: str, workspace: dict, direction_id: str, conclusion_id: str, user_reason: str | None) -> PendingNativeEvent:
+        """workspace = workspace_projection(...);结论必须是它当前那条。"""
+        conclusion = workspace.get("conclusion")
+        if conclusion is None or conclusion["id"] != conclusion_id: raise BoundaryViolation("workspace has no such conclusion")
+        p = WorkspaceCrystallizationAttachedPayload(crystallization_id=self._id(command_id, "crystallization"), direction_id=direction_id, workspace_id=workspace["id"], conclusion_id=conclusion_id, conclusion_text=conclusion["text"], conclusion_type=conclusion["type"], user_reason=user_reason)  # type: ignore[arg-type]
+        return PendingNativeEvent(event_type="workspace_crystallization_attached", payload=p.model_dump(), aggregate_type="workspace_crystallization", aggregate_id=p.crystallization_id)
+
     def create_direction(self, universe_id: str, proposition: str, command_id: str, expected_sequence: int) -> CommitResult:
-        direction_id, vid = self._id(command_id, "direction"), self._id(command_id, "direction-proposition")
-        p = DirectionCreatedPayload(direction_id=direction_id, proposition_version_id=vid, proposition_text=proposition)
-        return self._append(universe_id, command_id, "create_direction", {"proposition": proposition}, {("direction", direction_id): expected_sequence}, PendingNativeEvent(event_type="direction_created", payload=p.model_dump(), aggregate_type="direction", aggregate_id=direction_id), {"direction_id": direction_id, "proposition_version_id": vid, "aggregate_sequences": {"direction": expected_sequence + 1}})
+        event = self._direction_created_event(command_id, proposition)
+        return self._append(universe_id, command_id, "create_direction", {"proposition": proposition}, {("direction", event.aggregate_id): expected_sequence}, event, {"direction_id": event.aggregate_id, "proposition_version_id": event.payload["proposition_version_id"], "aggregate_sequences": {"direction": expected_sequence + 1}})
 
     def declare_direction_status(self, universe_id: str, direction_id: str, status: str, user_reason: str, command_id: str, expected_sequence: int) -> CommitResult:
         direction_projection(self.store, universe_id, direction_id)
@@ -1015,9 +1044,8 @@ class Slice1Service:
     def attach_direction(self, universe_id: str, workspace_id: str, direction_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
         workspace_projection(self.store, universe_id, workspace_id)
         direction_projection(self.store, universe_id, direction_id)
-        link_id = self._id(command_id, "direction-link")
-        p = WorkspaceDirectionAttachedPayload(direction_link_id=link_id, workspace_id=workspace_id, direction_id=direction_id, user_reason=user_reason)
-        return self._append(universe_id, command_id, "attach_direction", {"workspace_id": workspace_id, "direction_id": direction_id, "user_reason": user_reason}, {("workspace_direction_link", link_id): expected_sequence}, PendingNativeEvent(event_type="workspace_direction_attached", payload=p.model_dump(), aggregate_type="workspace_direction_link", aggregate_id=link_id), {"direction_link_id": link_id, "workspace_id": workspace_id, "direction_id": direction_id, "aggregate_sequences": {"workspace_direction_link": expected_sequence + 1}})
+        event = self._direction_attached_event(command_id, workspace_id, direction_id, user_reason)
+        return self._append(universe_id, command_id, "attach_direction", {"workspace_id": workspace_id, "direction_id": direction_id, "user_reason": user_reason}, {("workspace_direction_link", event.aggregate_id): expected_sequence}, event, {"direction_link_id": event.aggregate_id, "workspace_id": workspace_id, "direction_id": direction_id, "aggregate_sequences": {"workspace_direction_link": expected_sequence + 1}})
 
     def detach_direction_link(self, universe_id: str, link_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
         events = _events(self.store, universe_id)
@@ -1032,9 +1060,24 @@ class Slice1Service:
     def attach_crystallization(self, universe_id: str, direction_id: str, workspace_id: str, conclusion_id: str, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
         ws = workspace_projection(self.store, universe_id, workspace_id)
         direction_projection(self.store, universe_id, direction_id)
-        if ws.get("conclusion") is None or ws["conclusion"]["id"] != conclusion_id:
-            raise BoundaryViolation("workspace has no such conclusion")
-        conclusion = ws["conclusion"]
-        crystallization_id = self._id(command_id, "crystallization")
-        p = WorkspaceCrystallizationAttachedPayload(crystallization_id=crystallization_id, direction_id=direction_id, workspace_id=workspace_id, conclusion_id=conclusion_id, conclusion_text=conclusion["text"], conclusion_type=conclusion["type"], user_reason=user_reason)  # type: ignore[arg-type]
-        return self._append(universe_id, command_id, "attach_crystallization", {"direction_id": direction_id, "workspace_id": workspace_id, "conclusion_id": conclusion_id, "user_reason": user_reason}, {("workspace_crystallization", crystallization_id): expected_sequence}, PendingNativeEvent(event_type="workspace_crystallization_attached", payload=p.model_dump(), aggregate_type="workspace_crystallization", aggregate_id=crystallization_id), {"crystallization_id": crystallization_id, "direction_id": direction_id, "workspace_id": workspace_id, "aggregate_sequences": {"workspace_crystallization": expected_sequence + 1}})
+        event = self._crystallization_attached_event(command_id, ws, direction_id, conclusion_id, user_reason)
+        return self._append(universe_id, command_id, "attach_crystallization", {"direction_id": direction_id, "workspace_id": workspace_id, "conclusion_id": conclusion_id, "user_reason": user_reason}, {("workspace_crystallization", event.aggregate_id): expected_sequence}, event, {"crystallization_id": event.aggregate_id, "direction_id": direction_id, "workspace_id": workspace_id, "aggregate_sequences": {"workspace_crystallization": expected_sequence + 1}})
+
+    def crystallize_into_direction(self, universe_id: str, workspace_id: str, conclusion_id: str, direction_id: str | None, new_proposition: str | None, user_reason: str | None, command_id: str, expected_sequence: int) -> CommitResult:
+        """S6 E4:[新建方向] + 挂方向(已关联则跳过) + 结晶,一次提交——中途失败不留孤儿方向。
+        写入的都是新聚合,expected_sequence 对每个都适用(正常 = 0)。"""
+        if (direction_id is None) == (new_proposition is None): raise BoundaryViolation("crystallize needs exactly one of direction_id / new_proposition")
+        ws = workspace_projection(self.store, universe_id, workspace_id)
+        events: list[PendingNativeEvent] = []
+        if new_proposition is not None: events.append(self._direction_created_event(command_id, new_proposition)); target = events[0].aggregate_id
+        else: direction_projection(self.store, universe_id, direction_id); target = direction_id  # type: ignore[arg-type]
+        link = self._direction_attached_event(command_id, workspace_id, target, user_reason)
+        # 已关联 = 本工作区有指向同一方向、未 detach 的 link;排除本命令自己的 link,重试时 targets 不变才能按指纹重放
+        attach = not any(l["direction_id"] == target and l["link_id"] != link.aggregate_id for l in ws["direction_links"])
+        if attach: events.append(link)
+        crystal = self._crystallization_attached_event(command_id, ws, target, conclusion_id, user_reason)
+        events.append(crystal)
+        expected = {(e.aggregate_type, e.aggregate_id): expected_sequence for e in events}
+        command_payload = {"workspace_id": workspace_id, "conclusion_id": conclusion_id, "direction_id": direction_id, "new_proposition": new_proposition, "user_reason": user_reason}
+        result = {"direction_id": target, "direction_link_id": link.aggregate_id if attach else None, "crystallization_id": crystal.aggregate_id, "workspace_id": workspace_id, "aggregate_sequences": {e.aggregate_type: expected_sequence + 1 for e in events}}
+        return self._append_many(universe_id, command_id, "crystallize_into_direction", command_payload, expected, events, result)

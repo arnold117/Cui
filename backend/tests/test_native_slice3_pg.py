@@ -57,7 +57,7 @@ def _tracer(c, uid):
 def test_pg_review_lifecycle_persists_and_replays(pg_slice3):
     engine, store, uid, c, database = pg_slice3
     wid, cid, rid, chid = _tracer(c, uid)
-    assert c.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a1","expected_sequence":1,"answer_text":"reply","provisional_anchor_refs":["nf-1"]}).status_code == 200
+    assert c.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a1","expected_sequence":1,"answer_text":"reply","provisional_anchor_refs":[]}).status_code == 200  # E3: fake refs are now 409; real-ref acceptance is covered in-memory
     assert c.post(f"/api/v2/challenges/{chid}/answers", json={"command_id":"a2","expected_sequence":2,"answer_text":"reply two","provisional_anchor_refs":[]}).status_code == 200
     verdict = c.post(f"/api/v2/review-rounds/{rid}/verdicts", json={"command_id":"verdict","expected_sequence":1,"verdict_type":"circumstantial","user_reason":"not now","revival_condition":"when measured"})
     assert verdict.status_code == 200

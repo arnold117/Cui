@@ -84,6 +84,19 @@ class AttachCrystallizationCommand(Command):
     user_reason: str | None = None
 
 
+class CrystallizeIntoDirectionCommand(Command):
+    conclusion_id: str
+    direction_id: str | None = None
+    new_proposition: str | None = Field(default=None, min_length=1)
+    user_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self) -> "CrystallizeIntoDirectionCommand":
+        if (self.direction_id is None) == (self.new_proposition is None):
+            raise ValueError("exactly one of direction_id / new_proposition is required")
+        return self
+
+
 def create_slice5_router(service: Slice1Service, store, context: LibraryContext, principal: LocalPrincipal) -> APIRouter:
     router = APIRouter(tags=["research-universe-slice5-crystallization"])
     def commit(result, fragment): return CommandResponse(commit_position=result.commit_position, event_ids=result.event_ids, result=result.result_payload, fragment=fragment)
@@ -167,6 +180,13 @@ def create_slice5_router(service: Slice1Service, store, context: LibraryContext,
         try:
             r = service.attach_crystallization(universe_id, direction_id, body.workspace_id, body.conclusion_id, body.user_reason, body.command_id, body.expected_sequence)
             return commit(r, direction_projection(store, universe_id, direction_id))
+        except Exception as e: fail(e)
+    @router.post("/workspaces/{workspace_id}/crystallize-into-direction", status_code=status.HTTP_201_CREATED, response_model=CommandResponse)
+    def crystallize_into_direction(workspace_id: str, body: CrystallizeIntoDirectionCommand):
+        universe_id = _universe_for_workspace(store, context, workspace_id)
+        try:
+            r = service.crystallize_into_direction(universe_id, workspace_id, body.conclusion_id, body.direction_id, body.new_proposition, body.user_reason, body.command_id, body.expected_sequence)
+            return commit(r, workspace_projection(store, universe_id, workspace_id))
         except Exception as e: fail(e)
     @router.get("/directions/{direction_id}")
     def direction(direction_id: str):
