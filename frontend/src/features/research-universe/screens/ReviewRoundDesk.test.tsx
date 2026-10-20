@@ -43,7 +43,7 @@ describe("ReviewRoundDesk review lifecycle", () => {
     expect(screen.getByRole("link", { name: "回研究宇宙查看上下文" })).toHaveAttribute("href", "/")
     expect(screen.getByLabelText("我目前的回应")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "保存答辩" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "作出本轮裁决" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "裁决" })).toBeInTheDocument()
   })
 
   it("saves an answer, keeps the challenge open, and shows the saved reply", async () => {
@@ -92,7 +92,7 @@ describe("ReviewRoundDesk review lifecycle", () => {
     vi.mocked(researchUniverse.confirmVerdict).mockResolvedValue(responded({ review_round_id: "r-1", verdict_type: "survived" }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
     await screen.findByText("边界尚未说明")
-    fireEvent.click(screen.getByRole("button", { name: "作出本轮裁决" }))
+    fireEvent.click(screen.getByRole("tab", { name: "裁决" }))
     expect(screen.getByText(/这是一项你的判断。Cui 不会替你决定结果。/)).toBeInTheDocument()
     expect(screen.getByText("已回应")).toBeInTheDocument()
     expect(screen.getByText("仍待回应")).toBeInTheDocument()
@@ -106,7 +106,7 @@ describe("ReviewRoundDesk review lifecycle", () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
     await screen.findByText("边界尚未说明")
-    fireEvent.click(screen.getByRole("button", { name: "作出本轮裁决" }))
+    fireEvent.click(screen.getByRole("tab", { name: "裁决" }))
     fireEvent.click(screen.getByRole("radio", { name: /现在先不投入/ }))
     const confirm = screen.getByRole("button", { name: "确认裁决" })
     expect(confirm).toBeDisabled()
@@ -137,5 +137,86 @@ describe("ReviewRoundDesk review lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "围绕这条边界开一个新问题" }))
     await waitFor(() => expect(researchUniverse.createWorkspace).toHaveBeenCalledWith("u-1", expect.objectContaining({ question: "把这条边界做成一个开放问题：主张" })))
     expect(window.location.pathname).toBe("/workspaces/w-2")
+  })
+})
+
+describe("ReviewRoundDesk attack surface and segments (S3)", () => {
+  const ch = (id: string, attack_surface: string, extra: Record<string, unknown> = {}) => ({ ...challenge, id, attack_surface, ...extra })
+  // 已回应 / 暂缓 / 撤回都不算「仍待回应」（ledger 口径）
+  const settled = [
+    ch("ch-1", "已回应的一关", { status: "answered", answers: [{ version_id: "av-1", text: "r", provisional_anchor_refs: [] }] }),
+    ch("ch-2", "暂缓的一关", { status: "deferred", defer: { reason: "暂缓这条挑战", condition: "读完 Paper A" } }),
+    ch("ch-3", "撤回的一关", { status: "withdrawn", withdraw: { reason: "不适用" } }),
+  ]
+  const candidate = (status: string) => ({ id: "ec-1", round_id: "r-1", workspace_id: "w-1", claim_snapshot: snapshot, material_anchor: { id: "m-1", excerpt: "摘录", source_locator: null }, relation: "supports", status, sequence: 1 })
+  const expandedRow = () => screen.getByRole("button", { expanded: true })
+
+  it.each([
+    ["应答", "a still-pending challenge", makeRound({ challenges: [...settled, ch("ch-4", "仍待回应的一关")], evidence_candidates: [candidate("pending")] }), "仍待回应 1"],
+    ["取证", "no pending challenge but a pending evidence candidate", makeRound({ challenges: settled, evidence_candidates: [candidate("pending")] }), "没有仍待回应的挑战"],
+    ["裁决", "nothing pending", makeRound({ challenges: settled, evidence_candidates: [candidate("confirmed")] }), "没有仍待回应的挑战"],
+  ])("opens on %s when there is %s, and never locks the other segments", async (tab, _why, round, hint) => {
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(round)
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    expect(await screen.findByRole("tab", { name: tab, selected: true })).toBeInTheDocument()
+    expect(screen.getAllByRole("tab", { selected: true })).toHaveLength(1)
+    expect(screen.getByText(hint)).toBeInTheDocument()
+    for (const other of ["应答", "取证", "裁决"]) {
+      fireEvent.click(screen.getByRole("tab", { name: other }))
+      expect(screen.getByRole("tab", { name: other, selected: true })).toBeInTheDocument()
+      expect(screen.getByText(hint)).toBeInTheDocument()
+    }
+  })
+
+  it("expands exactly one challenge at a time and keeps each draft when focus moves", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ challenges: [ch("ch-a", "第一关"), ch("ch-b", "第二关"), ch("ch-c", "第三关")] }))
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    await screen.findByText("第一关")
+    expect(expandedRow()).toHaveAccessibleName(/第一关/)
+    expect(screen.getAllByLabelText("我目前的回应")).toHaveLength(1)
+    fireEvent.change(screen.getByLabelText("我目前的回应"), { target: { value: "draft a" } })
+    fireEvent.click(screen.getByRole("button", { name: /第二关/ }))
+    expect(expandedRow()).toHaveAccessibleName(/第二关/)
+    expect(screen.getAllByLabelText("我目前的回应")).toHaveLength(1)
+    expect(screen.getByLabelText("我目前的回应")).toHaveValue("")
+    fireEvent.click(screen.getByRole("button", { name: /第一关/ }))
+    expect(screen.getByLabelText("我目前的回应")).toHaveValue("draft a")
+  })
+
+  it("moves focus to the next still-pending challenge after answer, defer and withdraw", async () => {
+    const [a, b, c] = [ch("ch-a", "第一关"), ch("ch-b", "第二关"), ch("ch-c", "第三关")]
+    const bAnswered = { ...b, status: "answered", sequence: 2, answers: [{ version_id: "av-b", text: "reply b", provisional_anchor_refs: [] }] }
+    const cDeferred = { ...c, status: "deferred", sequence: 2, defer: { reason: "暂缓这条挑战", condition: "later" } }
+    const aWithdrawn = { ...a, status: "withdrawn", sequence: 2, withdraw: { reason: "不适用" } }
+    vi.mocked(researchUniverse.reviewRound)
+      .mockResolvedValueOnce(makeRound({ challenges: [a, b, c] }))
+      .mockResolvedValueOnce(makeRound({ challenges: [a, bAnswered, c] }))
+      .mockResolvedValueOnce(makeRound({ challenges: [a, bAnswered, cDeferred] }))
+      .mockResolvedValueOnce(makeRound({ challenges: [aWithdrawn, bAnswered, cDeferred] }))
+    vi.mocked(researchUniverse.answerChallenge).mockResolvedValue(responded({ challenge_id: "ch-b", review_round_id: "r-1", answer_version_id: "av-b" }))
+    vi.mocked(researchUniverse.deferChallenge).mockResolvedValue(responded({ challenge_id: "ch-c", review_round_id: "r-1" }))
+    vi.mocked(researchUniverse.withdrawChallenge).mockResolvedValue(responded({ challenge_id: "ch-a", review_round_id: "r-1" }))
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    await screen.findByText("第一关")
+    fireEvent.click(screen.getByRole("button", { name: /第二关/ }))
+    fireEvent.change(screen.getByLabelText("我目前的回应"), { target: { value: "reply b" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存答辩" }))
+    // 答了第二关 → 聚焦它后面那条仍待回应的第三关
+    expect(await screen.findByText("仍待回应 2")).toBeInTheDocument()
+    expect(expandedRow()).toHaveAccessibleName(/第三关/)
+    fireEvent.click(screen.getByRole("button", { name: "我还不能回应 ▾" }))
+    fireEvent.click(screen.getByRole("button", { name: /暂缓这条挑战/ }))
+    fireEvent.change(screen.getByLabelText("何时重看"), { target: { value: "later" } })
+    fireEvent.click(screen.getByRole("button", { name: "确认暂缓" }))
+    // 暂缓第三关 → 后面没有了，绕回第一关
+    expect(await screen.findByText("仍待回应 1")).toBeInTheDocument()
+    expect(expandedRow()).toHaveAccessibleName(/第一关/)
+    fireEvent.click(screen.getByRole("button", { name: "撤回这条挑战" }))
+    fireEvent.change(screen.getByLabelText("撤回理由"), { target: { value: "不适用" } })
+    fireEvent.click(screen.getByRole("button", { name: "确认撤回" }))
+    // 撤回后已无仍待回应：停在刚处理的这一关
+    expect(await screen.findByText("没有仍待回应的挑战")).toBeInTheDocument()
+    expect(expandedRow()).toHaveAccessibleName(/第一关/)
+    expect(screen.getByText("理由：不适用")).toBeInTheDocument()
   })
 })

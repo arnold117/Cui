@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { command, researchUniverse } from "../api"
-import type { Challenge, ReviewRound, VerdictType } from "../types"
+import type { Challenge, ChallengeStatus, ReviewRound, VerdictType } from "../types"
 import { EvidenceSurface } from "./EvidenceSurface"
 import { useNavigation } from "../../../router"
 
@@ -11,39 +11,65 @@ const VERDICT_OPTIONS: { type: VerdictType; label: string; note?: string }[] = [
   { type: "boundary", label: "需要收窄／改写" },
   { type: "circumstantial", label: "现在先不投入" },
 ]
+const STATUS_LABELS: Record<ChallengeStatus, string> = { pending: "仍待回应", answered: "已回应", deferred: "暂缓", withdrawn: "已撤回", resolved_by_verdict: "已裁决" }
+
+type Segment = "answer" | "evidence" | "verdict"
+const SEGMENTS: [Segment, string][] = [["answer", "应答"], ["evidence", "取证"], ["verdict", "裁决"]]
+// ledger 口径：只有 status=pending 算仍待回应；已回应、暂缓、撤回都不算（同后端 _ledger）
+const stillPending = (round: ReviewRound) => round.challenges.filter((c) => c.status === "pending")
+const defaultSegment = (round: ReviewRound): Segment => stillPending(round).length ? "answer" : round.evidence_candidates?.some((c) => c.status === "pending") ? "evidence" : "verdict"
 
 export function ReviewRoundDesk({ roundId }: { roundId: string }) {
   const [round, setRound] = useState<ReviewRound | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [judging, setJudging] = useState(false)
+  const [segment, setSegment] = useState<Segment | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [generatingChallenge, setGeneratingChallenge] = useState(false)
   const generation = useRef(0)
   async function load() {
     const current = ++generation.current
-    try { const value = await researchUniverse.reviewRound(roundId); if (current === generation.current) { setError(null); setRound(value) } } catch (reason) { if (current === generation.current) setError(reason instanceof Error ? reason.message : "未能读取审查轮次。") }
+    // 默认段只在打开这一轮时定一次，之后刷新不跳段
+    try { const value = await researchUniverse.reviewRound(roundId); if (current === generation.current) { setError(null); setRound(value); setSegment((s) => s ?? defaultSegment(value)) } } catch (reason) { if (current === generation.current) setError(reason instanceof Error ? reason.message : "未能读取审查轮次。") }
   }
-  useEffect(() => { void load(); return () => { generation.current++ } }, [roundId])
+  useEffect(() => { setSegment(null); void load(); return () => { generation.current++ } }, [roundId])
   async function generateMoreChallenge() {
     if (generatingChallenge || round?.verdict) return
     setGeneratingChallenge(true); setError(null)
-    try { await researchUniverse.generateAdditionalChallenge(roundId, command({}, 0)); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : "生成更多挑战失败。") } finally { setGeneratingChallenge(false) }
+    try { const generated = await researchUniverse.generateAdditionalChallenge(roundId, command({}, 0)); setFocusId(generated.result.challenge_id); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : "生成更多挑战失败。") } finally { setGeneratingChallenge(false) }
   }
   if (error) return <section className="ru-state" role="alert"><p>未能打开审查轮次：{error}</p><button className="ru-ink-button" onClick={() => void load()}>重试</button></section>
   if (!round) return <section className="ru-state" aria-live="polite">正在读取审查快照…</section>
   const closed = Boolean(round.verdict)
+  const active = segment ?? defaultSegment(round)
+  const pending = stillPending(round)
+  const focused = round.challenges.find((c) => c.id === focusId) ?? pending[0] ?? round.challenges[0]
+  // 回应完一关（应答/暂缓/撤回）自动聚焦它之后的下一条仍待回应，到底绕回开头；没有就停在这一关
+  const settle = (id: string) => {
+    const i = round.challenges.findIndex((c) => c.id === id)
+    setFocusId([...round.challenges.slice(i + 1), ...round.challenges.slice(0, i)].find((c) => c.status === "pending")?.id ?? id)
+    void load()
+  }
   return <section className="ru-review" aria-labelledby="review-title"><p className="ru-kicker">审查轮次 · 不可变快照</p><h1 id="review-title">审查这一条 claim</h1><div className="ru-snapshot-grid"><article><h2>当时的问题</h2><p className="ru-reading-copy">{round.question_snapshot.text}</p><small>问题快照 {round.question_snapshot.version_id ?? round.question_snapshot.id ?? "已记录"}</small></article><article><h2>当时的 claim</h2><p className="ru-reading-copy">{round.claim_snapshot.text}</p><small>Claim 快照 {round.claim_snapshot.version_id ?? round.claim_snapshot.id ?? "已记录"}</small></article></div>
-    <div className="ru-challenge-list">{round.challenges.map((challenge) => <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} onChanged={() => void load()} />)}</div>
-    {!closed && <div className="ru-generate-more"><button className="ru-ink-button ru-active" disabled={generatingChallenge} onClick={() => void generateMoreChallenge()}>{generatingChallenge ? "正在生成更多挑战…" : "生成更多挑战"}</button><p className="ru-challenge-note">让 Cui 攻击一个尚未覆盖的角度；新的挑战会进入同一轮审查。</p></div>}
-    <EvidenceSurface round={round} onChanged={() => void load()} />
-    {!closed && <div className="ru-verdict-actions"><p className="ru-reading-copy">挑战可以暂缓、撤回或带回未确认上下文；本轮结束时，由你作出裁决。</p><button className="ru-ink-button ru-active" onClick={() => setJudging(true)}>作出本轮裁决</button></div>}
-    {judging && !closed && <VerdictForge round={round} onChanged={() => void load()} onClose={() => setJudging(false)} />}
-    {closed && <ReReview round={round} onError={(message) => setError(message)} />}
-    {round.verdict?.verdict_type === "boundary" && <BoundaryLineage round={round} onError={(message) => setError(message)} />}
+    <div className="ru-review-tabbar"><div role="tablist" aria-label="审查分段">{SEGMENTS.map(([key, label]) => <button key={key} id={`review-tab-${key}`} role="tab" aria-selected={active === key} aria-controls="review-segment" className="ru-review-tab" onClick={() => setSegment(key)}>{label}</button>)}</div><span className={pending.length ? "ru-review-pending" : undefined}>{pending.length ? `仍待回应 ${pending.length}` : "没有仍待回应的挑战"}</span></div>
+    <div id="review-segment" role="tabpanel" aria-labelledby={`review-tab-${active}`}>
+      {active === "answer" && <section aria-label="攻击面"><p className="ru-kicker">攻击面 · {round.challenges.length} 关 · 一次展开一关</p><ol className="ru-attack-list">{round.challenges.map((challenge) => {
+        const on = challenge.id === focused?.id
+        return <li key={challenge.id}><button id={`challenge-title-${challenge.id}`} className={`ru-attack-row ru-attack-${challenge.status}`} aria-expanded={on} onClick={() => setFocusId(challenge.id)}><span>{challenge.attack_surface}</span><small>{STATUS_LABELS[challenge.status]}</small></button>
+          {on && <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} answer={drafts[challenge.id] ?? ""} onAnswerChange={(value) => setDrafts((all) => ({ ...all, [challenge.id]: value }))} onChanged={() => settle(challenge.id)} />}</li>
+      })}</ol>
+        {!closed && <div className="ru-generate-more"><button className="ru-quiet-button" disabled={generatingChallenge} onClick={() => void generateMoreChallenge()}>{generatingChallenge ? "正在生成更多挑战…" : "生成更多挑战"}</button><p className="ru-challenge-note">让 Cui 攻击一个尚未覆盖的角度；新的挑战会进入同一轮审查。</p></div>}
+      </section>}
+      {active === "evidence" && <EvidenceSurface round={round} onChanged={() => void load()} />}
+      {active === "verdict" && !closed && <VerdictForge round={round} onChanged={() => void load()} />}
+      {active === "verdict" && closed && <ReReview round={round} onError={(message) => setError(message)} />}
+      {active === "verdict" && round.verdict?.verdict_type === "boundary" && <BoundaryLineage round={round} onError={(message) => setError(message)} />}
+    </div>
     <nav className="ru-review-exits" aria-label="离开审查轮次"><a className="ru-ink-button" href={`/workspaces/${round.workspace_id}`}>回工作区继续探索</a><a className="ru-quiet-button" href="/">回研究宇宙查看上下文</a><a className="ru-quiet-button" href={`/workspaces/${round.workspace_id}/dialogue`}>回文献探讨继续收尾</a></nav></section>
 }
 
-function ChallengePanel({ round, challenge, onChanged }: { round: ReviewRound; challenge: Challenge; onChanged: () => void }) {
-  const [answer, setAnswer] = useState("")
+// 标题在攻击面那一行（challenge-title-*）；应答草稿由审查面按关保存，切换聚焦不丢
+function ChallengePanel({ round, challenge, answer, onAnswerChange: setAnswer, onChanged }: { round: ReviewRound; challenge: Challenge; answer: string; onAnswerChange: (value: string) => void; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deferOpen, setDeferOpen] = useState(false)
@@ -69,10 +95,11 @@ function ChallengePanel({ round, challenge, onChanged }: { round: ReviewRound; c
     setBusy(true); setError(null)
     try { await researchUniverse.withdrawChallenge(challenge.id, command({ reason: withdrawReason.trim() }, challenge.sequence ?? 1)); onChanged() } catch (reason) { setError(reason instanceof Error ? reason.message : "撤回失败。") } finally { setBusy(false) }
   }
+  const reasoning = <dl><div><dt>为什么重要</dt><dd>{challenge.why_it_matters}</dd></div><div><dt>可以怎样自检</dt><dd>{challenge.self_check_method}</dd></div></dl>
   if (!open) {
-    return <aside className="ru-challenge ru-challenge-closed" aria-labelledby={`challenge-title-${challenge.id}`}><p className="ru-kicker">{challenge.status === "deferred" ? "暂缓" : challenge.status === "withdrawn" ? "已撤回" : "已裁决"}</p><h2 id={`challenge-title-${challenge.id}`}>{challenge.attack_surface}</h2>{challenge.status === "deferred" && challenge.defer && <p className="ru-reading-copy">何时重看：{challenge.defer.condition}</p>}{challenge.status === "withdrawn" && challenge.withdraw && <p className="ru-reading-copy">理由：{challenge.withdraw.reason}</p>}</aside>
+    return <aside className="ru-challenge ru-challenge-closed" aria-labelledby={`challenge-title-${challenge.id}`}>{challenge.status === "deferred" && challenge.defer && <p className="ru-reading-copy">何时重看：{challenge.defer.condition}</p>}{challenge.status === "withdrawn" && challenge.withdraw && <p className="ru-reading-copy">理由：{challenge.withdraw.reason}</p>}{reasoning}</aside>
   }
-  return <aside className="ru-challenge" aria-labelledby={`challenge-title-${challenge.id}`}><p className="ru-kicker">Cui 的挑战 · {answered ? "已回应 · 待裁决" : "待回应"}</p><h2 id={`challenge-title-${challenge.id}`}>{challenge.attack_surface}</h2><dl><div><dt>为什么重要</dt><dd>{challenge.why_it_matters}</dd></div><div><dt>可以怎样自检</dt><dd>{challenge.self_check_method}</dd></div></dl>{challenge.provenance && <p className="ru-provenance">生成依据：{challenge.provenance.basis_refs?.join(" · ") ?? "已记录"} · 不确定性：{challenge.provenance.uncertainty ?? "未说明"}</p>}
+  return <aside className="ru-challenge" aria-labelledby={`challenge-title-${challenge.id}`}>{reasoning}{challenge.provenance && <p className="ru-provenance">生成依据：{challenge.provenance.basis_refs?.join(" · ") ?? "已记录"} · 不确定性：{challenge.provenance.uncertainty ?? "未说明"}</p>}
     {answered && <div className="ru-answer-log"><p className="ru-kicker">已保存答辩</p>{(challenge.answers ?? []).map((item) => <p className="ru-answer-entry" key={item.version_id}>{item.text}{item.provisional_anchor_refs.length ? <> · 带入未确认上下文 {item.provisional_anchor_refs.join("、")}</> : null}</p>)}<p className="ru-challenge-note">答辩已保存，挑战仍待裁决。</p></div>}
     <form className="ru-answer-form" onSubmit={(e) => { e.preventDefault(); void saveAnswer() }}><label htmlFor={`answer-${challenge.id}`}>我目前的回应</label><textarea id={`answer-${challenge.id}`} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="写下对这一条挑战的回应（作为暂定上下文，不是已确认事实）。" disabled={busy} /><button className="ru-ink-button ru-active" disabled={busy || !answer.trim()}>{busy ? "正在保存…" : "保存答辩"}</button></form>
     <div className="ru-cant-answer"><button className="ru-quiet-button" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen}>我还不能回应 ▾</button>{menuOpen && <ul className="ru-cant-answer-menu">{!deferOpen && <li><button className="ru-quiet-button" onClick={() => { setDeferOpen(true); setExplainOpen(false) }}>暂缓这条挑战（写下何时重看）</button></li>}{deferOpen && <li className="ru-inline-action"><label htmlFor={`defer-condition-${challenge.id}`}>何时重看</label><input id={`defer-condition-${challenge.id}`} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="例如：读到 Paper A 之后" /><button className="ru-quiet-button" disabled={busy || !condition.trim()} onClick={() => void defer()}>确认暂缓</button></li>}{!explainOpen && <li><button className="ru-quiet-button" onClick={() => { setExplainOpen(true); setDeferOpen(false) }}>先理解这一关</button></li>}{explainOpen && <li className="ru-inline-action"><p className="ru-reading-copy">通用自检方法：{challenge.self_check_method}</p></li>}<li><a className="ru-quiet-button" href={`/workspaces/${round.workspace_id}`}>回到探索，不作判断</a></li></ul>}
@@ -82,7 +109,7 @@ function ChallengePanel({ round, challenge, onChanged }: { round: ReviewRound; c
   </aside>
 }
 
-function VerdictForge({ round, onChanged, onClose }: { round: ReviewRound; onChanged: () => void; onClose: () => void }) {
+function VerdictForge({ round, onChanged }: { round: ReviewRound; onChanged: () => void }) {
   const ledger = round.ledger
   const [verdictType, setVerdictType] = useState<VerdictType | null>(null)
   const [reason, setReason] = useState("")
@@ -94,7 +121,7 @@ function VerdictForge({ round, onChanged, onClose }: { round: ReviewRound; onCha
     e.preventDefault()
     if (!verdictType || !valid || busy) return
     setBusy(true); setError(null)
-    try { await researchUniverse.confirmVerdict(round.id, command({ verdict_type: verdictType, user_reason: reason.trim(), revival_condition: verdictType === "circumstantial" ? revival.trim() : null }, round.sequence ?? 1)); onChanged(); onClose() } catch (reasonError) { setError(reasonError instanceof Error ? reasonError.message : "裁决失败。") } finally { setBusy(false) }
+    try { await researchUniverse.confirmVerdict(round.id, command({ verdict_type: verdictType, user_reason: reason.trim(), revival_condition: verdictType === "circumstantial" ? revival.trim() : null }, round.sequence ?? 1)); onChanged() } catch (reasonError) { setError(reasonError instanceof Error ? reasonError.message : "裁决失败。") } finally { setBusy(false) }
   }
   const buckets: { key: "answered" | "deferred" | "pending" | "brought_unconfirmed"; label: string }[] = [
     { key: "answered", label: "已回应" },
@@ -102,7 +129,7 @@ function VerdictForge({ round, onChanged, onClose }: { round: ReviewRound; onCha
     { key: "pending", label: "仍待回应" },
     { key: "brought_unconfirmed", label: "带入但未确认" },
   ]
-  return <section className="ru-verdict" aria-labelledby="verdict-ledger-title"><p className="ru-kicker">本轮审查账本</p><h2 id="verdict-ledger-title">作出本轮裁决</h2><p className="ru-reading-copy">Claim（本轮文本）：{round.claim_snapshot.text}</p><div className="ru-ledger-grid">{buckets.map((bucket) => { const items = ledger?.[bucket.key] ?? []; return <section key={bucket.key}><h3>{bucket.label}</h3>{items.length ? items.map((item) => <p key={item.id} className="ru-ledger-item">{item.attack_surface}</p>) : <p className="ru-ledger-empty">—</p>}</section> })}</div><p className="ru-challenge-note">这是一项你的判断。Cui 不会替你决定结果。</p><form className="ru-verdict-form" onSubmit={submit}><fieldset><legend>本轮裁决</legend>{VERDICT_OPTIONS.map((option) => <label key={option.type}><input type="radio" name="verdict" checked={verdictType === option.type} onChange={() => setVerdictType(option.type)} /> <span>{option.label}</span>{option.note && <small>{option.note}</small>}</label>)}</fieldset><label htmlFor="verdict-reason">你的理由</label><textarea id="verdict-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="写下这项判断的依据。" required />{verdictType === "circumstantial" && <label htmlFor="verdict-revival">现在先不投入 —— 何时、什么条件下再回来（必填）</label>}{verdictType === "circumstantial" && <input id="verdict-revival" value={revival} onChange={(e) => setRevival(e.target.value)} placeholder="例如：等数据可验证后再重看" required />}{error && <p className="ru-error" role="alert">{error}</p>}<div className="ru-verdict-actions"><button className="ru-ink-button ru-active" disabled={busy || !valid}>{busy ? "正在记录裁决…" : "确认裁决"}</button><button className="ru-quiet-button" type="button" onClick={onClose}>取消</button></div></form></section>
+  return <section className="ru-verdict" aria-labelledby="verdict-ledger-title"><p className="ru-kicker">本轮审查账本</p><h2 id="verdict-ledger-title">作出本轮裁决</h2><p className="ru-reading-copy">Claim（本轮文本）：{round.claim_snapshot.text}</p><div className="ru-ledger-grid">{buckets.map((bucket) => { const items = ledger?.[bucket.key] ?? []; return <section key={bucket.key}><h3>{bucket.label}</h3>{items.length ? items.map((item) => <p key={item.id} className="ru-ledger-item">{item.attack_surface}</p>) : <p className="ru-ledger-empty">—</p>}</section> })}</div><p className="ru-challenge-note">这是一项你的判断。Cui 不会替你决定结果。</p><form className="ru-verdict-form" onSubmit={submit}><fieldset><legend>本轮裁决</legend>{VERDICT_OPTIONS.map((option) => <label key={option.type}><input type="radio" name="verdict" checked={verdictType === option.type} onChange={() => setVerdictType(option.type)} /> <span>{option.label}</span>{option.note && <small>{option.note}</small>}</label>)}</fieldset><label htmlFor="verdict-reason">你的理由</label><textarea id="verdict-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="写下这项判断的依据。" required />{verdictType === "circumstantial" && <label htmlFor="verdict-revival">现在先不投入 —— 何时、什么条件下再回来（必填）</label>}{verdictType === "circumstantial" && <input id="verdict-revival" value={revival} onChange={(e) => setRevival(e.target.value)} placeholder="例如：等数据可验证后再重看" required />}{error && <p className="ru-error" role="alert">{error}</p>}<div className="ru-verdict-actions"><button className="ru-ink-button ru-active" disabled={busy || !valid}>{busy ? "正在记录裁决…" : "确认裁决"}</button></div></form></section>
 }
 
 function ReReview({ round, onError }: { round: ReviewRound; onError: (message: string) => void }) {

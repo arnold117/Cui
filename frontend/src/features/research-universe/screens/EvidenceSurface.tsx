@@ -164,7 +164,7 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
       </fieldset>
       <label htmlFor="propose-uncertainty">不确定性（可选）</label>
       <input id="propose-uncertainty" value={proposeUncertainty} onChange={(e) => setProposeUncertainty(e.target.value)} placeholder="这段对照有多确定？" />
-      <button className="ru-ink-button ru-active" disabled={busy || !proposeMaterial}>{busy ? "正在提出…" : "提出候选"}</button>
+      <button className="ru-quiet-button" disabled={busy || !proposeMaterial}>{busy ? "正在提出…" : "提出候选"}</button>
     </form>
     {(round.confirmed_facts?.length ?? 0) > 0 && <div className="ru-confirmed-facts"><p className="ru-kicker">已确认的取证事实</p>{(round.confirmed_facts ?? []).map((fact) => <p key={fact.id} className="ru-confirmed-fact">{fact.material_anchor.excerpt} 与 claim 构成 {RELATION_LABELS[fact.relation]}。</p>)}</div>}
   </section>

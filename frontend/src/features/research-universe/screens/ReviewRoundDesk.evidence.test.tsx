@@ -36,11 +36,13 @@ const responded = <T extends Record<string, unknown>>(payload: T) => ({ commit_p
 
 afterEach(() => cleanup())
 
+// The fixture keeps a challenge pending, so the desk opens on 应答; each test switches to 取证 first.
 describe("ReviewRoundDesk evidence surface", () => {
   it("shows materials and a pending candidate with a confirm label reflecting the relation", async () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
     vi.mocked(researchUniverse.desk).mockResolvedValue(desk)
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     // Wait for the desk explicitly ("Reference note" only comes from the desk),
     // then the excerpt may appear in both the material card and the candidate.
     expect(await screen.findByText("Reference note")).toBeInTheDocument()
@@ -55,6 +57,7 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.confirmEvidence).mockResolvedValue(responded({ candidate_id: "ec-1", round_id: "r-1", relation: "contradicts" }))
     vi.mocked(researchUniverse.reviewRound).mockResolvedValueOnce(makeRound({ evidence_candidates: [{ ...candidate, status: "confirmed" }], confirmed_facts: [{ id: "ec-1", relation: "contradicts", material_anchor: candidate.material_anchor, claim_snapshot: snapshot }] }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     await screen.findByText("Paper A contradicts X")
     fireEvent.click(screen.getByRole("button", { name: "确认是反证" }))
     await waitFor(() => expect(researchUniverse.confirmEvidence).toHaveBeenCalledWith("ec-1", expect.objectContaining({ expected_sequence: 1, user_reason: null })))
@@ -68,6 +71,7 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.rejectEvidence).mockResolvedValue(responded({ candidate_id: "ec-1", round_id: "r-1" }))
     vi.mocked(researchUniverse.reviewRound).mockResolvedValueOnce(makeRound({ evidence_candidates: [{ ...candidate, status: "rejected", decision_reason: "misread" }], confirmed_facts: [] }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     await screen.findByText("Paper A contradicts X")
     fireEvent.click(screen.getByRole("button", { name: "拒绝（不涉及／误读…）" }))
     fireEvent.change(screen.getByLabelText(/理由（可选）/), { target: { value: "misread" } })
@@ -83,6 +87,7 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.withdrawEvidence).mockResolvedValue(responded({ candidate_id: "ec-1", round_id: "r-1" }))
     vi.mocked(researchUniverse.reviewRound).mockResolvedValueOnce(makeRound({ evidence_candidates: [{ ...candidate, status: "withdrawn" }], confirmed_facts: [] }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     await screen.findByText("Paper A contradicts X")
     fireEvent.click(screen.getByRole("button", { name: "撤回" }))
     fireEvent.click(screen.getByRole("button", { name: "确认撤回" }))
@@ -96,6 +101,7 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.correctEvidence).mockResolvedValue(responded({ candidate_id: "ec-1", round_id: "r-1", relation: "silent" }))
     vi.mocked(researchUniverse.reviewRound).mockResolvedValueOnce(makeRound({ evidence_candidates: [{ ...candidate, status: "corrected", relation: "silent", prior_relation: "contradicts" }], confirmed_facts: [{ id: "ec-1", relation: "silent", material_anchor: candidate.material_anchor, claim_snapshot: snapshot }] }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     await screen.findByText("Paper A contradicts X")
     fireEvent.click(screen.getByRole("button", { name: "改为…" }))
     fireEvent.change(screen.getByLabelText(/改为什么/), { target: { value: "silent" } })
@@ -108,6 +114,7 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
     vi.mocked(researchUniverse.desk).mockResolvedValue(desk)
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     await screen.findByText("garbled")
     fireEvent.change(screen.getByLabelText("选择待取证材料"), { target: { value: "m-3" } })
     const silent = screen.getByRole("radio", { name: /查无/ })
@@ -122,6 +129,7 @@ describe("ReviewRoundDesk evidence surface", () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ evidence_candidates: [failed, candidate] }))
     vi.mocked(researchUniverse.desk).mockResolvedValue(desk)
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
     await screen.findByText("Reference note")
     screen.getAllByRole("button", { name: "改为…" }).forEach((b) => fireEvent.click(b))
     const options = (id: string) => Array.from((screen.getByLabelText(`改为什么（候选 ${id}）`) as HTMLSelectElement).options).map((o) => o.value)

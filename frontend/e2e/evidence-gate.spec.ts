@@ -41,6 +41,7 @@ test("bring a material, propose a contradiction, confirm it, and see the determi
   expect(requests.find(x => x.url.endsWith("/materials"))?.body).toMatchObject({ excerpt: "The intervention group shows the opposite effect.", parse_status: "parsed", purpose: "evidence", expected_sequence: 0 })
 
   await page.goto("/review-rounds/r-1")
+  await page.getByRole("tab", { name: "取证" }).click()
   await expect(page.getByText("并列证据台 · 取证候选未确认")).toBeVisible()
   await page.getByLabel("选择待取证材料").selectOption("m-1")
   await page.getByRole("radio", { name: "反证" }).check()
@@ -50,7 +51,10 @@ test("bring a material, propose a contradiction, confirm it, and see the determi
 
   await page.getByRole("button", { name: "确认是反证" }).click()
   await expect(page.getByText(/已确认的取证事实：The intervention group shows the opposite effect\. 与 claim 构成 反证/)).toBeVisible()
-  await expect(page.getByText("已确认反证：The intervention group shows the opposite effect.")).toBeVisible()
+  // 确认的反证生成一条新挑战：在应答段的攻击面里，展开它看生成依据
+  await page.getByRole("tab", { name: "应答" }).click()
+  await expect(page.getByText("仍待回应 2")).toBeVisible()
+  await page.getByRole("button", { name: /已确认反证：The intervention group shows the opposite effect\./ }).click()
   await expect(page.getByText(/生成依据：m-1 · ec-1 · 不确定性：已确认取证事实/)).toBeVisible()
   expect(requests.find(x => x.url.endsWith("/confirm"))?.body).toMatchObject({ expected_sequence: 1 })
 })

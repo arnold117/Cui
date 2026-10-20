@@ -37,6 +37,7 @@ test("generate an additional challenge and a generated evidence candidate (mock)
   expect(requests.find(x => x.url.endsWith("/challenges"))?.body).toMatchObject({ expected_sequence: 0 })
 
   // generate an evidence candidate
+  await page.getByRole("tab", { name: "取证" }).click()
   await page.getByRole("button", { name: "让 Cui 提出取证候选" }).click()
   await expect(page.getByText(/为何/)).toBeVisible()
   await expect(page.getByText("该对照结果直接与该 claim 的因果方向相反。")).toBeVisible()
