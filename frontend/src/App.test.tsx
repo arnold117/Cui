@@ -53,6 +53,15 @@ describe("production routes", () => {
     expect(screen.getByRole("heading", { name: "这个位置不存在。" })).toBeInTheDocument()
   })
 
+  it("redirects the retired dialogue path to the workspace journey page", async () => {
+    window.history.replaceState({}, "", "/workspaces/w-1/dialogue")
+    fetchMock.mockResolvedValue(response({ id: "w-1", question: { version_id: "q", text: "Journey question" }, sequence: 1, note: null, note_revisions: [], anchors: [], claims: [], review_rounds: [], pending_challenges: [] }))
+    render(<App />)
+    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1"))
+    expect(await screen.findByRole("heading", { name: "Journey question" })).toBeInTheDocument()
+    expect(screen.getByRole("list", { name: "会话阶段" })).toBeInTheDocument()
+  })
+
   it("reacts to programmatic pathname and query-only history changes", async () => {
     fetchMock.mockResolvedValue(response({ universe: null }))
     render(<App />)

@@ -15,6 +15,8 @@ test("real sealed PARK release and Forge lineage journey", async ({ page }) => {
   await page.getByLabel("新的开放问题").fill("这份观察在什么条件下成立？")
   await page.getByRole("button", { name: "确认放行" }).click()
   await expect(page).toHaveURL(/\/workspaces\//)
+  await page.locator("summary").filter({ hasText: /^工具/ }).click()
+  await page.locator("summary").filter({ hasText: /^PARK 放行引用/ }).click()
   await expect(page.getByText(/来自密封 PARK 原件的放行引用/)).toBeVisible()
   await page.getByRole("link", { name: "从此原件锻造自写 claim" }).click()
   await page.getByLabel("由你亲自写下的 claim").fill("该观察只在边界条件明确时成立。")

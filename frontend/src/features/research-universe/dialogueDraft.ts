@@ -1,4 +1,4 @@
-import type { CitationReport, DialogueCandidate, GapDraftFields } from "./types"
+import type { CitationReport, DialogueCandidate, GapDraftFields, WorkspaceDesk } from "./types"
 
 /** 文献探讨会话的类型:claim 步的起草辅助(不入事件;仅存本机草稿)。 */
 export type ClaimKind = "consensus" | "division" | "vacancy" | "custom"
@@ -30,7 +30,7 @@ export interface DialogueDraft {
   claimKind?: ClaimKind
   claimText: string
   roundId?: string
-  /** claim 固化后停在第 4 步,直到用户看过审查轮情况并点"继续起草 gap"。 */
+  /** 用户点过"继续起草 gap"(本机标记,阶段 4 完成的条件之一)。 */
   claimAck?: boolean
   gapDraft?: GapDraftFields
   confirmedGapIds: string[]
@@ -46,15 +46,15 @@ export function emptyDraft(workspaceId: string): DialogueDraft {
 
 export const STAGE_COUNT = 6
 
-export const STAGE_LABELS = ["出发点", "选料", "覆盖与 claim", "对抗", "gap", "收尾"]
+export const STAGE_LABELS = ["出发点", "选料", "覆盖与 claim", "对抗", "gap", "结晶"]
 
 export const STAGE_DESCRIPTIONS = [
   "候选假设与检索词(起草后可改,点确认才前进)",
   "检索、读每篇的观点与支撑关系,选 1–5 篇后梳理覆盖",
   "读覆盖梳理,用骨架或自己的话写出 claim",
-  "审查轮:应答/裁决,或追加文献发难;看过后再收尾",
+  "审查轮:应答/裁决,或追加文献发难;看过后再去 gap",
   "起草、署名并确认缺口",
-  "生成 related-work 综述草稿并导出",
+  "确认这次探索的位置(结晶/分支/吸收);导出 related-work 综述草稿",
 ]
 
 export const DRAFT_KEY_PREFIX = "cui:dialogue-draft:v2:"
@@ -99,30 +99,34 @@ export function clearDialogueDraft(workspaceId: string) {
   } catch { /* ignore */ }
 }
 
+export type JourneyDesk = Pick<WorkspaceDesk, "claims" | "review_rounds" | "pending_challenges" | "materials" | "landscape" | "user_position">
+
 /**
- * 按草稿内容推导当前应停在哪一步(1..6)。
- * 已固化入轨迹的东西(claim/审查轮/gap)也参与推导,使"别处回来后能接上"。
+ * 旅程阶段推导(spec-workspace-journey S1):服务端事实优先,本机草稿只补会话内进度。
+ * done[i] = 第 i+1 阶段是否完成;current = 未结晶且有待回应挑战 ⇒ 对抗(4),否则第一个未完成的,全完成停在 6。
+ * 结晶看 user_position 而非 conclusion:重开后 conclusion 仍在投影里,但阶段 6 要重新变为未完成。
  */
-/**
- * 按内容推导当前停在哪一步(1..6)。门控:
- * 1 出发点:假设需用户点"就用这版"确认;2 选料:等覆盖梳理生成;
- * 3 覆盖与 claim:等 claim 固化(roundId);4 对抗:等用户看过审查轮(claimAck);
- * 5 gap:等确认 ≥1 个;6 收尾。固化入轨迹的内容也参与推导,别处回来后能接上。
- */
-export function contentStage(d: Pick<DialogueDraft, "hypothesesText" | "hypothesesDone" | "skipHypotheses" | "summary" | "roundId" | "claimAck" | "confirmedGapIds" | "relatedWork">): number {
-  if (!d.skipHypotheses && !d.hypothesesDone) return 1
-  if (!d.summary) return 2
-  if (!d.roundId) return 3
-  if (!d.claimAck) return 4
-  if (d.confirmedGapIds.length === 0) return 5
-  return 6
+export function journeyStage(desk: JourneyDesk, d: Pick<DialogueDraft, "hypothesesDone" | "skipHypotheses" | "summary" | "claimAck">): { current: number; done: boolean[] } {
+  const hasClaims = desk.claims.length > 0
+  const gapDone = (desk.landscape?.gaps ?? []).some((g) => g.status === "confirmed" || g.status === "corrected")
+  const crystallized = ["concluded", "branched", "absorbed"].includes(desk.user_position ?? "exploring")
+  const done = [
+    Boolean(d.hypothesesDone || d.skipHypotheses || hasClaims || (desk.materials?.length ?? 0) > 0),
+    Boolean(d.summary) || hasClaims,
+    hasClaims,
+    Boolean(d.claimAck) || desk.review_rounds.some((r) => r.verdict) || gapDone,
+    gapDone,
+    crystallized,
+  ]
+  const current = !crystallized && desk.pending_challenges.length > 0 ? 4 : done.indexOf(false) + 1 || STAGE_COUNT
+  return { current, done }
 }
 
-export interface DraftProgress { exists: boolean; stage: number; savedAt?: string }
+export interface DraftProgress { exists: boolean; savedAt?: string }
 
-/** 供工作区入口读取的摘要。 */
+/** 本机是否已有会话进度(旅程页据此显示恢复横幅)。 */
 export function dialogueProgress(workspaceId: string): DraftProgress {
   const draft = loadDialogueDraft(workspaceId)
   const exists = Boolean(draft.hypothesesText || draft.skipHypotheses || draft.candidates.length || draft.summary || draft.claimText || draft.roundId || draft.confirmedGapIds.length || draft.relatedWork)
-  return { exists, stage: contentStage(draft), savedAt: draft.savedAt }
+  return { exists, savedAt: draft.savedAt }
 }

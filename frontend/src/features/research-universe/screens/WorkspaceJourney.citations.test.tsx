@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { AppRouter } from "../../../router"
-import { DialogueDesk } from "./DialogueDesk"
+import { WorkspaceJourney } from "./WorkspaceJourney"
 
 const fetchMock = vi.fn()
 vi.stubGlobal("fetch", fetchMock)
@@ -11,10 +11,13 @@ const candidates = [{ material_id: "m1", locator: "arxiv:2401.00009", title: "RL
 
 const gapWithCheck = { coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用 [arxiv:2401.00009]。", counterexample_invitation: "请指正。", citation_check_status: "ok", citation_checks: [{ sentence: "文献覆盖了评测方法 [arxiv:2401.00009]。", locator: "arxiv:2401.00009", verdict: "unsupported", scope: "abstract" }] }
 
-function mockApi() {
+// 阶段由投影推导:给出让目标阶段成为当前阶段的投影(claim 已写 / gap 已确认)
+const withClaim = { claims: [{ id: "c1", text: "c" }], review_rounds: [{ id: "r1", claim_id: "c1", claim_snapshot: { text: "c" }, question_snapshot: desk.question, verdict: null }] }
+const withGap = { ...withClaim, landscape: { workspace_id: "w-1", question: desk.question, alive_claims: [], claim_verdicts: {}, confirmed_facts: [], gaps: [{ id: "g1", workspace_id: "w-1", coverage_statement: "gap", search_record: { query: "q", scope: "active", matched_locators: [] }, counterexample_invitation: "i", status: "confirmed" }] } }
+function mockApi(overrides: Record<string, unknown> = {}) {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const path = String(url)
-    if (path.endsWith("/api/v2/workspaces/w-1") && (init?.method ?? "GET") === "GET") return response(desk)
+    if (path.endsWith("/api/v2/workspaces/w-1") && (init?.method ?? "GET") === "GET") return response({ ...desk, ...overrides })
     if (path.endsWith("/dialogue/gap-draft")) return response(gapWithCheck)
     return response({ detail: path }, 404)
   })
@@ -22,10 +25,10 @@ function mockApi() {
 
 const base = { v: 2, hypothesesText: "h", hypothesesDone: true, keywordsText: "", selectedKeywords: [], candidates, selected: ["arxiv:2401.00009"], searchQueries: ["q"], summary: "## 这几篇覆盖了什么\n评测。", claimText: "c", roundId: "r1", claimAck: true, confirmedGapIds: [] as string[] }
 const seed = (extra: Record<string, unknown>) => window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({ ...base, workspaceId: "w-1", ...extra, savedAt: new Date().toISOString() }))
-const renderDesk = () => render(<AppRouter><DialogueDesk workspaceId="w-1" /></AppRouter>)
+const renderDesk = () => render(<AppRouter><WorkspaceJourney workspaceId="w-1" /></AppRouter>)
 
 afterEach(() => { cleanup(); window.sessionStorage.clear() })
-beforeEach(() => { fetchMock.mockReset(); window.sessionStorage.clear(); mockApi() })
+beforeEach(() => { fetchMock.mockReset(); window.sessionStorage.clear() })
 
 describe("引用核对 (mark-only list under each draft)", () => {
   it("lists unsupported/unselected citations with the scope-specific message under the related-work draft", async () => {
@@ -36,6 +39,7 @@ describe("引用核对 (mark-only list under each draft)", () => {
       { sentence: "没选的 [arxiv:9999.99999]。", locator: "arxiv:9999.99999", verdict: "not_selected", scope: null },
       { sentence: "没问题 [arxiv:2401.00009]。", locator: "arxiv:2401.00009", verdict: "supported", scope: "full" },
     ] } })
+    mockApi(withGap)
     renderDesk()
     await screen.findByText(/RLHF 提升了推理/, {}, { timeout: 3000 })
     expect(screen.getByText(/摘要中未找到依据\(可能在全文\)/)).toBeInTheDocument()
@@ -47,6 +51,7 @@ describe("引用核对 (mark-only list under each draft)", () => {
 
   it("shows one all-pass line, and says so when the check is unavailable", async () => {
     seed({ confirmedGapIds: ["g1"], relatedWork: "段落。", relatedWorkCheck: { citation_check_status: "ok", citation_checks: [{ sentence: "s [arxiv:2401.00009]", locator: "arxiv:2401.00009", verdict: "supported", scope: "full" }] } })
+    mockApi(withGap)
     renderDesk()
     await screen.findByText("引用核对:全部可在所选文献中找到依据", {}, { timeout: 3000 })
     cleanup()
@@ -57,6 +62,7 @@ describe("引用核对 (mark-only list under each draft)", () => {
 
   it("renders the gap-draft check from the endpoint response", async () => {
     seed({})
+    mockApi(withClaim)
     renderDesk()
     fireEvent.click(await screen.findByRole("button", { name: "让 Cui 起草 gap 候选" }, { timeout: 3000 }))
     await screen.findByText(/摘要中未找到依据\(可能在全文\)/, {}, { timeout: 3000 })
@@ -64,6 +70,7 @@ describe("引用核对 (mark-only list under each draft)", () => {
 
   it("shows the summary check under the coverage summary", async () => {
     seed({ roundId: undefined, claimAck: false, summaryCheck: { citation_check_status: "ok", citation_checks: [{ sentence: "覆盖了 [arxiv:2401.00009]", locator: "arxiv:2401.00009", verdict: "unsupported", scope: "full" }] } })
+    mockApi()
     renderDesk()
     await screen.findByText(/全文中未找到依据/, {}, { timeout: 3000 })
   })

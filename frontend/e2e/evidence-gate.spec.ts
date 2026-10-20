@@ -35,6 +35,9 @@ test("bring a material, propose a contradiction, confirm it, and see the determi
   })
 
   await page.goto("/workspaces/w-1")
+  // 手动加材料收在默认折叠的「工具」区
+  await page.locator("summary").filter({ hasText: /^工具/ }).click()
+  await page.locator("summary").filter({ hasText: /^手动加一份材料/ }).click()
   await page.getByLabel("摘录或观察").fill("The intervention group shows the opposite effect.")
   await page.getByRole("button", { name: "带入材料" }).click()
   await expect(page.getByText("The intervention group shows the opposite effect.")).toBeVisible()

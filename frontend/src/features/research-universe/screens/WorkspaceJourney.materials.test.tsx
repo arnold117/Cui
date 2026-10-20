@@ -1,14 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppRouter } from "../../../router"
-import { WorkspaceDesk } from "./WorkspaceDesk"
+import { WorkspaceJourney } from "./WorkspaceJourney"
 
 const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock)
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const base = { id: "w", question: { version_id: "q", text: "Q" }, sequence: 9, note: null, note_revisions: [], anchors: [], claims: [], review_rounds: [], pending_challenges: [], park_release_refs: [], materials: [] }
 afterEach(() => cleanup())
 beforeEach(() => fetchMock.mockReset())
-function view() { return render(<AppRouter><WorkspaceDesk workspaceId="w" /></AppRouter>) }
+function view() { return render(<AppRouter><WorkspaceJourney workspaceId="w" /></AppRouter>) }
 
 describe("workspace material entry", () => {
   it("adds a neutral material and lists it with purpose and parse status", async () => {

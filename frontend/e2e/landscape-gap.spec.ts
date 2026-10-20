@@ -44,6 +44,8 @@ test("gap candidate can be confirmed from the workspace landscape", async ({ pag
     return route.fulfill({ status: 404, body: JSON.stringify({ detail: url }) })
   })
   await page.goto("/workspaces/w-1")
+  // gap 列表暂留在「gap」阶段卡里(S5 再改)
+  await page.getByRole("button", { name: /^5\. gap/ }).click()
   await expect(page.getByText("现状图景与 gap")).toBeVisible()
   await expect(page.getByText(/覆盖范围:现有文献覆盖了练习的即时效应/)).toBeVisible()
   await page.getByRole("button", { name: "确认这个 gap" }).click()
