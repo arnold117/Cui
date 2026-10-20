@@ -3,7 +3,7 @@ import { command, researchUniverse } from "../api"
 import type { EvidenceCandidate, EvidenceRelation, Material, ReviewRound, WorkspaceDesk } from "../types"
 
 const RELATIONS: EvidenceRelation[] = ["supports", "contradicts", "silent", "cannot_assess"]
-const RELATION_LABELS: Record<EvidenceRelation, string> = { supports: "支持", contradicts: "反证", silent: "查无", cannot_assess: "无法判断" }
+export const RELATION_LABELS: Record<EvidenceRelation, string> = { supports: "支持", contradicts: "反证", silent: "查无", cannot_assess: "无法判断" }
 const STATUS_LABELS: Record<EvidenceCandidate["status"], string> = { pending: "待确认", confirmed: "已确认", corrected: "已修正", rejected: "已拒绝", withdrawn: "已撤回" }
 
 export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onChanged: () => void }) {

@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { command, researchUniverse } from "../api"
-import { useNavigation } from "../../../router"
 import { GapChallengeComposer } from "./GapChallengeComposer"
-import type { CorpusSearchHit, GapCandidate, GapChallenge, WorkspaceLandscape } from "../types"
+import { RELATION_LABELS } from "./EvidenceSurface"
+import type { GapCandidate, GapChallenge, WorkspaceLandscape } from "../types"
 
 const STATUS_LABELS: Record<GapCandidate["status"], string> = {
   pending: "待你裁决",
@@ -18,62 +18,25 @@ function outcomeLabel(outcome: string): string {
   if (outcome === "refuted") return "反证结果:已被推翻 — 这个 gap 可能需要你重新判断"
   return `反证结果:${VERDICT_LABELS[outcome] ?? outcome}`
 }
-function GapChallengeLines({ workspaceId, challenges }: { workspaceId: string; challenges: GapChallenge[] }) {
-  const { navigate } = useNavigation()
-  return <>{challenges.map((c) => <p key={c.claim_id} className="ru-provenance">{outcomeLabel(c.outcome)} · {c.claim_text.length > 40 ? `${c.claim_text.slice(0, 40)}…` : c.claim_text}{c.round_id && <> · <button type="button" className="ru-quiet-button" onClick={() => navigate(`/workspaces/${workspaceId}/rounds/${c.round_id}`)}>查看审查轮</button></>}</p>)}</>
-}
 export const VERDICT_LABELS: Record<string, string> = {
   survived: "存活", circumstantial: "有条件存活", refuted: "已证伪", not_worth: "不值一探", boundary: "划界", open: "未裁决",
 }
+const short = (text: string, n: number) => text.length > n ? `${text.slice(0, n)}…` : text
+/** 指向聚焦面的文案:宽屏「右侧」,<800px「下方」 */
+const Where = () => <><span className="ru-wide">右侧</span><span className="ru-narrow">下方</span></>
+/** 投影的 alive_claims 含未裁决的;「存活」只算已裁决且未被证伪/不值一探的 */
+export const survivingClaims = (landscape: WorkspaceLandscape) => landscape.alive_claims.filter((c) => (landscape.claim_verdicts[c.id] ?? "open") !== "open")
 
-/** slice1 S1.4 — 现状图景与 gap 候选台(工作区级,prop 驱动,读数据来自 desk 响应)。 */
-export function LandscapePanel({ landscape, onChanged }: { landscape: WorkspaceLandscape; onChanged: () => void }) {
+function GapChallengeLines({ challenges, onOpen }: { challenges: GapChallenge[]; onOpen: (roundId: string) => void }) {
+  return <>{challenges.map((c) => c.round_id
+    ? <button key={c.claim_id} type="button" className="ru-link-button ru-gap-claim" onClick={() => onOpen(c.round_id!)}>反证 claim「{short(c.claim_text, 24)}」· {outcomeLabel(c.outcome)} → 在<Where />打开</button>
+    : <p key={c.claim_id} className="ru-provenance">反证 claim「{short(c.claim_text, 24)}」· {outcomeLabel(c.outcome)}</p>)}</>
+}
+
+/** gap 阶段卡上的 gap 列表:旧登记路径留下的待裁决 gap 照常可确认/拒绝;已确认的可发起反证。 */
+export function GapList({ workspaceId, gaps, onChanged, onOpen }: { workspaceId: string; gaps: GapCandidate[]; onChanged: () => void; onOpen: (roundId: string) => void }) {
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [coverage, setCoverage] = useState("")
-  const [invitation, setInvitation] = useState("")
-  const [query, setQuery] = useState("")
-  const [hits, setHits] = useState<CorpusSearchHit[]>([])
-  const [searching, setSearching] = useState(false)
-  const [selected, setSelected] = useState<string[]>([])
-
-  async function runSearch() {
-    if (!query.trim() || searching) return
-    setSearching(true)
-    setError(undefined)
-    try {
-      const result = await researchUniverse.corpusSearch(query.trim(), { group: "active", limit: 10 })
-      setHits(result.results)
-      setSelected([])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "语料检索失败")
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  async function propose() {
-    if (busy || coverage.trim().length < 10 || !invitation.trim()) return
-    setBusy(true)
-    setError(undefined)
-    try {
-      await researchUniverse.proposeGapCandidate(landscape.workspace_id, command({
-        coverage_statement: coverage.trim(),
-        search_query: query.trim() || "(未检索,手工登记)",
-        search_scope: "active",
-        matched_locators: selected,
-        searched_at: new Date().toISOString().slice(0, 10),
-        counterexample_invitation: invitation.trim(),
-      }, 0))
-      setOpen(false); setCoverage(""); setInvitation(""); setQuery(""); setHits([]); setSelected([])
-      onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "提交 gap 失败")
-    } finally {
-      setBusy(false)
-    }
-  }
 
   async function decide(gap: GapCandidate, action: "confirm" | "reject") {
     if (busy) return
@@ -93,50 +56,56 @@ export function LandscapePanel({ landscape, onChanged }: { landscape: WorkspaceL
     }
   }
 
-  const validProposal = coverage.trim().length >= 10 && invitation.trim().length > 0
-
-  return <section className="ru-landscape" aria-labelledby="landscape-title">
-    <p className="ru-kicker">现状图景与 gap</p>
-    <h2 id="landscape-title">这一问,现状是什么、缺口在哪</h2>
+  return <>
     {error && <p className="ru-error" role="alert">{error}</p>}
-    <div className="ru-landscape-readout">
-      <p className="ru-challenge-note">存活主张 {landscape.alive_claims.length} · 已确认取证 {landscape.confirmed_facts.length} · gap 候选 {landscape.gaps.length}。图景只读;要做判断的是你。</p>
-      {(landscape.alive_claims.length > 0 || landscape.confirmed_facts.length > 0) && <ul className="ru-landscape-list">
-        {landscape.alive_claims.map((c) => <li key={c.id} className="ru-landscape-item"><strong>{c.text}</strong><span className="ru-provenance">裁决:{VERDICT_LABELS[landscape.claim_verdicts[c.id] ?? "open"] ?? landscape.claim_verdicts[c.id]}</span></li>)}
-        {landscape.confirmed_facts.map((f) => <li key={f.candidate_id} className="ru-landscape-item"><span>已确认取证 · {f.relation}</span><strong>{f.claim_text}</strong><span className="ru-provenance">{f.material_locator ?? "无定位"}</span></li>)}
-      </ul>}
-      {landscape.alive_claims.length === 0 && landscape.confirmed_facts.length === 0 && <p className="ru-edge-empty">还没有可引用的现状;先走通 claim 与取证,或直接登记一个 gap。</p>}
-    </div>
-    <div className="ru-gap-list">
-      {landscape.gaps.length === 0 && !open && <p className="ru-edge-empty">尚无 gap 候选。</p>}
-      {landscape.gaps.map((gap) => <article key={gap.id} className="ru-material-card">
-        <p className="ru-provenance">gap 候选 · {STATUS_LABELS[gap.status]}{gap.decision_reason ? ` · ${gap.decision_reason}` : ""}</p>
-        <p className="ru-reading-copy"><strong>覆盖范围:</strong>{gap.coverage_statement}</p>
-        <p className="ru-reading-copy"><strong>邀请反例:</strong>{gap.counterexample_invitation}</p>
-        <p className="ru-provenance">检索:{gap.search_record.query}{gap.search_record.matched_locators.length > 0 ? ` · 命中 ${gap.search_record.matched_locators.length} 篇` : ""}{gap.search_record.searched_at ? ` · ${gap.search_record.searched_at}` : ""}</p>
-        {gap.status === "pending" && <div className="ru-crystal-actions"><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "reject")}>拒绝</button><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void decide(gap, "confirm")}>确认这个 gap</button></div>}
-        {gap.challenges && gap.challenges.length > 0 && <GapChallengeLines workspaceId={landscape.workspace_id} challenges={gap.challenges} />}
-        {(gap.status === "confirmed" || gap.status === "corrected") && <GapChallengeComposer workspaceId={landscape.workspace_id} gapId={gap.id} coverage={gap.coverage_statement} />}
-      </article>)}
-    </div>
-    {!open && <button className="ru-quiet-button" onClick={() => setOpen(true)}>登记一个 gap 候选</button>}
-    {open && <div className="ru-material-form">
-      <p className="ru-challenge-note">gap 形状(S20):覆盖范围声明 + 可复现检索记录 + 反例邀请。提出的是缺口,不是"所以你应该做 Y"。</p>
-      <label htmlFor="gap-coverage">覆盖范围声明(哪些已被覆盖、缺口在哪)</label>
-      <textarea id="gap-coverage" className="ru-conclusion-text" value={coverage} onChange={(e) => setCoverage(e.target.value)} placeholder="现有文献覆盖了……但没有覆盖……" required />
-      <label htmlFor="gap-invitation">邀请反例</label>
-      <input id="gap-invitation" className="ru-revival-input" value={invitation} onChange={(e) => setInvitation(e.target.value)} placeholder="如果你知道反例,请指出——" required />
-      <div className="ru-gap-search">
-        <label htmlFor="gap-search-query">语料检索(active,供检索记录)</label>
-        <div><input id="gap-search-query" className="ru-revival-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="检索词…" /><button className="ru-quiet-button" disabled={searching || !query.trim()} onClick={() => void runSearch()}>{searching ? "检索中…" : "检索语料"}</button></div>
-        {hits.length > 0 && <ul className="ru-landscape-list">
-          {hits.map((hit) => <li key={hit.material_id} className="ru-landscape-item">
-            <button className={selected.includes(hit.source_locator) ? "ru-ink-button" : "ru-quiet-button"} onClick={() => setSelected((prev) => prev.includes(hit.source_locator) ? prev.filter((x) => x !== hit.source_locator) : [...prev, hit.source_locator])}>{selected.includes(hit.source_locator) ? "已选" : "选取"}</button>
-            <strong>{hit.title}</strong><span className="ru-provenance">{hit.source_locator}</span>
-          </li>)}
-        </ul>}
-      </div>
-      <div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => setOpen(false)}>取消</button><button className="ru-ink-button ru-active" disabled={busy || !validProposal} onClick={() => void propose()}>{busy ? "正在登记…" : "提出 gap 候选"}</button></div>
-    </div>}
+    <ul className="ru-gaps" aria-label="本问题的 gap">{gaps.map((gap, i) => <li key={gap.id} className="ru-gap">
+      <p className="ru-gap-head"><span className={`ru-gap-status is-${gap.status}`}>{STATUS_LABELS[gap.status]}</span><span className="ru-provenance">gap {String(i + 1).padStart(2, "0")}{gap.decision_reason ? ` · ${gap.decision_reason}` : ""}</span></p>
+      <p className="ru-gap-text">{gap.coverage_statement}</p>
+      <p className="ru-provenance">邀请反例:{gap.counterexample_invitation}</p>
+      <p className="ru-provenance">检索:{gap.search_record.query}{gap.search_record.matched_locators.length > 0 ? ` · 命中 ${gap.search_record.matched_locators.length} 篇` : ""}{gap.search_record.searched_at ? ` · ${gap.search_record.searched_at}` : ""}</p>
+      {gap.status === "pending" && <div className="ru-secondary-row"><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "reject")}>拒绝</button><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "confirm")}>确认这个 gap</button></div>}
+      {gap.challenges && gap.challenges.length > 0 && <GapChallengeLines challenges={gap.challenges} onOpen={onOpen} />}
+      {(gap.status === "confirmed" || gap.status === "corrected") && <GapChallengeComposer workspaceId={workspaceId} gapId={gap.id} coverage={gap.coverage_statement} />}
+    </li>)}</ul>
+  </>
+}
+
+/** 本机草稿里的覆盖梳理与已选文献(relation = 与假设的支撑关系,已译成标签;旧草稿可能没有) */
+export interface LocalCoverage { summary?: string; papers: { locator: string; title: string; relation?: string }[] }
+
+/**
+ * gap 阶段的右侧聚焦面:现状图景(只读)。存活 claim 与取证来自 desk.landscape;点存活 claim 在同一面打开它的最新一轮。
+ * 覆盖梳理只在本机草稿里 → 有草稿才显示,换设备时整段不出现。
+ */
+export function LandscapePanel({ landscape, rounds, onOpen, coverage }: { landscape: WorkspaceLandscape; rounds: { id: string; claim_id?: string }[]; onOpen: (roundId: string) => void; coverage?: LocalCoverage }) {
+  const kept = survivingClaims(landscape)
+  const others = Object.keys(landscape.claim_verdicts).length - kept.length
+  const fromGap = new Set(landscape.gaps.flatMap((g) => (g.challenges ?? []).map((c) => c.claim_id)))
+  return <section className="ru-landscape-panel" aria-labelledby="landscape-title">
+    <p className="ru-kicker">现状图景 · 只读</p>
+    <h2 id="landscape-title">写 gap 时可以倚靠的</h2>
+    <section>
+      <p className="ru-col-title">存活的 claim · {kept.length}</p>
+      {kept.length > 0 ? <ul className="ru-plain">{kept.map((c) => {
+        const own = rounds.filter((r) => r.claim_id === c.id), latest = own.at(-1)
+        const meta = <span className="ru-provenance"><span className="ru-decided">{VERDICT_LABELS[landscape.claim_verdicts[c.id]] ?? landscape.claim_verdicts[c.id]}</span>{fromGap.has(c.id) && " · 来自 gap"}{latest && ` · 审查轮 ${String(own.length).padStart(2, "0")}`}</span>
+        return <li key={c.id}>{latest
+          ? <button type="button" className="ru-landscape-claim" onClick={() => onOpen(latest.id)}>{meta}<span className="ru-gap-text">{c.text}</span></button>
+          : <div className="ru-landscape-claim">{meta}<span className="ru-gap-text">{c.text}</span></div>}</li>
+      })}</ul> : <p className="ru-ledger-empty">还没有裁决为存活的 claim。</p>}
+      {others > 0 && <p className="ru-provenance">另有 {others} 条 claim 未裁决或未存活，在「对抗」里。</p>}
+    </section>
+    <section>
+      <p className="ru-col-title">已确认的取证事实 · {landscape.confirmed_facts.length}</p>
+      {landscape.confirmed_facts.length > 0 ? <ul className="ru-plain ru-landscape-facts">{landscape.confirmed_facts.map((f) => <li key={f.candidate_id}>
+        <p className="ru-provenance"><span className="ru-qdot" />{RELATION_LABELS[f.relation] ?? f.relation} · {f.material_locator ?? "无定位"} → claim「{short(f.claim_text, 18)}」</p>
+        {f.decision_reason && <p className="ru-gap-text">{f.decision_reason}</p>}
+      </li>)}</ul> : <p className="ru-ledger-empty">还没有确认的取证事实。</p>}
+    </section>
+    {coverage && (coverage.summary || coverage.papers.length > 0) && <section>
+      <p className="ru-col-title">{coverage.summary ? "覆盖梳理 · " : ""}已选文献 {coverage.papers.length} 篇</p>
+      {coverage.summary && <p className="ru-ai-content">{coverage.summary}</p>}
+      {coverage.papers.length > 0 && <ul className="ru-plain">{coverage.papers.map((p) => <li key={p.locator} className="ru-provenance">{p.title} · {p.locator}{p.relation && ` · 与假设:${p.relation}`}</li>)}</ul>}
+    </section>}
   </section>
 }

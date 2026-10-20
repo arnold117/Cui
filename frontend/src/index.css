@@ -277,6 +277,30 @@ button.ru-claim:hover { border-top-color: #A9B1AC; border-right-color: #A9B1AC; 
 .ru-claims-fold > summary { cursor: pointer; color: var(--muted); font-size: .78rem; font-weight: 600; }
 .ru-stage-actions .ru-no-verdict { margin: 0 0 0 auto; }
 .ru-no-verdict + .ru-ink-button { margin-left: 0; }
+/* gap 卡:gap 列表 + 写一个 gap;右侧现状图景(只读) */
+.ru-col-title { margin: 1rem 0 .35rem; color: var(--muted); font-size: .78rem; font-weight: 600; letter-spacing: .04em; }
+.ru-plain { margin: 0; padding: 0; list-style: none; }
+.ru-gaps { display: grid; gap: .55rem; margin: 0; padding: 0; list-style: none; }
+.ru-gap { display: grid; gap: .2rem; justify-items: start; padding: .7rem .85rem; border: 1px solid var(--line); border-left: 2px solid var(--edge); background: color-mix(in srgb, var(--stone) 25%, var(--paper)); }
+.ru-gap p { margin: 0; }
+.ru-gap .ru-secondary-row, .ru-gap .ru-material-form { justify-self: stretch; margin-top: .4rem; }
+.ru-gap-head { display: flex; flex-wrap: wrap; gap: .2rem .7rem; align-items: baseline; }
+.ru-gap-status { display: inline-flex; gap: .35rem; align-items: center; color: var(--muted); font-size: .72rem; font-weight: 600; letter-spacing: .06em; }
+.ru-gap-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ru-gap-status.is-confirmed, .ru-gap-status.is-corrected { color: var(--edge); }
+.ru-gap-status.is-confirmed::before, .ru-gap-status.is-corrected::before { background: var(--teal); }
+.ru-gap-status.is-pending { color: var(--rust); }
+.ru-gap-text { font-family: "Charis SIL", "Source Han Serif", serif; font-size: .95rem; line-height: 1.65; }
+.ru-gap-claim { font-size: .84rem; text-align: left; }
+.ru-landscape-panel h2 { margin: .45rem 0 .2rem; font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1.5rem; font-weight: 400; line-height: 1.35; }
+.ru-landscape-panel > section { margin-top: 1.2rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+.ru-landscape-panel .ru-col-title { margin-top: 0; }
+.ru-landscape-claim { display: grid; gap: .15rem; justify-items: start; width: 100%; margin: .35rem 0; padding: .5rem .75rem; border: 0; border-left: 3px solid var(--edge); background: transparent; color: var(--ink); text-align: left; font: inherit; }
+button.ru-landscape-claim { cursor: pointer; }
+button.ru-landscape-claim:hover { background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
+.ru-landscape-facts li { padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.ru-landscape-facts p { margin: 0; }
+.ru-qdot { display: inline-block; width: 7px; height: 7px; margin-right: .45rem; border-radius: 50%; background: var(--teal); vertical-align: 1px; }
 /* 指向聚焦面的文案:宽屏「右侧」,<800px「下方」 */
 .ru-narrow { display: none; }
 /* <800px:上下堆叠;竖排行收起,只留顶部阶段条 + 展开的那张卡 */

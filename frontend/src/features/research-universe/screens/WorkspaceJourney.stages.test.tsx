@@ -107,8 +107,9 @@ describe("workspace journey stages", () => {
 
     // 第 5 步:gap 起草 → 署名提交确认
     fireEvent.click(screen.getByRole("button", { name: "让 Cui 起草 gap 候选" }))
-    const coverage = await screen.findByLabelText(/覆盖范围声明/)
-    expect((coverage as HTMLTextAreaElement).value).toContain("没有覆盖推理链真实应用的长期表现")
+    // 表单一直在(手写也能提交);起草结果回来后填进同一个框
+    const coverage = screen.getByLabelText(/覆盖范围声明/)
+    await waitFor(() => expect((coverage as HTMLTextAreaElement).value).toContain("没有覆盖推理链真实应用的长期表现"), { timeout: 3000 })
     fireEvent.click(screen.getByRole("button", { name: /提交并确认这个 gap/ }))
     await waitFor(() => expect(openCard()).toBe("6. 结晶"), { timeout: 3000 })
     const propose = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/gap-candidates"))

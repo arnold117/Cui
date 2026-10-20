@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
 import { GapChallengeComposer } from "./GapChallengeComposer"
-import { LandscapePanel, VERDICT_LABELS } from "./LandscapePanel"
+import { GapList, LandscapePanel, survivingClaims, VERDICT_LABELS } from "./LandscapePanel"
 import { ReleaseForge } from "./ReleaseForge"
 import { ReviewRoundDesk } from "./ReviewRoundDesk"
 import type { CitationReport, CommandEnvelope, ConclusionType, DialogueCandidate, MaterialPurpose, ParkReleaseRef, WorkspaceDesk as Desk, WorkspacePosition } from "../types"
@@ -45,7 +45,7 @@ type ClaimIntent = { claim: CommandEnvelope & { text: string; kind?: Exclude<Cla
  * - 当前阶段由 journeyStage(desk, 草稿) 推导(服务端事实优先);任何阶段都可点开,不锁;
  * - 已完成阶段折叠成一行,可展开修改;展开修改只改本机草稿,已入轨迹的对象不改写;
  * - 页头只留暂停/重开;探索稿、手动材料、PARK 放行引用收进「工具」;
- * - 右侧聚焦面:roundId(/workspaces/:id/rounds/:rid)打开审查轮,forgeReleaseRefId 打开锻;<800px 堆到左栏下方。
+ * - 右侧聚焦面:roundId(/workspaces/:id/rounds/:rid)打开审查轮,forgeReleaseRefId 打开锻,gap 阶段没开轮时是现状图景;<800px 堆到左栏下方。
  * 会话草稿存 localStorage,可退出、可再进;claim/审查轮/gap/结论以轨迹为准。
  */
 export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceReleaseId, roundId }: { workspaceId: string; forgeReleaseRefId?: string; sourceReleaseId?: string; roundId?: string }) {
@@ -175,7 +175,6 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   const chosen: DialogueCandidate[] = state.candidates.filter((c) => state.selected.includes(c.locator))
   const corpusIds = chosen.filter((c) => c.material_id).map((c) => c.material_id as string)
   const externalRefs = chosen.filter((c) => !c.material_id).map((c) => ({ locator: c.locator, excerpt: c.excerpt ?? c.title, url: c.url ?? null }))
-  const gapConfirmed = state.confirmedGapIds.length > 0
 
   useEffect(() => {
     saveDialogueDraft(workspaceId, state)
@@ -407,7 +406,9 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
     6: POSITION_LABELS[position],
   }
   const rowLine = (n: number) => n === 4 && pendingCount > 0 ? `待回应 ${pendingCount} 条` : done[n - 1] ? oneLine[n] : STAGE_DESCRIPTIONS[n - 1]
-  const goStage = (n: number) => setOpen(n === current ? null : n)
+  // 进 gap 阶段 = 右侧换成现状;开着的审查轮先收起(在 gap 阶段里再点开的轮才留在右侧)
+  const goStage = (n: number) => { setOpen(n === current ? null : n); if (n === 5 && roundId) navigate(`/workspaces/${workspaceId}`) }
+  const openRound = (rid: string) => navigate(`/workspaces/${workspaceId}/rounds/${rid}`)
 
   const page = <section className="ru-journey" aria-labelledby="journey-title">
     <header className="ru-journey-head">
@@ -487,9 +488,10 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       </details>
     </details>
   </section>
-  // 右侧聚焦面:锻 / 审查轮 / 都没开时一行安静提示(gap 现状、结晶账本另有票)
+  // 右侧聚焦面:锻 / 审查轮(gap 阶段里收起 = 回到现状)/ gap 阶段的现状图景 / 都没开时一行安静提示(结晶账本另有票)
   const panel = forging ? <ReleaseForge workspaceId={workspaceId} releaseRef={forgeRef!} />
-    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: (desk.materials ?? []).filter((m) => m.purpose === "evidence") }} />
+    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} closeLabel={shown === 5 ? "回到现状" : undefined} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: (desk.materials ?? []).filter((m) => m.purpose === "evidence") }} />
+    : shown === 5 && desk.landscape ? <LandscapePanel landscape={desk.landscape} rounds={desk.review_rounds} onOpen={openRound} coverage={{ summary: state.summary, papers: chosen.map((c) => ({ locator: c.locator, title: c.title, relation: c.relation ? RELATION_LABELS[c.relation.kind] ?? c.relation.kind : undefined })) }} />
     : <div className="ru-panel-empty"><p className="ru-kicker">审查轮</p><p>{shown === 4 ? "点一条 claim，它的审查轮在这里打开；左栏保持可见，不离开这一页。" : "从「对抗」打开一条 claim 的审查轮。"}</p></div>
   return <div className="ru-journey-layout">{page}<aside ref={panelRef} className="ru-journey-panel" aria-label="聚焦面">{panel}</aside></div>
 
@@ -632,35 +634,37 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       <div className="ru-stage-actions">
         <button type="button" className="ru-quiet-button" onClick={() => { setRewriting(true); setOpen(3) }}>再写一条 claim</button>
         {verdicts.length === 0 && <span className="ru-muted-note ru-no-verdict">尚无裁决</span>}
-        <button type="button" className="ru-ink-button ru-active" onClick={() => { patch({ claimAck: true }); setOpen(5) }}>继续到 gap</button>
+        <button type="button" className="ru-ink-button ru-active" onClick={() => { patch({ claimAck: true }); goStage(5) }}>继续到 gap</button>
       </div>
     </div>
   }
 
+  // gap 阶段卡(S5 一条路径):gap 列表 + 写一个 gap。起草可选(要本机选料),手写同样能提交;提交即确认。
   function bodyFive() {
+    const landscape = desk!.landscape, gaps = landscape?.gaps ?? []
+    const draft = state.gapDraft ?? { coverage_statement: "", counterexample_invitation: "" }
+    const written = Boolean(draft.coverage_statement.trim() || draft.counterexample_invitation.trim())
+    const noLocalDraft = state.selected.length === 0
     return <div className="ru-stage-body">
-      {!gapConfirmed && !state.gapDraft && <div>
-        <p className="ru-copy">让 Cui 根据已选文献与覆盖梳理起草一个 gap 候选:覆盖范围声明 + 可复现检索记录 + 反例邀请。提出的是缺口,不是"所以你应该做 Y";由你署名提交确认后才入轨迹。</p>
-        <div className="ru-stage-actions">
-          <button type="button" className="ru-ink-button ru-active" disabled={busy || state.selected.length === 0} onClick={() => void draftGap()}>{busy ? "起草中…" : "让 Cui 起草 gap 候选"}</button>
-        </div>
-      </div>}
-      {state.gapDraft && !gapConfirmed && <div className="ru-material-form">
-        <p className="ru-kicker">gap 形状:覆盖声明 + 检索记录 + 反例邀请(Cui 起草,你改,你署名)</p>
-        <p className="ru-copy">检索记录(实际执行):{state.searchQueries.join(" ; ") || "(未检索,手工登记)"}</p>
+      {landscape && <p className="ru-quiet-hint">现状图景在<span className="ru-wide">右侧</span><span className="ru-narrow">下方</span>:存活 claim {survivingClaims(landscape).length} · 已确认取证 {landscape.confirmed_facts.length} · 已确认 gap {confirmedGapCount}</p>}
+      {gaps.length > 0 && <><p className="ru-col-title">本问题的 gap · {gaps.length}</p><GapList workspaceId={workspaceId} gaps={gaps} onChanged={() => void load()} onOpen={openRound} /></>}
+      <p className="ru-col-title">{gaps.length > 0 ? "再写一个 gap" : "写一个 gap"}</p>
+      <div className="ru-secondary-row">
+        <button type="button" className="ru-quiet-button" disabled={busy || noLocalDraft} onClick={() => void draftGap()}>{busy ? "起草中…" : written ? "让 Cui 重新起草(覆盖下面的草稿)" : "让 Cui 起草 gap 候选"}</button>
+        <span className="ru-muted-note">{noLocalDraft ? "这台设备上没有选料草稿,起草不可用;可以直接手写。" : "或者直接手写;你改,你署名"}</span>
+      </div>
+      <p className="ru-quiet-hint">检索记录(实际执行):{state.searchQueries.join(" ; ") || "(未检索,手工登记)"}</p>
+      <div className="ru-material-form">
         <label htmlFor="d-coverage">覆盖范围声明(哪些已被覆盖、缺口在哪)</label>
-        <textarea id="d-coverage" className="ru-conclusion-text" value={state.gapDraft.coverage_statement} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, coverage_statement: e.target.value, citation_checks: [], citation_check_status: "ok" } })} /* 改写后旧核对不再适用 */ />
+        <textarea id="d-coverage" className="ru-conclusion-text" value={draft.coverage_statement} placeholder="至少 10 个字:现有文献覆盖了……但没有覆盖……" onChange={(e) => patch({ gapDraft: { ...draft, coverage_statement: e.target.value, citation_checks: [], citation_check_status: "ok" } })} /* 改写后旧核对不再适用 */ />
         <CitationCheckList report={state.gapDraft} />
         <label htmlFor="d-invitation">邀请反例</label>
-        <input id="d-invitation" className="ru-revival-input" value={state.gapDraft.counterexample_invitation} onChange={(e) => patch({ gapDraft: { ...state.gapDraft!, counterexample_invitation: e.target.value } })} />
-        <div className="ru-stage-actions">
-          <button type="button" className="ru-quiet-button" disabled={busy} onClick={() => void draftGap()}>重新起草</button>
-          <button type="button" className="ru-ink-button ru-active" disabled={busy || state.gapDraft.coverage_statement.trim().length < 10 || !state.gapDraft.counterexample_invitation.trim()} onClick={() => void proposeGap()}>{busy ? "提交中…" : "提交并确认这个 gap"}</button>
-        </div>
-      </div>}
-      {gapConfirmed && <p className="ru-ok-note">✓ gap 已确认 ×{state.confirmedGapIds.length},已入轨迹(下方"现状图景与 gap"里可见)。</p>}
-      {/* gap 列表与登记表单暂留在这里,S5 再并进 gap 阶段卡 */}
-      {desk!.landscape && <LandscapePanel landscape={desk!.landscape} onChanged={() => void load()} />}
+        <input id="d-invitation" className="ru-revival-input" value={draft.counterexample_invitation} placeholder="什么样的研究会推翻这个 gap?" onChange={(e) => patch({ gapDraft: { ...draft, counterexample_invitation: e.target.value } })} />
+      </div>
+      <div className="ru-stage-actions">
+        <span className="ru-muted-note">提交即确认,入轨迹</span>
+        <button type="button" className="ru-ink-button ru-active" disabled={busy || draft.coverage_statement.trim().length < 10 || !draft.counterexample_invitation.trim()} onClick={() => void proposeGap()}>{busy ? "提交中…" : "提交并确认这个 gap"}</button>
+      </div>
     </div>
   }
 
