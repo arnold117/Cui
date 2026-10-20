@@ -58,6 +58,6 @@ test("gap candidate can be confirmed from the workspace landscape", async ({ pag
   expect(requests.some(r => r.url.endsWith("/claims"))).toBe(false)
   await expect(page.getByLabel("反证用 claim(空缺断言)")).toHaveValue(/没有覆盖间隔练习在真实课堂的长期保持/)
   await page.getByRole("button", { name: "署名固化为 claim 并开审查轮" }).click()
-  await expect(page).toHaveURL(/\/review-rounds\/r-1$/)
+  await expect(page).toHaveURL(/\/workspaces\/w-1\/rounds\/r-1$/)
   expect(requests.find(r => r.url.endsWith("/workspaces/w-1/claims"))?.body).toMatchObject({ kind: "vacancy" })
 })

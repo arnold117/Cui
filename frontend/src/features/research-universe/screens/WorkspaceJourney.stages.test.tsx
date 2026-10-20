@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppRouter } from "../../../router"
 import { WorkspaceJourney } from "./WorkspaceJourney"
@@ -92,20 +92,16 @@ describe("workspace journey stages", () => {
     await waitFor(() => expect((claimInput as HTMLTextAreaElement).value).toContain("分成两派"), { timeout: 2000 })
     fireEvent.change(claimInput, { target: { value: "对齐偏好分布才是推理提升的主因。" } })
     fireEvent.click(screen.getByRole("button", { name: /固化 claim 并开审查轮/ }))
-    await screen.findByText(/✓ claim 已固化,审查轮已开/, {}, { timeout: 3000 })
+    // 固化后右侧面切到这一轮;对抗卡列出这条 claim 与它的最新一轮
+    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r1"), { timeout: 3000 })
+    const claimCard = await screen.findByRole("button", { name: /对齐偏好分布才是推理提升的主因。/ }, { timeout: 3000 })
     expect(openCard()).toBe("4. 对抗")
-    await screen.findByText("待回应 1 条") // 研究边缘删了:待回应计数挂在对抗这一格
+    expect(claimCard).toHaveTextContent("审查轮 01")
+    expect(claimCard).toHaveTextContent("待回应 1 条") // 研究边缘删了:待回应计数挂在对抗卡与对抗这一格
     expect(JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))![1].body as string).kind).toBe("division")
 
-    // 文献发难把所选材料带进审查轮
-    fireEvent.click(screen.getByRole("button", { name: /用所选文献发难/ }))
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/literature-challenges"))
-      expect(call).toBeTruthy()
-      expect(JSON.parse(call![1].body as string).material_ids).toEqual(["m1", "m2", "m3"])
-    }, { timeout: 3000 })
-    // 仍有待回应挑战 → 当前阶段停在对抗,但「继续起草 gap」照样打开 gap 卡(不锁)
-    fireEvent.click(screen.getByRole("button", { name: /我看过审查轮了,继续起草 gap →/ }))
+    // 仍有待回应挑战 → 当前阶段停在对抗,但「继续到 gap」照样打开 gap 卡(不锁)
+    fireEvent.click(screen.getByRole("button", { name: "继续到 gap" }))
     expect(openCard()).toBe("5. gap")
     expect(screen.getByRole("button", { name: "收起,回到第 4 步" })).toBeInTheDocument()
 
@@ -182,9 +178,8 @@ describe("workspace journey stages", () => {
   it("another device (no local draft) with a claim lands on 对抗, with the claim from the trajectory", async () => {
     mockFullJourney({ claims: [{ id: "c1", text: "别处写的 claim" }], review_rounds: [{ id: "r1", claim_id: "c1", claim_snapshot: { text: "别处写的 claim" }, question_snapshot: baseDesk.question, verdict: null }] })
     renderJourney("w-1")
-    await screen.findByText(/✓ claim 已固化,审查轮已开/)
+    await screen.findByText("别处写的 claim", { selector: ".ru-claim-text" })
     expect(openCard()).toBe("4. 对抗")
-    expect(screen.getByText("别处写的 claim", { selector: "blockquote" })).toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument() // 本机没有会话,不显示恢复横幅
     expect(row(/^1\. 出发点/)).toHaveTextContent("展开修改")
     expect(row(/^3\. 覆盖与 claim/)).toHaveTextContent("已写 1 条 claim")
@@ -206,14 +201,16 @@ describe("workspace journey stages", () => {
   it("rewriting in 覆盖与 claim writes a new claim instead of editing the signed one", async () => {
     mockFullJourney({ claims: [{ id: "c0", text: "第一条" }], review_rounds: [{ id: "r0", claim_id: "c0", claim_snapshot: { text: "第一条" }, question_snapshot: baseDesk.question, verdict: null }] })
     renderJourney("w-1")
-    await screen.findByText(/✓ claim 已固化,审查轮已开/)
-    fireEvent.click(row(/^3\. 覆盖与 claim/))
+    await screen.findByText("第一条", { selector: ".ru-claim-text" })
+    // 对抗卡的次级动作「再写一条 claim」→ 展开「覆盖与 claim」并直接进入改写
     fireEvent.click(screen.getByRole("button", { name: "再写一条 claim" }))
+    expect(openCard()).toBe("3. 覆盖与 claim")
     fireEvent.change(screen.getByLabelText("由你写下的 claim"), { target: { value: "第二条" } })
     fireEvent.click(screen.getByRole("button", { name: /固化 claim 并开审查轮/ }))
     await waitFor(() => expect(openCard()).toBe("4. 对抗"))
     expect(JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))![1].body as string).text).toBe("第二条")
-    await screen.findByText("第二条", { selector: "blockquote" })
+    await screen.findByText("第二条", { selector: ".ru-claim-text" })
+    expect(screen.getByText("第一条", { selector: ".ru-claim-text" })).toBeInTheDocument()
   })
 
   it("blocks solidifying a claim while skeleton blanks remain, with a hint", async () => {
@@ -251,7 +248,61 @@ describe("workspace journey stages", () => {
     expect(screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" })).toBeDisabled()
     fireEvent.change(box, { target: { value: "没有文献覆盖长期表现。" } })
     fireEvent.click(screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" }))
-    await waitFor(() => expect(window.location.pathname).toBe("/review-rounds/r1"), { timeout: 3000 })
+    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r1"), { timeout: 3000 })
     expect(JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))![1].body as string)).toMatchObject({ text: "没有文献覆盖长期表现。", kind: "vacancy" })
+  })
+})
+
+describe("对抗 stage card: claim list + right-side review panel (S2)", () => {
+  const round = (id: string, claim_id: string, verdict: string | null = null, sequence = 1) => ({ id, claim_id, claim_snapshot: { text: claim_id }, question_snapshot: baseDesk.question, verdict: verdict ? { round_id: id, verdict_type: verdict, user_reason: "r" } : null, sequence })
+  const pending = (id: string, review_round_id: string) => ({ ...pendingChallenge, id, review_round_id })
+
+  it("groups rounds by claim (latest = last in array order), labels each card, tags gap-origin claims and folds decided ones below", async () => {
+    mockFullJourney({
+      claims: [{ id: "c1", text: "重审过的 claim" }, { id: "c2", text: "被证伪的 claim" }, { id: "c3", text: "开轮失败的 claim" }, { id: "c4", text: "反证 gap 的 claim" }],
+      // c1 第一轮已裁决、第二轮未裁决;旧轮 sequence 故意更大 —— sequence 是轮内计数,最新只看数组顺序
+      review_rounds: [round("r1a", "c1", "survived", 7), round("r2", "c2", "refuted"), round("r1b", "c1", null, 1), round("r4", "c4")],
+      pending_challenges: [pending("p1", "r1b"), pending("p2", "r1b"), pending("p3", "r4")],
+      landscape: landscape([{ ...confirmedGap("g1", "缺口"), challenges: [{ claim_id: "c4", claim_text: "反证 gap 的 claim", round_id: "r4", outcome: "open" }] }]),
+    })
+    renderJourney("w-1")
+    const c1 = await screen.findByRole("button", { name: /重审过的 claim/ })
+    expect(openCard()).toBe("4. 对抗")
+    expect(screen.getByText(/点一条 claim，它的审查轮在/, { selector: ".ru-quiet-hint" })).toHaveTextContent("右侧")
+    expect(c1).toHaveTextContent("审查轮 02")
+    expect(c1).toHaveTextContent("待回应 2 条")
+    expect(c1).not.toHaveTextContent("已裁决")
+    expect(c1).not.toHaveTextContent("来自 gap")
+    const c4 = screen.getByRole("button", { name: /反证 gap 的 claim/ })
+    expect(c4).toHaveTextContent("来自 gap")
+    expect(c4).toHaveTextContent("待回应 1 条")
+    // 开轮失败留下的 claim:没有任何轮次 → 「未开审查轮」+ 补开按钮,卡本身不可点开
+    const c3 = screen.getByText("开轮失败的 claim").closest("li")!
+    expect(c3).toHaveTextContent("未开审查轮")
+    // 已裁决的在下面单独一组,标签用五类裁决
+    const undecided = screen.getByRole("list", { name: "未裁决的 claim" })
+    expect(within(undecided).queryByText("被证伪的 claim")).not.toBeInTheDocument()
+    expect(within(screen.getByRole("list", { name: "已裁决的 claim" })).getByRole("button", { name: /被证伪的 claim/ })).toHaveTextContent("已裁决 · 已证伪")
+    expect(screen.getByText("已裁决 · 1")).toBeInTheDocument()
+    expect(screen.queryByText("尚无裁决")).not.toBeInTheDocument()
+
+    // 点卡 → 同页右侧面打开它的最新一轮
+    fireEvent.click(c1)
+    expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r1b")
+    // 补开审查轮 → POST /claims/:id/review-rounds,再切到新轮
+    fireEvent.click(within(c3).getByRole("button", { name: "开审查轮" }))
+    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r1"))
+    expect(fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/claims/c3/review-rounds") && init?.method === "POST")).toBe(true)
+  })
+
+  it("no verdict yet: 「继续到 gap」 carries a 尚无裁决 hint but does not lock", async () => {
+    mockFullJourney({ claims: [{ id: "c1", text: "唯一的 claim" }], review_rounds: [round("r1", "c1")], pending_challenges: [pending("p1", "r1")] })
+    renderJourney("w-1")
+    await screen.findByText("唯一的 claim", { selector: ".ru-claim-text" })
+    expect(screen.getByText("尚无裁决")).toBeInTheDocument()
+    const next = screen.getByRole("button", { name: "继续到 gap" })
+    expect(next).toBeEnabled()
+    fireEvent.click(next)
+    expect(openCard()).toBe("5. gap")
   })
 })

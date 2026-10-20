@@ -18,11 +18,11 @@ function outcomeLabel(outcome: string): string {
   if (outcome === "refuted") return "反证结果:已被推翻 — 这个 gap 可能需要你重新判断"
   return `反证结果:${VERDICT_LABELS[outcome] ?? outcome}`
 }
-function GapChallengeLines({ challenges }: { challenges: GapChallenge[] }) {
+function GapChallengeLines({ workspaceId, challenges }: { workspaceId: string; challenges: GapChallenge[] }) {
   const { navigate } = useNavigation()
-  return <>{challenges.map((c) => <p key={c.claim_id} className="ru-provenance">{outcomeLabel(c.outcome)} · {c.claim_text.length > 40 ? `${c.claim_text.slice(0, 40)}…` : c.claim_text}{c.round_id && <> · <button type="button" className="ru-quiet-button" onClick={() => navigate(`/review-rounds/${c.round_id}`)}>查看审查轮</button></>}</p>)}</>
+  return <>{challenges.map((c) => <p key={c.claim_id} className="ru-provenance">{outcomeLabel(c.outcome)} · {c.claim_text.length > 40 ? `${c.claim_text.slice(0, 40)}…` : c.claim_text}{c.round_id && <> · <button type="button" className="ru-quiet-button" onClick={() => navigate(`/workspaces/${workspaceId}/rounds/${c.round_id}`)}>查看审查轮</button></>}</p>)}</>
 }
-const VERDICT_LABELS: Record<string, string> = {
+export const VERDICT_LABELS: Record<string, string> = {
   survived: "存活", circumstantial: "有条件存活", refuted: "已证伪", not_worth: "不值一探", boundary: "划界", open: "未裁决",
 }
 
@@ -115,7 +115,7 @@ export function LandscapePanel({ landscape, onChanged }: { landscape: WorkspaceL
         <p className="ru-reading-copy"><strong>邀请反例:</strong>{gap.counterexample_invitation}</p>
         <p className="ru-provenance">检索:{gap.search_record.query}{gap.search_record.matched_locators.length > 0 ? ` · 命中 ${gap.search_record.matched_locators.length} 篇` : ""}{gap.search_record.searched_at ? ` · ${gap.search_record.searched_at}` : ""}</p>
         {gap.status === "pending" && <div className="ru-crystal-actions"><button className="ru-quiet-button" disabled={busy} onClick={() => void decide(gap, "reject")}>拒绝</button><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void decide(gap, "confirm")}>确认这个 gap</button></div>}
-        {gap.challenges && gap.challenges.length > 0 && <GapChallengeLines challenges={gap.challenges} />}
+        {gap.challenges && gap.challenges.length > 0 && <GapChallengeLines workspaceId={landscape.workspace_id} challenges={gap.challenges} />}
         {(gap.status === "confirmed" || gap.status === "corrected") && <GapChallengeComposer workspaceId={landscape.workspace_id} gapId={gap.id} coverage={gap.coverage_statement} />}
       </article>)}
     </div>

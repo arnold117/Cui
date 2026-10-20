@@ -13,6 +13,7 @@ vi.mock("../api", async () => {
     withdrawChallenge: vi.fn(),
     confirmVerdict: vi.fn(),
     startReview: vi.fn(),
+    literatureChallenge: vi.fn(),
     active: vi.fn(),
     createWorkspace: vi.fn(),
     desk: vi.fn(),
@@ -35,12 +36,16 @@ const responded = <T extends Record<string, unknown>>(payload: T) => ({ commit_p
 afterEach(() => cleanup())
 
 describe("ReviewRoundDesk review lifecycle", () => {
-  it("keeps the challenge pending, links back, and exposes Slice 3 answer/verdict surfaces", async () => {
+  it("keeps the challenge pending, has no page-level exits, and exposes Slice 3 answer/verdict surfaces", async () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
-    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    const onClose = vi.fn()
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" onClose={onClose} /></AppRouter>)
     expect(await screen.findByText("边界尚未说明")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "回工作区继续探索" })).toHaveAttribute("href", "/workspaces/w-1")
-    expect(screen.getByRole("link", { name: "回研究宇宙查看上下文" })).toHaveAttribute("href", "/")
+    // 嵌入右侧面:没有「回工作区 / 回研究宇宙 / 回文献探讨」页级出口,只有收起
+    expect(screen.queryByRole("navigation", { name: "离开审查轮次" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "回工作区继续探索" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "收起" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText("我目前的回应")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "保存答辩" })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "裁决" })).toBeInTheDocument()
@@ -124,7 +129,8 @@ describe("ReviewRoundDesk review lifecycle", () => {
     expect(screen.getByText(/裁决：survived/)).toBeInTheDocument()
     fireEvent.click(again)
     await waitFor(() => expect(researchUniverse.startReview).toHaveBeenCalledWith("c-1", expect.objectContaining({ expected_sequence: 0 })))
-    expect(window.location.pathname).toBe("/review-rounds/r-2")
+    // 再次审查:切到同一旅程页右侧面的新一轮,不整页跳
+    expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r-2")
   })
 
   it("shows the boundary lineage after a boundary verdict", async () => {
@@ -218,5 +224,46 @@ describe("ReviewRoundDesk attack surface and segments (S3)", () => {
     expect(await screen.findByText("没有仍待回应的挑战")).toBeInTheDocument()
     expect(expandedRow()).toHaveAccessibleName(/第一关/)
     expect(screen.getByText("理由：不适用")).toBeInTheDocument()
+  })
+})
+
+describe("ReviewRoundDesk literature challenge in the embedded panel (S2)", () => {
+  const evidence = [{ id: "m-1", excerpt: "第一份摘录", source_locator: "Paper A", parse_status: "parsed" as const, purpose: "evidence" as const }, { id: "m-2", excerpt: "第二份摘录", source_locator: null, parse_status: "parsed" as const, purpose: "evidence" as const }]
+  const litChallenge = { ...challenge, id: "ch-lit", attack_surface: "文献里的反例" }
+
+  it("with a local selection, sends it as before and focuses the new challenge", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValueOnce(makeRound()).mockResolvedValueOnce(makeRound({ challenges: [challenge, litChallenge] }))
+    vi.mocked(researchUniverse.literatureChallenge).mockResolvedValue(responded({ challenge_id: "ch-lit", review_round_id: "r-1" }))
+    const onLoaded = vi.fn()
+    const selection = { material_ids: ["m-9"], external_refs: [{ locator: "arxiv:1", excerpt: "摘要", url: null }] }
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" onLoaded={onLoaded} literature={{ selection, evidence }} /></AppRouter>)
+    await screen.findByText("边界尚未说明")
+    expect(onLoaded).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "用所选文献发难" }))
+    await waitFor(() => expect(researchUniverse.literatureChallenge).toHaveBeenCalledWith("r-1", expect.objectContaining({ ...selection, expected_sequence: 0 })))
+    await waitFor(() => expect(screen.getByRole("button", { expanded: true })).toHaveAccessibleName(/文献里的反例/))
+    expect(onLoaded).toHaveBeenCalledTimes(2) // 改动后重读这一轮 → 宿主刷新左栏
+  })
+
+  it("without a local draft, lists evidence materials unchecked and sends the picked ones as material_ids", async () => {
+    vi.mocked(researchUniverse.literatureChallenge).mockReset().mockResolvedValue(responded({ challenge_id: "ch-lit", review_round_id: "r-1" }))
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" literature={{ evidence }} /></AppRouter>)
+    await screen.findByText("边界尚未说明")
+    fireEvent.click(screen.getByRole("button", { name: "用所选文献发难" }))
+    const boxes = screen.getAllByRole("checkbox")
+    expect(boxes).toHaveLength(2)
+    expect(boxes.every((b) => !(b as HTMLInputElement).checked)).toBe(true)
+    const send = screen.getByRole("button", { name: "发难" })
+    expect(send).toBeDisabled()
+    fireEvent.click(screen.getByLabelText(/第二份摘录/))
+    fireEvent.click(send)
+    await waitFor(() => expect(researchUniverse.literatureChallenge).toHaveBeenCalledWith("r-1", expect.objectContaining({ material_ids: ["m-2"], external_refs: [] })))
+  })
+
+  it("is disabled when there is neither a local selection nor evidence material", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" literature={{ evidence: [] }} /></AppRouter>)
+    expect(await screen.findByRole("button", { name: "用所选文献发难" })).toBeDisabled()
   })
 })

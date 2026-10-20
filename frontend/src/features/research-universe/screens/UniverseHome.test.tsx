@@ -18,6 +18,7 @@ describe("UniverseHome guarded read chains", () => {
     expect(screen.getByText("最近结晶：The answer is X.")).toBeInTheDocument()
     expect(screen.getByText(/1 个问题试验 · 1 项结晶/)).toBeInTheDocument()
     expect(screen.getByText(/一条待回应 challenge：attack/)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /一条待回应 challenge：attack/ })).toHaveAttribute("href", "/workspaces/w/rounds/r")
     expect(screen.getByRole("link", { name: /A long-term thesis/ })).toHaveAttribute("href", "/directions/d1")
   })
 })

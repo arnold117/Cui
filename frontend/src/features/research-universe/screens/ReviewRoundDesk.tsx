@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { command, researchUniverse } from "../api"
-import type { Challenge, ChallengeStatus, ReviewRound, VerdictType } from "../types"
+import type { Challenge, ChallengeStatus, LiteratureChallengeEnvelope, Material, ReviewRound, VerdictType } from "../types"
 import { EvidenceSurface } from "./EvidenceSurface"
 import { useNavigation } from "../../../router"
 
@@ -19,24 +19,40 @@ const SEGMENTS: [Segment, string][] = [["answer", "应答"], ["evidence", "取�
 const stillPending = (round: ReviewRound) => round.challenges.filter((c) => c.status === "pending")
 const defaultSegment = (round: ReviewRound): Segment => stillPending(round).length ? "answer" : round.evidence_candidates?.some((c) => c.status === "pending") ? "evidence" : "verdict"
 
-export function ReviewRoundDesk({ roundId }: { roundId: string }) {
+type LiteratureRefs = Pick<LiteratureChallengeEnvelope, "material_ids" | "external_refs">
+/** 文献发难的来源(由旅程页传入):本机有选料 → selection 照旧整组发;没有 → 从本工作区待取证材料里勾选,作 material_ids */
+export interface LiteratureSource { selection?: LiteratureRefs; evidence: Material[] }
+
+/**
+ * 审查面:嵌在旅程页右侧(/workspaces/:id/rounds/:rid),没有页级出口。
+ * onClose = 收起右侧面;onLoaded = 每次读到这一轮(打开、刷新、改动后)通知宿主刷新左栏。
+ */
+export function ReviewRoundDesk({ roundId, onClose, onLoaded, literature }: { roundId: string; onClose?: () => void; onLoaded?: () => void; literature?: LiteratureSource }) {
   const [round, setRound] = useState<ReviewRound | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [generatingChallenge, setGeneratingChallenge] = useState(false)
+  const [litOpen, setLitOpen] = useState(false)
+  const [litPicked, setLitPicked] = useState<string[]>([])
+  const [litBusy, setLitBusy] = useState(false)
   const generation = useRef(0)
   async function load() {
     const current = ++generation.current
     // 默认段只在打开这一轮时定一次，之后刷新不跳段
-    try { const value = await researchUniverse.reviewRound(roundId); if (current === generation.current) { setError(null); setRound(value); setSegment((s) => s ?? defaultSegment(value)) } } catch (reason) { if (current === generation.current) setError(reason instanceof Error ? reason.message : "未能读取审查轮次。") }
+    try { const value = await researchUniverse.reviewRound(roundId); if (current === generation.current) { setError(null); setRound(value); setSegment((s) => s ?? defaultSegment(value)); onLoaded?.() } } catch (reason) { if (current === generation.current) setError(reason instanceof Error ? reason.message : "未能读取审查轮次。") }
   }
   useEffect(() => { setSegment(null); void load(); return () => { generation.current++ } }, [roundId])
   async function generateMoreChallenge() {
     if (generatingChallenge || round?.verdict) return
     setGeneratingChallenge(true); setError(null)
     try { const generated = await researchUniverse.generateAdditionalChallenge(roundId, command({}, 0)); setFocusId(generated.result.challenge_id); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : "生成更多挑战失败。") } finally { setGeneratingChallenge(false) }
+  }
+  async function literatureAttack(refs: LiteratureRefs) {
+    if (litBusy || round?.verdict) return
+    setLitBusy(true); setError(null)
+    try { const made = await researchUniverse.literatureChallenge(roundId, command(refs, 0)); setLitOpen(false); setLitPicked([]); setFocusId(made.result.challenge_id); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : "文献发难失败。") } finally { setLitBusy(false) }
   }
   if (error) return <section className="ru-state" role="alert"><p>未能打开审查轮次：{error}</p><button className="ru-ink-button" onClick={() => void load()}>重试</button></section>
   if (!round) return <section className="ru-state" aria-live="polite">正在读取审查快照…</section>
@@ -50,7 +66,9 @@ export function ReviewRoundDesk({ roundId }: { roundId: string }) {
     setFocusId([...round.challenges.slice(i + 1), ...round.challenges.slice(0, i)].find((c) => c.status === "pending")?.id ?? id)
     void load()
   }
-  return <section className="ru-review" aria-labelledby="review-title"><p className="ru-kicker">审查轮次 · 不可变快照</p><h1 id="review-title">审查这一条 claim</h1><div className="ru-snapshot-grid"><article><h2>当时的问题</h2><p className="ru-reading-copy">{round.question_snapshot.text}</p><small>问题快照 {round.question_snapshot.version_id ?? round.question_snapshot.id ?? "已记录"}</small></article><article><h2>当时的 claim</h2><p className="ru-reading-copy">{round.claim_snapshot.text}</p><small>Claim 快照 {round.claim_snapshot.version_id ?? round.claim_snapshot.id ?? "已记录"}</small></article></div>
+  const nth = (round.rounds ?? []).findIndex((r) => r.id === round.id) + 1
+  // 问题已是左栏标题:这里只留本轮 claim 快照与当时的问题快照
+  return <section className="ru-review" aria-labelledby="review-title"><header className="ru-review-head"><p className="ru-kicker" id="review-title">审查轮{nth > 0 ? ` ${String(nth).padStart(2, "0")}` : ""} · claim 快照</p>{onClose && <button type="button" className="ru-quiet-button" onClick={onClose}>收起</button>}</header><blockquote className="ru-claim-quote">{round.claim_snapshot.text}</blockquote><p className="ru-provenance">当时的问题：{round.question_snapshot.text} · 问题快照 {round.question_snapshot.version_id ?? round.question_snapshot.id ?? "已记录"} · Claim 快照 {round.claim_snapshot.version_id ?? round.claim_snapshot.id ?? "已记录"}</p>
     <div className="ru-review-tabbar"><div role="tablist" aria-label="审查分段">{SEGMENTS.map(([key, label]) => <button key={key} id={`review-tab-${key}`} role="tab" aria-selected={active === key} aria-controls="review-segment" className="ru-review-tab" onClick={() => setSegment(key)}>{label}</button>)}</div><span className={pending.length ? "ru-review-pending" : undefined}>{pending.length ? `仍待回应 ${pending.length}` : "没有仍待回应的挑战"}</span></div>
     <div id="review-segment" role="tabpanel" aria-labelledby={`review-tab-${active}`}>
       {active === "answer" && <section aria-label="攻击面"><p className="ru-kicker">攻击面 · {round.challenges.length} 关 · 一次展开一关</p><ol className="ru-attack-list">{round.challenges.map((challenge) => {
@@ -58,14 +76,15 @@ export function ReviewRoundDesk({ roundId }: { roundId: string }) {
         return <li key={challenge.id}><button id={`challenge-title-${challenge.id}`} className={`ru-attack-row ru-attack-${challenge.status}`} aria-expanded={on} onClick={() => setFocusId(challenge.id)}><span>{challenge.attack_surface}</span><small>{STATUS_LABELS[challenge.status]}</small></button>
           {on && <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} answer={drafts[challenge.id] ?? ""} onAnswerChange={(value) => setDrafts((all) => ({ ...all, [challenge.id]: value }))} onChanged={() => settle(challenge.id)} />}</li>
       })}</ol>
-        {!closed && <div className="ru-generate-more"><button className="ru-quiet-button" disabled={generatingChallenge} onClick={() => void generateMoreChallenge()}>{generatingChallenge ? "正在生成更多挑战…" : "生成更多挑战"}</button><p className="ru-challenge-note">让 Cui 攻击一个尚未覆盖的角度；新的挑战会进入同一轮审查。</p></div>}
+        {!closed && <div className="ru-generate-more"><button className="ru-quiet-button" disabled={generatingChallenge} onClick={() => void generateMoreChallenge()}>{generatingChallenge ? "正在生成更多挑战…" : "生成更多挑战"}</button>{literature && <button className="ru-quiet-button" disabled={litBusy || (!literature.selection && literature.evidence.length === 0)} aria-expanded={literature.selection ? undefined : litOpen} onClick={() => literature.selection ? void literatureAttack(literature.selection) : setLitOpen((v) => !v)}>{litBusy ? "正在用文献发难…" : "用所选文献发难"}</button>}<p className="ru-challenge-note">让 Cui 攻击一个尚未覆盖的角度；新的挑战会进入同一轮审查。</p></div>}
+        {!closed && litOpen && literature && !literature.selection && <fieldset className="ru-lit-pick"><legend>这台设备上没有选料草稿：从本问题的待取证材料里勾选要用来发难的几份</legend>{literature.evidence.map((m) => <label key={m.id}><input type="checkbox" checked={litPicked.includes(m.id)} onChange={() => setLitPicked((ids) => ids.includes(m.id) ? ids.filter((id) => id !== m.id) : [...ids, m.id])} /> {m.source_locator ?? m.excerpt}</label>)}<div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => { setLitOpen(false); setLitPicked([]) }}>取消</button><button className="ru-ink-button ru-active" disabled={litBusy || litPicked.length === 0} onClick={() => void literatureAttack({ material_ids: litPicked, external_refs: [] })}>{litBusy ? "正在发难…" : "发难"}</button></div></fieldset>}
       </section>}
       {active === "evidence" && <EvidenceSurface round={round} onChanged={() => void load()} />}
       {active === "verdict" && !closed && <VerdictForge round={round} onChanged={() => void load()} />}
       {active === "verdict" && closed && <ReReview round={round} onError={(message) => setError(message)} />}
       {active === "verdict" && round.verdict?.verdict_type === "boundary" && <BoundaryLineage round={round} onError={(message) => setError(message)} />}
     </div>
-    <nav className="ru-review-exits" aria-label="离开审查轮次"><a className="ru-ink-button" href={`/workspaces/${round.workspace_id}`}>回工作区继续探索</a><a className="ru-quiet-button" href="/">回研究宇宙查看上下文</a><a className="ru-quiet-button" href={`/workspaces/${round.workspace_id}/dialogue`}>回文献探讨继续收尾</a></nav></section>
+  </section>
 }
 
 // 标题在攻击面那一行（challenge-title-*）；应答草稿由审查面按关保存，切换聚焦不丢
@@ -139,7 +158,7 @@ function ReReview({ round, onError }: { round: ReviewRound; onError: (message: s
   async function startAgain() {
     if (!claimId || busy) return
     setBusy(true)
-    try { const result = await researchUniverse.startReview(claimId, command({}, 0)); navigate(`/review-rounds/${result.result.review_round_id}`) } catch (reason) { onError(reason instanceof Error ? reason.message : "再次审查失败。") } finally { setBusy(false) }
+    try { const result = await researchUniverse.startReview(claimId, command({}, 0)); navigate(`/workspaces/${round.workspace_id}/rounds/${result.result.review_round_id}`) } catch (reason) { onError(reason instanceof Error ? reason.message : "再次审查失败。") } finally { setBusy(false) }
   }
   return <section className="ru-rereview" aria-labelledby="rereview-title"><p className="ru-kicker">已裁决 · 可再次审查</p><h2 id="rereview-title">再次审查这一条 claim</h2>{(round.rounds?.length ?? 0) > 0 && <ul className="ru-round-history">{(round.rounds ?? []).map((item) => <li key={item.id}><span>审查轮次 {item.id.slice(0, 8)}</span><strong>{item.verdict ? `裁决：${item.verdict.verdict_type}` : "未裁决"}</strong></li>)}</ul>}<button className="ru-ink-button ru-active" disabled={busy} onClick={() => void startAgain()}>{busy ? "正在形成新的挑战…" : "再次审查这一条 claim"}</button></section>
 }

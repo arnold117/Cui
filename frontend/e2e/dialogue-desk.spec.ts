@@ -31,6 +31,7 @@ const candidates: S["DialogueCandidate"][] = [
 interface Call { url: string; method: string; body: Record<string, unknown> | undefined }
 
 const pendingChallenge = { id: "ch-1", review_round_id: "r1", claim_id: "c1", attack_surface: "替代解释未排除", why_it_matters: "w", self_check_method: "s", status: "pending" }
+const reviewRound = (claimText: string) => ({ id: "r1", workspace_id: "w-1", question_snapshot: baseDesk.question, claim_snapshot: { id: "c1", text: claimText }, sequence: 1, verdict: null, challenges: [{ ...pendingChallenge, sequence: 1, answers: [] }], ledger: { answered: [], deferred: [], pending: [pendingChallenge], brought_unconfirmed: [] }, rounds: [], evidence_candidates: [], confirmed_facts: [] })
 
 /** 装配全套 mock 路由,并把每个请求记进 calls 供回归断言。投影有状态:claim、审查轮、gap 写入后读得回(阶段由投影推导)。 */
 async function mockJourney(page: Page, calls: Call[]) {
@@ -51,6 +52,7 @@ async function mockJourney(page: Page, calls: Call[]) {
     if (url.endsWith("/dialogue/landscape-summary")) return json({ text: "## 这几篇覆盖了什么\nRLHF 评测覆盖了指令遵循与对齐。\n## 还没有被覆盖的\n推理链上的真实应用表现未被覆盖。" } satisfies S["DraftTextResponse"])
     if (url.endsWith("/claims") && method === "POST") { desk = { ...desk, claims: [{ id: "c1", text: body?.text }] }; return json({ result: { claim_id: "c1" } }) }
     if (url.endsWith("/review-rounds") && method === "POST") { desk = { ...desk, review_rounds: [{ id: "r1", claim_id: "c1", claim_snapshot: { text: (desk.claims as { text: string }[])[0].text }, question_snapshot: baseDesk.question, verdict: null }], pending_challenges: [pendingChallenge] }; return json({ result: { review_round_id: "r1" } }) }
+    if (url === "/api/v2/review-rounds/r1" && method === "GET") return json(reviewRound((desk.claims as { text: string }[])[0].text))
     if (url.endsWith("/literature-challenges")) return json({ result: { challenge_id: "ch-lit" } })
     if (url.endsWith("/dialogue/gap-draft")) return json({ coverage_statement: "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。", counterexample_invitation: "如有推理任务上的 RLHF 长期数据请指正。" } satisfies S["GapDraftResponse"])
     if (url.endsWith("/gap-candidates") && method === "POST") return json({ result: { gap_candidate_id: "g1" } })
@@ -127,18 +129,24 @@ test("walks the six-stage workspace journey with real layout assertions", async 
   await claim.fill("对齐偏好分布才是推理提升的主因。")
   await page.getByRole("button", { name: /固化 claim 并开审查轮/ }).click()
 
-  // ── 第 4 步:对抗(claim 固化 + 开审查轮 → 文献发难)──
+  // ── 第 4 步:对抗(claim 固化 + 开审查轮 → 同页右侧面打开这一轮 → 在右侧面用所选文献发难)──
   await expect(page.getByRole("heading", { name: "4. 对抗" })).toBeVisible({ timeout: 8000 })
-  await expect(page.getByText(/✓ claim 已固化,审查轮已开/)).toBeVisible()
-  await expect(page.locator("blockquote")).toHaveText("对齐偏好分布才是推理提升的主因。")
-  await expect(page.getByRole("button", { name: /去审查轮完整应答与裁决 →/ })).toBeVisible()
-  await page.getByRole("button", { name: /用所选文献发难/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/已追加一条文献挑战/)
+  await expect(page).toHaveURL(/\/workspaces\/w-1\/rounds\/r1$/)
+  await expect(page.getByRole("button", { name: /对齐偏好分布才是推理提升的主因。.*审查轮 01.*待回应 1 条/ })).toBeVisible()
+  await expect(page.getByText("尚无裁决")).toBeVisible()
+  const panel = page.getByRole("complementary", { name: "聚焦面" })
+  await expect(panel.locator("blockquote")).toHaveText("对齐偏好分布才是推理提升的主因。")
+  await expect(panel.getByText("替代解释未排除")).toBeVisible()
+  // 两栏:审查面在左栏右边,左栏不被挤掉
+  const [left, right] = [await page.getByRole("list", { name: "会话阶段" }).boundingBox(), await panel.boundingBox()]
+  expect(right!.x).toBeGreaterThanOrEqual(left!.x + left!.width)
+  await panel.getByRole("button", { name: "用所选文献发难" }).click()
+  await expect.poll(() => of(calls, "/literature-challenges").length).toBe(1)
   const challenge = of(calls, "/literature-challenges")[0]
   expect(challenge.url).toBe("/api/v2/review-rounds/r1/literature-challenges")
   expect(challenge.body?.material_ids).toEqual(["m1", "m2", "m3"])
 
-  await page.getByRole("button", { name: /我看过审查轮了,继续起草 gap →/ }).click()
+  await page.getByRole("button", { name: "继续到 gap" }).click()
 
   // ── 第 5 步:gap 起草 → 署名提交确认(仍有待回应挑战:当前阶段仍是对抗,gap 卡照样能做,不锁)──
   await expect(page.getByRole("heading", { name: "5. gap" })).toBeVisible()
@@ -183,6 +191,26 @@ test("narrow screens collapse the stage rows into a top strip", async ({ page })
   await expect(page.getByRole("button", { name: /^6\. 结晶/ })).toBeHidden()
   await strip.getByRole("button", { name: /结晶/ }).click()
   await expect(page.getByRole("heading", { name: "6. 结晶" })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+test("narrow screens stack the review panel below the journey, and the copy says 下方", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const desk = { ...baseDesk, claims: [{ id: "c1", text: "窄屏上的 claim" }], review_rounds: [{ id: "r1", claim_id: "c1", claim_snapshot: { text: "窄屏上的 claim" }, question_snapshot: baseDesk.question, verdict: null }], pending_challenges: [pendingChallenge] }
+  await page.route("**/api/v2/**", async (route: Route) => {
+    const url = new URL(route.request().url()).pathname
+    const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) })
+    if (url === "/api/v2/workspaces/w-1") return json(desk)
+    if (url === "/api/v2/review-rounds/r1") return json(reviewRound("窄屏上的 claim"))
+    return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: url }) })
+  })
+  await page.goto("/workspaces/w-1/rounds/r1")
+  await expect(page.getByText("下方", { exact: true })).toBeVisible()
+  await expect(page.getByText("右侧", { exact: true })).toBeHidden()
+  const panel = page.getByRole("complementary", { name: "聚焦面" })
+  await expect(panel.getByText("替代解释未排除")).toBeVisible()
+  const [card, box] = [await page.getByRole("button", { name: /窄屏上的 claim/ }).boundingBox(), await panel.boundingBox()]
+  expect(box!.y).toBeGreaterThan(card!.y + card!.height)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 

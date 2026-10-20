@@ -21,6 +21,6 @@ test("real sealed PARK release and Forge lineage journey", async ({ page }) => {
   await page.getByRole("link", { name: "从此原件锻造自写 claim" }).click()
   await page.getByLabel("由你亲自写下的 claim").fill("该观察只在边界条件明确时成立。")
   await page.getByRole("button", { name: "提交检验" }).click()
-  await expect(page).toHaveURL(/\/review-rounds\//)
-  await expect(page.getByText("审查这一条 claim")).toBeVisible()
+  await expect(page).toHaveURL(/\/workspaces\/[^/]+\/rounds\/[^/]+$/)
+  await expect(page.getByRole("complementary", { name: "聚焦面" }).getByRole("tab", { name: "应答" })).toBeVisible()
 })

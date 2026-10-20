@@ -28,7 +28,7 @@ test("generate an additional challenge and a generated evidence candidate (mock)
     return route.fulfill({ status: 404, body: JSON.stringify({ detail: url }) })
   })
 
-  await page.goto("/review-rounds/r-1")
+  await page.goto("/workspaces/w-1/rounds/r-1")
   await expect(page.getByText("The comparison group may practise differently.")).toBeVisible()
 
   // generate an additional challenge

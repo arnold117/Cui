@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
 import { GapChallengeComposer } from "./GapChallengeComposer"
-import { LandscapePanel } from "./LandscapePanel"
+import { LandscapePanel, VERDICT_LABELS } from "./LandscapePanel"
 import { ReleaseForge } from "./ReleaseForge"
+import { ReviewRoundDesk } from "./ReviewRoundDesk"
 import type { CitationReport, CommandEnvelope, ConclusionType, DialogueCandidate, MaterialPurpose, ParkReleaseRef, WorkspaceDesk as Desk, WorkspacePosition } from "../types"
 import { CLAIM_KINDS, clearDialogueDraft, dialogueProgress, emptyDraft, hasClaimBlanks, journeyStage, loadDialogueDraft, saveDialogueDraft, STAGE_DESCRIPTIONS, STAGE_LABELS, type ClaimKind, type DialogueDraft } from "../dialogueDraft"
 
@@ -43,10 +44,11 @@ type ClaimIntent = { claim: CommandEnvelope & { text: string; kind?: Exclude<Cla
  * 问题工作区 = 旅程页(spec-workspace-journey S1):一个问题一页,六阶段竖排。
  * - 当前阶段由 journeyStage(desk, 草稿) 推导(服务端事实优先);任何阶段都可点开,不锁;
  * - 已完成阶段折叠成一行,可展开修改;展开修改只改本机草稿,已入轨迹的对象不改写;
- * - 页头只留暂停/重开;探索稿、手动材料、PARK 放行引用收进「工具」;forge 在右侧面。
+ * - 页头只留暂停/重开;探索稿、手动材料、PARK 放行引用收进「工具」;
+ * - 右侧聚焦面:roundId(/workspaces/:id/rounds/:rid)打开审查轮,forgeReleaseRefId 打开锻;<800px 堆到左栏下方。
  * 会话草稿存 localStorage,可退出、可再进;claim/审查轮/gap/结论以轨迹为准。
  */
-export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceReleaseId }: { workspaceId: string; forgeReleaseRefId?: string; sourceReleaseId?: string }) {
+export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceReleaseId, roundId }: { workspaceId: string; forgeReleaseRefId?: string; sourceReleaseId?: string; roundId?: string }) {
   const { navigate } = useNavigation(); const [desk, setDesk] = useState<Desk | null>(null); const [sourceRef, setSourceRef] = useState<ParkReleaseRef | undefined>(); const [note, setNote] = useState(""); const [selected, setSelected] = useState<Selection>(); const [error, setError] = useState<string>(); const [conflict, setConflict] = useState(false); const [savePending, setSavePending] = useState(false); const draftGeneration = useRef(0); const noteCommand = useRef<(CommandEnvelope & { text: string }) | undefined>(undefined); const anchorCommand = useRef<(CommandEnvelope & { note_id: string; note_revision_id: string; start: number; end: number; selected_text: string }) | undefined>(undefined); const claimIntent = useRef<ClaimIntent | undefined>(undefined); const routeGeneration = useRef(0); const routeId = useRef(workspaceId); const [materialExcerpt, setMaterialExcerpt] = useState(""); const [materialSource, setMaterialSource] = useState(""); const [materialPurpose, setMaterialPurpose] = useState<MaterialPurpose>("evidence"); const [materialUnparsable, setMaterialUnparsable] = useState(false); const [materialPending, setMaterialPending] = useState(false); const materialCommand = useRef<(CommandEnvelope & { excerpt: string; source_locator?: string | null; parse_status: "parsed" | "failed"; purpose: MaterialPurpose }) | undefined>(undefined); const [lifecycleForm, setLifecycleForm] = useState<"pause" | "reopen" | null>(null); const [lifecycleReason, setLifecycleReason] = useState(""); const [crystallizing, setCrystallizing] = useState(false); const [conclusionText, setConclusionText] = useState(""); const [conclusionType, setConclusionType] = useState<ConclusionType | null>(null); const [revivalCondition, setRevivalCondition] = useState(""); const [concluding, setConcluding] = useState(false); const [branchOpen, setBranchOpen] = useState(false); const [branchQuestion, setBranchQuestion] = useState(""); const [branchReason, setBranchReason] = useState(""); const [branchPending, setBranchPending] = useState(false); const [absorbOpen, setAbsorbOpen] = useState(false); const [absorbTarget, setAbsorbTarget] = useState(""); const [absorbReason, setAbsorbReason] = useState(""); const [absorbPending, setAbsorbPending] = useState(false); const [impactOpen, setImpactOpen] = useState(false); const [impactChoice, setImpactChoice] = useState<"stay" | "crystallize" | "rephrase">("stay"); const [impactBusy, setImpactBusy] = useState(false);
   // 会话草稿(本机)。页面按 workspaceId 加 key 挂载(App.tsx),换工作区即重建,草稿不会串到别的工作区。
   const [state, setState] = useState<DialogueDraft>(() => loadDialogueDraft(workspaceId))
@@ -57,6 +59,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   const [rewriting, setRewriting] = useState(false)
   const [hasProgress, setHasProgress] = useState(() => dialogueProgress(workspaceId).exists)
   const bootstrapped = useRef(false)
+  const panelRef = useRef<HTMLElement>(null)
 
   async function load(accept = () => true) { try { const value = await researchUniverse.desk(workspaceId); if (accept()) { setDesk(value); if (!noteCommand.current && draftGeneration.current === 0) setNote(value.note?.text ?? ""); setError(undefined); bootstrap(value) } } catch (e) { if (accept()) setError(e instanceof Error ? e.message : "读取失败") } }
   useEffect(() => { let live = true; routeGeneration.current++; routeId.current = workspaceId; noteCommand.current = undefined; anchorCommand.current = undefined; claimIntent.current = undefined; materialCommand.current = undefined; setSavePending(false); setMaterialPending(false); setMaterialExcerpt(""); setMaterialSource(""); setMaterialPurpose("evidence"); setMaterialUnparsable(false); setSourceRef(undefined); setConflict(false); setDesk(null); setError(undefined); setSelected(undefined); setLifecycleForm(null); setLifecycleReason(""); setCrystallizing(false); setConclusionText(""); setConclusionType(null); setRevivalCondition(""); setConcluding(false); setBranchOpen(false); setBranchQuestion(""); setBranchReason(""); setBranchPending(false); setAbsorbOpen(false); setAbsorbTarget(""); setAbsorbReason(""); setAbsorbPending(false); setImpactOpen(false); setImpactChoice("stay"); setImpactBusy(false); draftGeneration.current = 0; void load(() => live); return () => { live = false } }, [workspaceId])
@@ -177,6 +180,8 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   useEffect(() => {
     saveDialogueDraft(workspaceId, state)
   }, [workspaceId, state])
+  // <800px 右侧面堆在左栏下方:打开一轮时把它滚进视野,否则点了 claim 看不到变化
+  useEffect(() => { if (roundId && window.matchMedia?.("(max-width: 800px)").matches) panelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }) }, [roundId, Boolean(desk)])
   // 点开的卡成了推导出的当前阶段 → 回到"跟随"模式,之后随阶段前进
   useEffect(() => { if (open !== null && open === journey?.current) setOpen(null) }, [open, journey?.current])
 
@@ -279,6 +284,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       patch({ roundId: review.result.review_round_id, claimAck: false })
       setRewriting(false); setOpen(4)
       void load(() => isCurrent(currentGeneration, currentId))
+      navigate(`/workspaces/${currentId}/rounds/${review.result.review_round_id}`)
     } catch (e) {
       if (!isCurrent(currentGeneration, currentId)) return
       setError(intent.claimId ? "主张已保存，但挑战尚未形成。可以重试，不会重复创建主张。" : (e instanceof Error ? e.message : "开审查轮失败"))
@@ -287,13 +293,11 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
     } finally { if (isCurrent(currentGeneration, currentId)) setBusy(false) }
   }
 
-  async function literatureAttack() {
-    if (busy || !state.roundId || state.selected.length === 0) return
+  // 开轮失败留下的 claim(没有任何审查轮)在对抗卡上补开
+  async function startRound(claimId: string) {
+    if (busy) return
     setBusy(true); setError(undefined)
-    try {
-      await researchUniverse.literatureChallenge(state.roundId, command({ material_ids: corpusIds, external_refs: externalRefs }, 0))
-      setError("已追加一条文献挑战,去审查轮查看与回应。")
-    } catch (e) { setError(e instanceof Error ? e.message : "文献发难失败") } finally { setBusy(false) }
+    try { const review = await researchUniverse.startReview(claimId, command({}, 0)); navigate(`/workspaces/${workspaceId}/rounds/${review.result.review_round_id}`) } catch (e) { setError(e instanceof Error ? e.message : "开审查轮失败") } finally { setBusy(false) }
   }
 
   async function draftGap() {
@@ -411,7 +415,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       {positionControls}
     </header>
     {hasProgress && <p className="ru-resume-note" role="status">已恢复上次会话:当前在第 {current} 步({STAGE_LABELS[current - 1]})。<button type="button" className="ru-link-button" onClick={clearAll}>清空并重新开始</button></p>}
-    {error && <p className={error.startsWith("已追加") ? "ru-ok-note" : "ru-error"} role={error.startsWith("已追加") ? "status" : "alert"}>{error}</p>}
+    {error && <p className="ru-error" role="alert">{error}</p>}
     {conflict && <button className="ru-quiet-button" onClick={reapply}>按最新版本重新应用</button>}
 
     {/* <800px:竖排行收起,只留这条顶部阶段条 + 展开的那张卡 */}
@@ -482,7 +486,11 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       </details>
     </details>
   </section>
-  return forging ? <div className="ru-forge-layout"><ReleaseForge workspaceId={workspaceId} releaseRef={forgeRef!} />{page}</div> : page
+  // 右侧聚焦面:锻 / 审查轮 / 都没开时一行安静提示(gap 现状、结晶账本另有票)
+  const panel = forging ? <ReleaseForge workspaceId={workspaceId} releaseRef={forgeRef!} />
+    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} onClose={() => navigate(`/workspaces/${workspaceId}`)} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: (desk.materials ?? []).filter((m) => m.purpose === "evidence") }} />
+    : <div className="ru-panel-empty"><p className="ru-kicker">审查轮</p><p>{shown === 4 ? "点一条 claim，它的审查轮在这里打开；左栏保持可见，不离开这一页。" : "从「对抗」打开一条 claim 的审查轮。"}</p></div>
+  return <div className="ru-journey-layout">{page}<aside ref={panelRef} className="ru-journey-panel" aria-label="聚焦面">{panel}</aside></div>
 
   function bodyOne() {
     const drafted = Boolean(state.hypothesesText.trim())
@@ -598,20 +606,33 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   }
 
   function bodyFour() {
-    if (!state.roundId) return <div className="ru-stage-body"><p className="ru-edge-empty">还没有固化的 claim。先在「覆盖与 claim」写一条,审查轮会在这里接上。</p></div>
-    const quote = desk!.review_rounds.find((r) => r.id === state.roundId)?.claim_snapshot.text ?? state.claimText
+    if (desk!.claims.length === 0) return <div className="ru-stage-body"><p className="ru-edge-empty">还没有固化的 claim。先在「覆盖与 claim」写一条,审查轮会在这里接上。</p></div>
+    const fromGap = new Set((desk!.landscape?.gaps ?? []).flatMap((g) => (g.challenges ?? []).map((c) => c.claim_id)))
+    // 按 claim_id 分组;数组顺序最后一条 = 最新轮(rounds[].sequence 是该轮自身计数,不是全局序)
+    const rows = desk!.claims.map((claim) => { const rounds = desk!.review_rounds.filter((r) => r.claim_id === claim.id); return { claim, count: rounds.length, latest: rounds.at(-1) } })
+    const card = ({ claim, count, latest }: (typeof rows)[number]) => {
+      const pending = latest ? desk!.pending_challenges.filter((c) => c.review_round_id === latest.id).length : 0
+      const isOpen = Boolean(latest && latest.id === roundId)
+      const meta = <span className="ru-claim-meta">
+        {fromGap.has(claim.id) && <span className="ru-tag">来自 gap</span>}
+        {latest ? <span>审查轮 {String(count).padStart(2, "0")}</span> : <span>未开审查轮</span>}
+        {latest?.verdict ? <span className="ru-decided">已裁决 · {VERDICT_LABELS[latest.verdict.verdict_type]}</span> : pending > 0 ? <span className="ru-pending-line">待回应 {pending} 条</span> : latest && <span>未裁决</span>}
+        {isOpen && <span className="ru-open-mark">审查面已打开</span>}
+      </span>
+      const tone = latest?.verdict ? " is-decided" : pending > 0 ? "" : " is-quiet"
+      return <li key={claim.id}>{latest
+        ? <button type="button" className={`ru-claim${tone}${isOpen ? " is-open" : ""}`} aria-current={isOpen || undefined} onClick={() => navigate(`/workspaces/${workspaceId}/rounds/${latest.id}`)}><span className="ru-claim-text">{claim.text}</span>{meta}</button>
+        : <div className={`ru-claim${tone}`}><span className="ru-claim-text">{claim.text}</span>{meta}<button type="button" className="ru-quiet-button" disabled={busy} onClick={() => void startRound(claim.id)}>开审查轮</button></div>}</li>
+    }
+    const undecided = rows.filter((r) => !r.latest?.verdict), decided = rows.filter((r) => r.latest?.verdict)
     return <div className="ru-stage-body">
-      <div className="ru-review-handoff">
-        <p className="ru-ok-note">✓ claim 已固化,审查轮已开。claim 由你署名、不可改写——要换立场就在「覆盖与 claim」再写一条。</p>
-        <blockquote className="ru-claim-quote">{quote}</blockquote>
-        <div className="ru-secondary-row">
-          <button type="button" className="ru-link-button" onClick={() => navigate(`/review-rounds/${state.roundId}`)}>去审查轮完整应答与裁决 →</button>
-          <button type="button" className="ru-quiet-button" disabled={busy || state.selected.length === 0} onClick={() => void literatureAttack()}>用所选文献发难(追加一条文献挑战)</button>
-        </div>
-        <p className="ru-quiet-hint">对抗在审查轮里进行;发难、应答、裁决都可在审查轮页来回。看完情况再继续 gap 与结晶。</p>
-        <div className="ru-stage-actions">
-          <button type="button" className="ru-ink-button ru-active" disabled={busy} onClick={() => { patch({ claimAck: true }); setOpen(5) }}>我看过审查轮了,继续起草 gap →</button>
-        </div>
+      <p className="ru-quiet-hint">点一条 claim，它的审查轮在<span className="ru-wide">右侧</span><span className="ru-narrow">下方</span>打开。</p>
+      {undecided.length > 0 && <ul className="ru-claims" aria-label="未裁决的 claim">{undecided.map(card)}</ul>}
+      {decided.length > 0 && <details className="ru-claims-fold" open><summary>已裁决 · {decided.length}</summary><ul className="ru-claims" aria-label="已裁决的 claim">{decided.map(card)}</ul></details>}
+      <div className="ru-stage-actions">
+        <button type="button" className="ru-quiet-button" onClick={() => { setRewriting(true); setOpen(3) }}>再写一条 claim</button>
+        {verdicts.length === 0 && <span className="ru-muted-note ru-no-verdict">尚无裁决</span>}
+        <button type="button" className="ru-ink-button ru-active" onClick={() => { patch({ claimAck: true }); setOpen(5) }}>继续到 gap</button>
       </div>
     </div>
   }

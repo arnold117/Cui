@@ -43,7 +43,7 @@ test("bring a material, propose a contradiction, confirm it, and see the determi
   await expect(page.getByText("The intervention group shows the opposite effect.")).toBeVisible()
   expect(requests.find(x => x.url.endsWith("/materials"))?.body).toMatchObject({ excerpt: "The intervention group shows the opposite effect.", parse_status: "parsed", purpose: "evidence", expected_sequence: 0 })
 
-  await page.goto("/review-rounds/r-1")
+  await page.goto("/workspaces/w-1/rounds/r-1")
   await page.getByRole("tab", { name: "取证" }).click()
   await expect(page.getByText("并列证据台 · 取证候选未确认")).toBeVisible()
   await page.getByLabel("选择待取证材料").selectOption("m-1")

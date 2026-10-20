@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import App from "./App"
 
@@ -69,5 +69,52 @@ describe("production routes", () => {
     expect(await screen.findByRole("heading", { name: "这个位置不存在。" })).toBeInTheDocument()
     window.history.pushState({}, "", "/__prototype/research-universe?variant=A")
     expect(await screen.findByText(/PROTOTYPE · A/)).toBeInTheDocument()
+  })
+})
+
+describe("review round routes (S2)", () => {
+  beforeEach(() => { fetchMock.mockReset(); window.history.replaceState({}, "", "/") })
+  const desk = { id: "w-1", question: { version_id: "q", text: "Journey question" }, sequence: 1, note: null, note_revisions: [], anchors: [], claims: [{ id: "c-1", text: "被审的 claim" }], review_rounds: [{ id: "r-1", claim_id: "c-1", claim_snapshot: { text: "被审的 claim" }, question_snapshot: { text: "Journey question" }, verdict: null }], pending_challenges: [], materials: [] }
+  const round = { id: "r-1", workspace_id: "w-1", question_snapshot: { version_id: "q", text: "Journey question" }, claim_snapshot: { id: "c-1", version_id: "cv-1", text: "被审的 claim" }, sequence: 1, verdict: null, challenges: [{ id: "ch-1", review_round_id: "r-1", claim_id: "c-1", status: "pending", sequence: 1, attack_surface: "边界尚未说明", why_it_matters: "w", self_check_method: "s", answers: [] }], ledger: { answered: [], deferred: [], pending: [], brought_unconfirmed: [] }, rounds: [] }
+  const serve = (gate: Promise<unknown> = Promise.resolve()) => fetchMock.mockImplementation(async (url: string) => {
+    if (url === "/api/v2/review-rounds/r-1") { await gate; return response(round) }
+    if (url === "/api/v2/workspaces/w-1") return response(desk)
+    return new Response(JSON.stringify({ detail: url }), { status: 404 })
+  })
+
+  it("/workspaces/:id/rounds/:rid opens the round in the right-side panel beside the journey; 收起 closes it", async () => {
+    window.history.replaceState({}, "", "/workspaces/w-1/rounds/r-1")
+    serve()
+    render(<App />)
+    const panel = await screen.findByRole("complementary", { name: "聚焦面" })
+    expect(await within(panel).findByText("边界尚未说明")).toBeInTheDocument()
+    // 左栏仍在:问题标题 + 对抗卡,打开的那条 claim 有标记
+    expect(screen.getByRole("heading", { name: "Journey question" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /被审的 claim/ })).toHaveAttribute("aria-current", "true")
+    fireEvent.click(within(panel).getByRole("button", { name: "收起" }))
+    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1"))
+    expect(within(screen.getByRole("complementary", { name: "聚焦面" })).getByText(/点一条 claim，它的审查轮在这里打开/)).toBeInTheDocument()
+  })
+
+  it("/review-rounds/:rid shows a placeholder while locating the workspace, then replaces itself with the journey route", async () => {
+    window.history.pushState({}, "", "/review-rounds/r-1")
+    const depth = window.history.length
+    let open!: () => void
+    serve(new Promise<void>((resolve) => { open = resolve }))
+    render(<App />)
+    expect(screen.getByText("正在定位这一轮所在的问题…")).toBeInTheDocument()
+    open()
+    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r-1"))
+    expect(window.history.length).toBe(depth) // replace:旧地址不留在历史里
+    expect(await within(await screen.findByRole("complementary", { name: "聚焦面" })).findByText("边界尚未说明")).toBeInTheDocument()
+  })
+
+  it("/review-rounds/:rid for a round that does not exist renders NotFound", async () => {
+    window.history.replaceState({}, "", "/review-rounds/missing")
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: "review round not found" }), { status: 404 }))
+    render(<App />)
+    expect(await screen.findByRole("heading", { name: "这个位置不存在。" })).toBeInTheDocument()
+    expect(screen.getByText("/review-rounds/missing")).toBeInTheDocument()
+    expect(window.location.pathname).toBe("/review-rounds/missing")
   })
 })

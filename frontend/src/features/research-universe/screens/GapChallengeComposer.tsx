@@ -16,7 +16,7 @@ export function GapChallengeComposer({ workspaceId, gapId, coverage }: { workspa
     try {
       const made = await researchUniverse.createClaim(workspaceId, command({ text: text.trim(), kind: "vacancy", origin_gap_id: gapId }, 0))
       const review = await researchUniverse.startReview(made.result.claim_id!, command({}, 0))
-      navigate(`/review-rounds/${review.result.review_round_id}`)
+      navigate(`/workspaces/${workspaceId}/rounds/${review.result.review_round_id}`)
     } catch (e) { setError(e instanceof Error ? e.message : "开审查轮失败") } finally { setBusy(false) }
   }
 

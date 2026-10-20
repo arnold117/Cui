@@ -113,7 +113,7 @@ describe("landscape panel", () => {
       expect(sign).toBeDisabled()
       fireEvent.change(box, { target: { value: "我改写的空缺断言。" } })
       fireEvent.click(sign)
-      await waitFor(() => expect(window.location.pathname).toBe("/review-rounds/r-9"))
+      await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r-9"))
       const claimCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))!
       expect(JSON.parse(claimCall[1].body)).toMatchObject({ text: "我改写的空缺断言。", kind: "vacancy", origin_gap_id: "gap-1" })
       expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/claims/c-9/review-rounds") || String(u).endsWith("/review-rounds"))).toBe(true)
@@ -128,7 +128,7 @@ describe("landscape panel", () => {
       renderPanel(withChallenge("open"))
       expect(screen.getByText(/反证中/)).toBeInTheDocument()
       fireEvent.click(screen.getByRole("button", { name: "查看审查轮" }))
-      expect(window.location.pathname).toBe("/review-rounds/r-1")
+      expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r-1")
       cleanup()
       renderPanel(withChallenge("survived"))
       expect(screen.getByText(/反证结果:未能推翻/)).toBeInTheDocument()
