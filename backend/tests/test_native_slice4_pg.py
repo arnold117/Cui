@@ -81,7 +81,7 @@ def test_pg_material_to_confirmed_contradiction_persists_and_replays(pg_slice4):
     assert frag["evidence_candidates"][0]["material_anchor"]["excerpt"] == "Paper A observes Z."
     assert [f["relation"] for f in frag["confirmed_facts"]] == ["contradicts"]
     assert len(frag["challenges"]) == 2
-    deterministic = [x for x in frag["challenges"] if x["provenance"]["prompt_version"] == "deterministic-evidence-contradiction-v1"]
+    deterministic = [x for x in frag["challenges"] if x["provenance"]["prompt_version"] == "deterministic-evidence-contradiction-v2"]
     assert len(deterministic) == 1 and deterministic[0]["status"] == "pending"
     assert deterministic[0]["provenance"]["basis_refs"] == [mid, cand]
     ws = workspace_projection(fresh, uid, wid)

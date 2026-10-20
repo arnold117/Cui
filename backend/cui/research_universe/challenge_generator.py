@@ -10,9 +10,9 @@ import math
 from cui.llm.client import LLMClient
 from cui.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
 
-PROMPT_VERSION = "slice1-narrow-challenge-v1"
-PROMPT_VERSION_LITERATURE = "slice1b-literature-challenge-v1"
-EXPANDED_CHALLENGE_PROMPT_VERSION = "slice6-expanded-challenge-v1"
+PROMPT_VERSION = "slice1-narrow-challenge-v2"
+PROMPT_VERSION_LITERATURE = "slice1b-literature-challenge-v2"
+EXPANDED_CHALLENGE_PROMPT_VERSION = "slice6-expanded-challenge-v2"
 EVIDENCE_CANDIDATE_PROMPT_VERSION = "slice6-evidence-candidate-v1"
 
 def format_materials_block(materials: list[dict]) -> str:
@@ -32,18 +32,25 @@ def format_materials_block(materials: list[dict]) -> str:
     return "\n".join(lines)
 
 
-SYSTEM_LITERATURE = """You are Cui's adversarial reviewer examining a claim against SELECTED literature. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty. Attack ONE specific inferential weakness in the claim, using the selected literature as your material: name the literature locator you rely on where relevant, and attack either a gap between the claim and what the literature actually supports, or a contradiction the literature exposes. self_check_method must be concrete and doable. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. Never supply a claim, verdict, answer, or direction."""
+# #32: one extra display-only key in the same call; a bad title is dropped, never fails the challenge
+TITLE_MAX = 40
+TITLE_RULE = """title is a short list label (about 20 characters) for the ONE weakness you attack, in the same language as the claim. Form 「类型：短问句」, e.g. 「替代解释：是不是 RL 训练还不够久？」 or 「反例：开放式任务上为何也有提升？」; drop the type prefix when a plain short question names the weakness better, e.g. 「pass@k 的 k 取多大，才算能力边界？」. The title MUST name the specific weakness; vague labels such as 「一个值得思考的角度」 are forbidden."""
 
 
-SYSTEM = """You are Cui's adversarial reviewer. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty. Attack one specific inferential weakness in the claim against the stated question. self_check_method must be a concrete method the user can perform. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. Never supply a claim, verdict, answer, or direction."""
+SYSTEM_LITERATURE = """You are Cui's adversarial reviewer examining a claim against SELECTED literature. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty, title. Attack ONE specific inferential weakness in the claim, using the selected literature as your material: name the literature locator you rely on where relevant, and attack either a gap between the claim and what the literature actually supports, or a contradiction the literature exposes. self_check_method must be concrete and doable. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. """ + TITLE_RULE + """ Never supply a claim, verdict, answer, or direction."""
 
-SYSTEM_EXPANDED = """You are Cui's adversarial reviewer. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty.
+
+SYSTEM = """You are Cui's adversarial reviewer. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty, title. Attack one specific inferential weakness in the claim against the stated question. self_check_method must be a concrete method the user can perform. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. """ + TITLE_RULE + """ Never supply a claim, verdict, answer, or direction."""
+
+SYSTEM_EXPANDED = """You are Cui's adversarial reviewer. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty, title.
 
 The user has already been challenged on the listed attack surfaces. Attack ONE specific inferential weakness in the claim against the stated question, choosing an angle that is NOT already covered by any already-used attack surface. Do not repeat or paraphrase an existing attack surface.
 
 Be concrete and rigorous: name the specific inferential weakness (a missing control, an unstated scope boundary, an equivocation, a causal attribution that the evidence cannot carry, an unexamined prior, a measurement that cannot support the conclusion), and give a self_check_method the user can actually perform to test it. Do not ask for a claim, verdict, answer, or direction — the user's judgment is the product, never your own.
 
-Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim."""
+Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim.
+
+""" + TITLE_RULE
 
 SYSTEM_EVIDENCE = """You are Cui's evidence screener. Return a JSON object only, with exactly: relation, rationale, evidence_highlight, uncertainty.
 
@@ -61,18 +68,25 @@ If the material's parse_status is "failed", relation MUST be "cannot_assess" —
 def _check_challenge_schema(data: dict, schema_name: str) -> str:
     """Validate a model challenge payload; returns the normalised uncertainty.
 
-    The key set must be exactly the four required keys and the three textual
+    The key set must be the four required keys (plus the optional display
+    ``title``, checked separately by ``_title_text``) and the three textual
     fields must be non-empty strings. ``uncertainty`` is normalised by
     ``_uncertainty_text`` — current models often emit it as a numeric
     confidence (see ``_uncertainty_text`` for why that is accepted).
     """
     required = ("attack_surface", "why_it_matters", "self_check_method", "uncertainty")
-    if set(data) != set(required):
+    if not set(required) <= set(data) <= {*required, "title"}:
         raise ValueError(f"model response is not the {schema_name} challenge schema")
     for key in ("attack_surface", "why_it_matters", "self_check_method"):
         if not isinstance(data[key], str) or not data[key].strip():
             raise ValueError(f"model response is not the {schema_name} challenge schema")
     return _uncertainty_text(data["uncertainty"], schema_name)
+
+
+def _title_text(value: object) -> str | None:
+    """Display-only title: missing / non-string / blank / over TITLE_MAX -> None."""
+    text = value.strip() if isinstance(value, str) else ""
+    return text if 0 < len(text) <= TITLE_MAX else None
 
 
 def _uncertainty_text(value: object, schema_name: str) -> str:
@@ -103,7 +117,7 @@ class RealChallengeGenerator:
     def generate(self, *, question: str, claim: str) -> ChallengeDraft:
         data = self.client.complete_json(SYSTEM, f"Question:\n{question}\n\nUser-authored claim:\n{claim}")
         uncertainty = _check_challenge_schema(data, "Slice 1")
-        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
+        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
 
     def generate_literature(self, *, question: str, claim: str, materials: list[dict]) -> ChallengeDraft:
         block = format_materials_block(materials)
@@ -111,14 +125,14 @@ class RealChallengeGenerator:
         data = self.client.complete_json(SYSTEM_LITERATURE, user)
         uncertainty = _check_challenge_schema(data, "Slice 1b literature challenge")
         basis_refs = [m.get("locator") or m.get("source_locator") or m.get("material_id") for m in materials]
-        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=PROMPT_VERSION_LITERATURE, model_identifier=self.model_identifier, basis_refs=basis_refs)
+        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=PROMPT_VERSION_LITERATURE, model_identifier=self.model_identifier, basis_refs=basis_refs)
 
     def generate_additional(self, *, question: str, claim: str, prior_attack_surfaces: list[str]) -> ChallengeDraft:
         used = "\n- ".join(prior_attack_surfaces) if prior_attack_surfaces else "(none yet)"
         user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nAlready-used attack surfaces (attack a DIFFERENT angle; never repeat one):\n- {used}"
         data = self.client.complete_json(SYSTEM_EXPANDED, user)
         uncertainty = _check_challenge_schema(data, "Slice 6 expanded challenge")
-        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, prompt_version=EXPANDED_CHALLENGE_PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
+        return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=EXPANDED_CHALLENGE_PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
 
 
 class RealEvidenceCandidateGenerator:

@@ -113,7 +113,7 @@ class AnthropicClient:
         return text
 
     def complete_json(self, system: str, user: str, retries: int = 2) -> dict:
-        schema = {"type": "object", "properties": {"attack_surface": {"type": "string"}, "why_it_matters": {"type": "string"}, "self_check_method": {"type": "string"}, "uncertainty": {"type": "string"}}, "required": ["attack_surface", "why_it_matters", "self_check_method", "uncertainty"], "additionalProperties": False}
+        schema = {"type": "object", "properties": {"attack_surface": {"type": "string"}, "why_it_matters": {"type": "string"}, "self_check_method": {"type": "string"}, "uncertainty": {"type": "string"}, "title": {"type": "string"}}, "required": ["attack_surface", "why_it_matters", "self_check_method", "uncertainty", "title"], "additionalProperties": False}
         try:
             response = self._client.messages.create(model=self._model, max_tokens=2048, system=system, messages=[{"role": "user", "content": user}], output_config={"format": {"type": "json_schema", "schema": schema}})
         except TypeError as exc:

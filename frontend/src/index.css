@@ -82,6 +82,7 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-attack-row small { color: var(--muted); font-size: .74rem; font-weight: 400; white-space: nowrap; }
 .ru-attack-pending small { color: var(--rust); }
 .ru-attack-withdrawn span { text-decoration: line-through; }
+.ru-line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .ru-attack-row[aria-expanded="true"] { color: var(--ink); font-weight: 600; border-left-color: var(--ink); background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
 .ru-attack-pending[aria-expanded="true"] { border-left-color: var(--rust); }
 .ru-challenge-closed { border-left-color: var(--line); background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }

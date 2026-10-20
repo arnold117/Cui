@@ -82,6 +82,8 @@ from cui.research_universe.application import (  # noqa: E402
     review_round_projection,
 )
 from cui.research_universe.challenge_generator import (  # noqa: E402
+    EXPANDED_CHALLENGE_PROMPT_VERSION,
+    PROMPT_VERSION,
     RealChallengeGenerator,
     RealEvidenceCandidateGenerator,
 )
@@ -167,7 +169,7 @@ def _challenge_schema_ok(challenge: dict) -> str | None:
         if not isinstance(value, str) or not value.strip():
             return f"challenge field {key!r} is empty"
     provenance = challenge.get("provenance") or {}
-    if provenance.get("prompt_version") not in ("slice1-narrow-challenge-v1", "slice6-expanded-challenge-v1"):
+    if provenance.get("prompt_version") not in (PROMPT_VERSION, EXPANDED_CHALLENGE_PROMPT_VERSION):
         return f"unexpected prompt_version {provenance.get('prompt_version')!r}"
     if not isinstance(provenance.get("uncertainty"), str) or not provenance["uncertainty"].strip():
         return "challenge provenance uncertainty is empty"
@@ -232,8 +234,8 @@ def case_multi(challenge_generator, evidence_generator) -> CaseOutcome:
     schema_err = _challenge_schema_ok(second)
     if schema_err:
         return CaseOutcome(False, expected, schema_err, detail=str(second))
-    if second.get("provenance", {}).get("prompt_version") != "slice6-expanded-challenge-v1":
-        return CaseOutcome(False, expected, "additional challenge did not carry slice6-expanded-challenge-v1", detail=str(second))
+    if second.get("provenance", {}).get("prompt_version") != EXPANDED_CHALLENGE_PROMPT_VERSION:
+        return CaseOutcome(False, expected, f"additional challenge did not carry {EXPANDED_CHALLENGE_PROMPT_VERSION}", detail=str(second))
     no_auto = _no_auto(w, seed_claim_ids={cid})
     if no_auto:
         return CaseOutcome(False, expected, f"auto-event: {no_auto}", detail=str(second))

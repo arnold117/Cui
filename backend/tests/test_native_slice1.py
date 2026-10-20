@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from cui.api.app import create_native_test_app
-from cui.research_universe.application import ChallengeDraft
+from cui.research_universe.application import ChallengeDraft, review_round_projection
+from cui.research_universe.domain.events import PendingNativeEvent, validate_payload
 from cui.research_universe.store.event_store import InMemoryNativeEventStore
 
 class FakeGenerator:
@@ -67,3 +68,32 @@ def test_generator_failure_is_atomic():
     cid=c.post(f"/api/v2/workspaces/{wid}/claims",json={"command_id":"c","expected_sequence":0,"text":"C"}).json()["result"]["claim_id"]
     assert c.post(f"/api/v2/claims/{cid}/review-rounds",json={"command_id":"r","expected_sequence":0}).status_code == 502
     assert len(store.read_events(uid)) == 2
+
+# --- #32 challenge title (display only) ---
+
+def _round(client, uid):
+    wid = _workspace(client, uid)
+    cid = client.post(f"/api/v2/workspaces/{wid}/claims", json={"command_id":"c", "expected_sequence":0, "text":"X causes Y."}).json()["result"]["claim_id"]
+    return wid, client.post(f"/api/v2/claims/{cid}/review-rounds", json={"command_id":"r", "expected_sequence":0}).json()["result"]["review_round_id"]
+
+def test_title_reaches_round_workspace_and_home_projections():
+    class Titled:
+        def generate(self, *, question, claim):
+            return ChallengeDraft("causal gap", "why", "check", "fake-v2", "fake", ["question", "claim"], "moderate", title="替代解释：Z 同时导致 X 和 Y？")
+    store = InMemoryNativeEventStore(); uid = store.create_active_universe("default")
+    client = TestClient(create_native_test_app(store, challenge_generator=Titled()))
+    wid, rid = _round(client, uid)
+    round_ = client.get(f"/api/v2/review-rounds/{rid}").json()
+    assert round_["challenges"][0]["title"] == round_["ledger"]["pending"][0]["title"] == "替代解释：Z 同时导致 X 和 Y？"
+    assert client.get(f"/api/v2/workspaces/{wid}").json()["pending_challenges"][0]["title"] == "替代解释：Z 同时导致 X 和 Y？"
+    assert client.get(f"/api/v2/universes/{uid}/home").json()["pending_facts"][0]["title"] == "替代解释：Z 同时导致 X 和 Y？"
+
+def test_old_challenge_created_payload_without_title_replays_as_none():
+    store = InMemoryNativeEventStore(); uid = store.create_active_universe("default")
+    client = TestClient(create_native_test_app(store, challenge_generator=FakeGenerator()))
+    wid, rid = _round(client, uid)
+    first = next(e.payload for e in store.read_events(uid) if e.event_type == "challenge_created")
+    old = {k: v for k, v in first.items() if k != "title"} | {"challenge_id": "old-ch"}  # pre-#32 shape: no title key at all
+    assert validate_payload("challenge_created", 1, old).title is None  # replay = validate the stored row as-is
+    store.append(universe_id=uid, command_id="old", command_type="legacy", command_payload={}, actor_kind="user", actor_id=None, expected_sequences={("challenge", "old-ch"): 0}, events=[PendingNativeEvent(event_type="challenge_created", payload=old, aggregate_type="challenge", aggregate_id="old-ch")], result_payload={})
+    assert [c["title"] for c in review_round_projection(store, uid, rid)["challenges"]] == [None, None]

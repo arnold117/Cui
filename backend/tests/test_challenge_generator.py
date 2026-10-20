@@ -80,3 +80,29 @@ def test_generate_additional_rejects_malformed_payloads():
 def test_generate_error_message_names_slice_1_schema():
     with pytest.raises(ValueError, match="Slice 1"):
         _generator(_payload(uncertainty="  ")).generate(question="q?", claim="c.")
+
+
+# --- #32 display title: a bad title is dropped, never fails generation ---
+
+
+def _call(generator: RealChallengeGenerator, path: str):
+    if path == "narrow":
+        return generator.generate(question="q?", claim="c.")
+    if path == "expanded":
+        return generator.generate_additional(question="q?", claim="c.", prior_attack_surfaces=["already used"])
+    return generator.generate_literature(question="q?", claim="c.", materials=[{"locator": "arxiv:1", "excerpt": "e"}])
+
+
+@pytest.mark.parametrize("path", ["narrow", "expanded", "literature"])
+@pytest.mark.parametrize("title, expected", [
+    (" 替代解释：是不是训练还不够久？ ", "替代解释：是不是训练还不够久？"),
+    (None, None),           # key missing entirely (pre-v2 shape)
+    ("   ", None),          # blank
+    ("长" * 41, None),      # over TITLE_MAX
+    (7, None),              # not a string
+])
+def test_title_is_display_only_and_never_fails_generation(path, title, expected):
+    raw = _payload() if title is None else _payload(title=title)
+    draft = _call(_generator(raw), path)
+    assert draft.title == expected and draft.attack_surface == "no control group"
+    assert draft.prompt_version.endswith("-v2")

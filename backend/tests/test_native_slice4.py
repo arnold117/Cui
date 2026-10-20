@@ -192,12 +192,12 @@ def test_confirm_contradiction_creates_deterministic_challenge_atomically():
     events = store.read_events(uid)
     assert len(events) == before + 2
     assert any(e.event_type == "evidence_relation_confirmed" for e in events)
-    created = [e for e in events if e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v1"]
+    created = [e for e in events if e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v2"]
     assert len(created) == 1
     cp = created[0].validated_payload()
-    assert cp.generator_kind == "system" and cp.prompt_version == "deterministic-evidence-contradiction-v1" and cp.model_identifier is None
+    assert cp.generator_kind == "system" and cp.prompt_version == "deterministic-evidence-contradiction-v2" and cp.model_identifier is None
     assert cp.basis_refs == [mid, cand["id"]] and cp.uncertainty == "已确认取证事实"
-    assert "已确认反证" in cp.attack_surface
+    assert "已确认反证" in cp.attack_surface and cp.title == "已确认反证：Paper A"
     # the deterministic challenge appears in the round challenges and workspace pending facts
     frag = r.json()["fragment"]
     assert created[0].aggregate_id in [c["id"] for c in frag["challenges"]]
@@ -214,8 +214,21 @@ def test_correct_to_contradiction_creates_deterministic_challenge():
     r = client.post(f"/api/v2/evidence-candidates/{cand['id']}/correct", json={"command_id":"d","expected_sequence":1,"corrected_relation":"contradicts"})
     assert r.status_code == 200
     assert len(store.read_events(uid)) == before + 2
-    created = [e for e in store.read_events(uid) if e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v1"]
+    created = [e for e in store.read_events(uid) if e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v2"]
     assert len(created) == 1 and created[0].validated_payload().generator_kind == "system"
+
+
+def test_deterministic_title_truncates_locator_and_falls_back_to_excerpt_first_line():
+    store, uid, client, wid, cid, rid = setup()
+    _add_material(client, wid, command_id="m1", source_locator="A Very Long Paper Title That Keeps Going On")
+    _add_material(client, wid, command_id="m2", source_locator=None, excerpt="  第一行就是这段材料的名字\n第二行不进标题")
+    titles = []
+    for i, m in enumerate(client.get(f"/api/v2/workspaces/{wid}").json()["materials"]):
+        _propose(client, rid, m["id"], command_id=f"p{i}", relation="contradicts")
+        cand = next(c for c in client.get(f"/api/v2/review-rounds/{rid}").json()["evidence_candidates"] if c["material_anchor"]["id"] == m["id"])
+        r = client.post(f"/api/v2/evidence-candidates/{cand['id']}/confirm", json={"command_id": f"d{i}", "expected_sequence": 1})
+        titles.append(next(c["title"] for c in r.json()["fragment"]["challenges"] if c["id"] == r.json()["result"]["challenge_id"]))
+    assert sorted(titles) == sorted(["已确认反证：A Very Long Paper Title…", "已确认反证：第一行就是这段材料的名字"])
 
 
 def test_non_contradiction_confirm_does_not_create_challenge_and_nothing_verdicts():
@@ -227,7 +240,7 @@ def test_non_contradiction_confirm_does_not_create_challenge_and_nothing_verdict
     r = client.post(f"/api/v2/evidence-candidates/{cand['id']}/confirm", json={"command_id":"d","expected_sequence":1})
     assert r.status_code == 200
     assert len(store.read_events(uid)) == before + 1
-    assert not any(e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v1" for e in store.read_events(uid))
+    assert not any(e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v2" for e in store.read_events(uid))
     # no auto-verdict anywhere in the slice
     assert not any(e.event_type == "verdict_confirmed" for e in store.read_events(uid))
     assert r.json()["fragment"]["verdict"] is None
@@ -287,7 +300,7 @@ def test_command_idempotency_no_duplicate_events():
     replay = client.post(f"/api/v2/evidence-candidates/{cand['id']}/confirm", json=body).json()
     assert first["result"] == replay["result"]
     assert len([e for e in store.read_events(uid) if e.event_type == "evidence_relation_confirmed"]) == 1
-    assert len([e for e in store.read_events(uid) if e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v1"]) == 1
+    assert len([e for e in store.read_events(uid) if e.event_type == "challenge_created" and e.validated_payload().prompt_version == "deterministic-evidence-contradiction-v2"]) == 1
 
 
 def test_reference_material_proposal_and_silent_failed_are_409():

@@ -35,6 +35,7 @@ class ChallengeDraft:
     model_identifier: str | None
     basis_refs: list[str]
     uncertainty: str
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ def _challenge_states(events) -> dict[str, dict]:
         if event.aggregate_type == "challenge":
             sequences[event.aggregate_id] = event.sequence + 1
         if event.event_type == "challenge_created":
-            base[p.challenge_id] = {"id": p.challenge_id, "review_round_id": p.round_id, "claim_id": p.claim_id, "attack_surface": p.attack_surface, "why_it_matters": p.why_it_matters, "self_check_method": p.self_check_method, "provenance": {"generator_kind": p.generator_kind, "prompt_version": p.prompt_version, "model_identifier": p.model_identifier, "basis_refs": p.basis_refs, "uncertainty": p.uncertainty}}
+            base[p.challenge_id] = {"id": p.challenge_id, "review_round_id": p.round_id, "claim_id": p.claim_id, "title": p.title, "attack_surface": p.attack_surface, "why_it_matters": p.why_it_matters, "self_check_method": p.self_check_method, "provenance": {"generator_kind": p.generator_kind, "prompt_version": p.prompt_version, "model_identifier": p.model_identifier, "basis_refs": p.basis_refs, "uncertainty": p.uncertainty}}
         elif event.event_type == "challenge_answered":
             answers.setdefault(p.challenge_id, []).append({"version_id": p.answer_version_id, "text": p.answer_text, "provisional_anchor_refs": p.provisional_anchor_refs, "sequence": event.sequence})
         elif event.event_type == "challenge_deferred":
@@ -631,7 +632,7 @@ class Slice1Service:
             try: draft = self.generator.generate(question=workspace["question"]["text"], claim=claim.claim_text)
             except Exception as exc: raise ChallengeGenerationFailed(str(exc)) from exc
             round_payload = ReviewRoundStartedPayload(round_id=rid, workspace_id=claim.origin_workspace_id, question_version_id=workspace["question"]["version_id"], question_text=workspace["question"]["text"], claim_id=claim.claim_id, claim_version_id=claim.claim_version_id, claim_text=claim.claim_text)
-            challenge_payload = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=rid, claim_id=claim.claim_id, claim_version_id=claim.claim_version_id, claim_text=claim.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty)
+            challenge_payload = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=rid, claim_id=claim.claim_id, claim_version_id=claim.claim_version_id, claim_text=claim.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty, title=draft.title)
             return self.store.append(universe_id=universe_id, command_id=command_id, command_type="start_review_round", command_payload=command_payload, actor_kind="user", actor_id=self.actor_id, expected_sequences={("review_round", rid): expected_sequence, ("challenge", challenge_id): 0}, events=[PendingNativeEvent(event_type="review_round_started", payload=round_payload.model_dump(), aggregate_type="review_round", aggregate_id=rid), PendingNativeEvent(event_type="challenge_created", payload=challenge_payload.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id)], result_payload={"review_round_id": rid, "challenge_id": challenge_id, "aggregate_sequences": {"review_round": expected_sequence + 1, "challenge": 1}})
 
     def generate_challenge(self, universe_id: str, round_id: str, command_id: str, expected_sequence: int) -> CommitResult:
@@ -655,7 +656,7 @@ class Slice1Service:
         except Exception as exc:
             raise ChallengeGenerationFailed(str(exc)) from exc
         challenge_id = str(uuid5(NAMESPACE_URL, f"{universe_id}:challenge:{command_id}"))
-        p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=claim["id"], claim_version_id=claim["version_id"], claim_text=claim["text"], attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=[*draft.basis_refs, *existing_ids], uncertainty=draft.uncertainty)
+        p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=claim["id"], claim_version_id=claim["version_id"], claim_text=claim["text"], attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=[*draft.basis_refs, *existing_ids], uncertainty=draft.uncertainty, title=draft.title)
         return self._append(universe_id, command_id, "generate_additional_challenge", {"round_id": round_id}, {("challenge", challenge_id): expected_sequence}, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id), {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
 
     def generate_literature_challenge(self, universe_id: str, round_id: str, material_ids: list[str], command_id: str, expected_sequence: int, externals: list[dict] | None = None) -> CommitResult:
@@ -703,7 +704,7 @@ class Slice1Service:
             draft = gen(question=round_payload.question_text, claim=round_payload.claim_text, materials=materials)
         except Exception as exc:
             raise ChallengeGenerationFailed(str(exc)) from exc
-        p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty)
+        p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty, title=draft.title)
         captured, cap_expected = self._capture_externals(universe_id, externals)
         return self._append_many(universe_id, command_id, "generate_literature_challenge", command_payload, {**cap_expected, ("challenge", challenge_id): expected_sequence}, [*captured, PendingNativeEvent(event_type="challenge_created", payload=p.model_dump(), aggregate_type="challenge", aggregate_id=challenge_id)], {"challenge_id": challenge_id, "round_id": round_id, "aggregate_sequences": {"challenge": expected_sequence + 1}})
 
@@ -781,6 +782,8 @@ class Slice1Service:
         """Deterministic pending challenge for a confirmed contradiction.  NO LLM."""
         excerpt = state["material_anchor"]["excerpt"]
         claim_text = state["claim_snapshot"]["text"]
+        # 短名:来源定位优先(取证面也按它认材料),没有就取摘录首行;截到 24 字
+        name = (state["material_anchor"]["source_locator"] or "").strip() or excerpt.strip().split("\n", 1)[0]
         return ChallengeCreatedPayload(
             challenge_id=challenge_id,
             round_id=state["round_id"],
@@ -791,10 +794,11 @@ class Slice1Service:
             why_it_matters=f"这段材料已被确认与 claim「{claim_text}」构成反证；审查必须正面处理它，不能绕过。",
             self_check_method="面对这段已确认反证，写下你的回应：它是否成立、是否被解释，或 claim 是否需要划界。",
             generator_kind="system",
-            prompt_version="deterministic-evidence-contradiction-v1",
+            prompt_version="deterministic-evidence-contradiction-v2",
             model_identifier=None,
             basis_refs=[state["material_anchor"]["id"], state["id"]],
             uncertainty="已确认取证事实",
+            title=f"已确认反证：{name[:24].rstrip() + '…' if len(name) > 24 else name}",
         )
 
     def _evidence_candidate_state(self, universe_id: str, candidate_id: str) -> dict:

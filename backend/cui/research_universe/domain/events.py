@@ -73,6 +73,7 @@ class ChallengeCreatedPayload(Payload):
     model_identifier: str | None
     basis_refs: list[str]
     uncertainty: str
+    title: str | None = None  # #32 列表短标题(仅展示);旧事件无此键 = None,不回填
 
 
 class ParkReleasedPayload(Payload):

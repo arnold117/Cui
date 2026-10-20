@@ -174,6 +174,27 @@ describe("ReviewRoundDesk attack surface and segments (S3)", () => {
     }
   })
 
+  it("shows a titled challenge's title in its row, the full attack surface in its expanded body, and the title in the ledger", async () => {
+    const titled = ch("ch-a", "模型给出的攻击面全文常常两三行，列表里放不下，所以只在展开体里给出", { title: "替代解释：是不是训练还不够久？" })
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ challenges: [titled], ledger: { answered: [], deferred: [], pending: [titled], brought_unconfirmed: [] } }))
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    expect(await screen.findByRole("button", { name: /替代解释：是不是训练还不够久？/ })).toHaveAttribute("aria-expanded", "true")
+    expect(expandedRow()).not.toHaveTextContent(titled.attack_surface)
+    expect(screen.getByRole("complementary", { name: /替代解释/ })).toHaveTextContent(titled.attack_surface)
+    fireEvent.click(screen.getByRole("tab", { name: "裁决" }))
+    expect(screen.getByText("替代解释：是不是训练还不够久？", { selector: ".ru-ledger-item" })).toBeInTheDocument()
+  })
+
+  it("clamps an untitled attack surface to two lines while collapsed and shows it in full when expanded", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ challenges: [ch("ch-a", "第一关"), ch("ch-b", "第二关")] }))
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    expect(await screen.findByText("第一关")).not.toHaveClass("ru-line-clamp-2")
+    expect(screen.getByText("第二关")).toHaveClass("ru-line-clamp-2")
+    fireEvent.click(screen.getByRole("button", { name: /第二关/ }))
+    expect(screen.getByText("第二关")).not.toHaveClass("ru-line-clamp-2")
+    expect(screen.getByText("第一关")).toHaveClass("ru-line-clamp-2")
+  })
+
   it("expands exactly one challenge at a time and keeps each draft when focus moves", async () => {
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ challenges: [ch("ch-a", "第一关"), ch("ch-b", "第二关"), ch("ch-c", "第三关")] }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)

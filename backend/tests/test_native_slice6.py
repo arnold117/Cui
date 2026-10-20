@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from cui.api.app import create_native_test_app
 from cui.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
+from cui.research_universe.challenge_generator import EXPANDED_CHALLENGE_PROMPT_VERSION, PROMPT_VERSION
 from cui.research_universe.domain.events import validate_payload
 from cui.research_universe.store.event_store import InMemoryNativeEventStore
 
@@ -270,13 +271,13 @@ def test_canary_harness_with_mocks():
         def generate(self, *, question, claim):
             lang = "zh" if _has_cjk(claim) else "en"
             if lang == "zh":
-                return ChallengeDraft("中文攻击面", "为何重要", "自检方法", "slice1-narrow-challenge-v1", "mock", ["question", "claim"], "中等")
-            return ChallengeDraft("English surface", "Why", "Self-check", "slice1-narrow-challenge-v1", "mock", ["question", "claim"], "moderate")
+                return ChallengeDraft("中文攻击面", "为何重要", "自检方法", PROMPT_VERSION, "mock", ["question", "claim"], "中等")
+            return ChallengeDraft("English surface", "Why", "Self-check", PROMPT_VERSION, "mock", ["question", "claim"], "moderate")
         def generate_additional(self, *, question, claim, prior_attack_surfaces):
             lang = "zh" if _has_cjk(claim) else "en"
             if lang == "zh":
-                return ChallengeDraft("另一个中文角度", "为何重要", "自检方法", "slice6-expanded-challenge-v1", "mock", ["question", "claim"], "中等")
-            return ChallengeDraft("A second English angle", "Why", "Self-check", "slice6-expanded-challenge-v1", "mock", ["question", "claim"], "moderate")
+                return ChallengeDraft("另一个中文角度", "为何重要", "自检方法", EXPANDED_CHALLENGE_PROMPT_VERSION, "mock", ["question", "claim"], "中等")
+            return ChallengeDraft("A second English angle", "Why", "Self-check", EXPANDED_CHALLENGE_PROMPT_VERSION, "mock", ["question", "claim"], "moderate")
 
     class MockEvidence:
         def generate(self, *, claim, material_excerpt, parse_status):

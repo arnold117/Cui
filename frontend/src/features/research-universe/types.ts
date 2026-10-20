@@ -22,6 +22,7 @@ export interface Challenge {
   id: string
   review_round_id: string
   claim_id?: string
+  title?: string | null // 列表短标题（仅展示）；旧挑战为空，回落到 attack_surface
   attack_surface: string
   why_it_matters: string
   self_check_method: string

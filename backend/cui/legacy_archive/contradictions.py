@@ -8,7 +8,7 @@ free to rebuild on top of these shapes later (slice1).
 Native-equivalent check: nothing in Cui detects pair-wise contradictions
 today. ``cui.research_universe`` only turns an ALREADY CONFIRMED single
 evidence contradiction into a deterministic challenge
-(``deterministic-evidence-contradiction-v1``, NO LLM) — a different concept
+(``deterministic-evidence-contradiction-v2``, NO LLM) — a different concept
 (post-confirmation reaction, not detection), so this module is not redundant.
 
 Ported (pure, stdlib-only — the whole v4 module's only non-stdlib deps were
