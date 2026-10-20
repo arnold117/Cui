@@ -379,14 +379,14 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   const shown = open ?? current
   const pendingCount = pendingItems.length
   const confirmedGapCount = (desk.landscape?.gaps ?? []).filter((g) => g.status === "confirmed" || g.status === "corrected").length
+  const gapClaimIds = new Set((desk.landscape?.gaps ?? []).flatMap((g) => (g.challenges ?? []).map((c) => c.claim_id))) // 反证 gap 写成的 claim
 
   const positionControls = <div className="ru-lifecycle" aria-label="工作区位置">
-    <span className="ru-position-tag">位置：{POSITION_LABELS[position]}</span>
-    {!lifecycleForm && position === "exploring" && <button className="ru-quiet-button" onClick={() => setLifecycleForm("pause")}>暂停</button>}
-    {!lifecycleForm && (position === "paused" || position === "concluded") && <button className="ru-quiet-button" onClick={() => setLifecycleForm("reopen")}>重开</button>}
+    {!lifecycleForm && position === "exploring" && <button className="ru-outline-button" onClick={() => setLifecycleForm("pause")}>暂停</button>}
+    {!lifecycleForm && (position === "paused" || position === "concluded") && <button className="ru-outline-button" onClick={() => setLifecycleForm("reopen")}>重开</button>}
     {lifecycleForm && <>
       <input className="ru-revival-input" aria-label={lifecycleForm === "pause" ? "暂停理由" : "重开理由"} value={lifecycleReason} onChange={(e) => setLifecycleReason(e.target.value)} placeholder={lifecycleForm === "pause" ? "暂停理由（可选）" : "为什么重开？（必填）"} />
-      <button className="ru-quiet-button" disabled={lifecycleForm === "reopen" && !lifecycleReason.trim()} onClick={() => void lifecycleAction(lifecycleForm)}>{lifecycleForm === "pause" ? "确认暂停" : "确认重开"}</button>
+      <button className="ru-outline-button" disabled={lifecycleForm === "reopen" && !lifecycleReason.trim()} onClick={() => void lifecycleAction(lifecycleForm)}>{lifecycleForm === "pause" ? "确认暂停" : "确认重开"}</button>
       <button className="ru-quiet-button" onClick={() => { setLifecycleForm(null); setLifecycleReason("") }}>取消</button>
     </>}
   </div>
@@ -411,7 +411,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
 
   const page = <section className="ru-journey" aria-labelledby="journey-title">
     <header className="ru-journey-head">
-      <p className="ru-kicker">问题工作区</p>
+      <p className="ru-kicker">问题 · {POSITION_LABELS[position]}</p>
       <h1 id="journey-title">{desk.question.text}</h1>
       {positionControls}
     </header>
@@ -433,9 +433,9 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
           return <li key={label} className={isDone || isCurrent ? "ru-journey-stage is-row" : "ru-journey-stage is-row is-todo"} aria-current={isCurrent ? "step" : undefined}>{dot}
             <section className="ru-done-step" aria-label={`${isDone ? "已完成" : isCurrent ? "当前阶段" : "未开始"}:第 ${n} 步 ${label}`}>
               <button type="button" className="ru-done-step-toggle" onClick={() => goStage(n)}>
-                <span className="ru-done-step-title">{n}. {label}</span>
+                <span className="ru-done-step-title">{label}</span>
                 <span className={n === 4 && pendingCount > 0 ? "ru-done-step-line ru-pending-line" : "ru-done-step-line"}>{rowLine(n)}</span>
-                <span className="ru-done-step-action">{isDone && !isCurrent ? "展开修改 ▾" : "打开 ▾"}</span>
+                <span className="ru-done-step-action">{isDone && !isCurrent ? "展开修改" : "打开"}</span>
               </button>
             </section>
           </li>
@@ -446,7 +446,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
             <div className="ru-stage-card-title">
               <h2>{n}. {label}</h2>
               {n === 4 && pendingCount > 0 && <span className="ru-pending-line">待回应 {pendingCount} 条</span>}
-              <span className="ru-kicker">{!inRevisit ? `第 ${n} 步 · ${STAGE_DESCRIPTIONS[n - 1]}` : isDone ? "回看/修改中 · 内容会接续到后续步骤" : "不是当前阶段 · 不锁,可以先做"}</span>
+              <small>{!inRevisit ? "当前阶段" : isDone ? "回看/修改中 · 内容会接续到后续步骤" : "不是当前阶段 · 不锁,可以先做"}</small>
             </div>
             {n === 1 && bodyOne()}
             {n === 2 && bodyTwo()}
@@ -489,7 +489,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   </section>
   // 右侧聚焦面:锻 / 审查轮 / 都没开时一行安静提示(gap 现状、结晶账本另有票)
   const panel = forging ? <ReleaseForge workspaceId={workspaceId} releaseRef={forgeRef!} />
-    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} onClose={() => navigate(`/workspaces/${workspaceId}`)} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: (desk.materials ?? []).filter((m) => m.purpose === "evidence") }} />
+    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: (desk.materials ?? []).filter((m) => m.purpose === "evidence") }} />
     : <div className="ru-panel-empty"><p className="ru-kicker">审查轮</p><p>{shown === 4 ? "点一条 claim，它的审查轮在这里打开；左栏保持可见，不离开这一页。" : "从「对抗」打开一条 claim 的审查轮。"}</p></div>
   return <div className="ru-journey-layout">{page}<aside ref={panelRef} className="ru-journey-panel" aria-label="聚焦面">{panel}</aside></div>
 
@@ -608,14 +608,13 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
 
   function bodyFour() {
     if (desk!.claims.length === 0) return <div className="ru-stage-body"><p className="ru-edge-empty">还没有固化的 claim。先在「覆盖与 claim」写一条,审查轮会在这里接上。</p></div>
-    const fromGap = new Set((desk!.landscape?.gaps ?? []).flatMap((g) => (g.challenges ?? []).map((c) => c.claim_id)))
     // 按 claim_id 分组;数组顺序最后一条 = 最新轮(rounds[].sequence 是该轮自身计数,不是全局序)
     const rows = desk!.claims.map((claim) => { const rounds = desk!.review_rounds.filter((r) => r.claim_id === claim.id); return { claim, count: rounds.length, latest: rounds.at(-1) } })
     const card = ({ claim, count, latest }: (typeof rows)[number]) => {
       const pending = latest ? pendingItems.filter((c) => c.review_round_id === latest.id).length : 0
       const isOpen = Boolean(latest && latest.id === roundId)
       const meta = <span className="ru-claim-meta">
-        {fromGap.has(claim.id) && <span className="ru-tag">来自 gap</span>}
+        {gapClaimIds.has(claim.id) && <span className="ru-tag">来自 gap</span>}
         {latest ? <span>审查轮 {String(count).padStart(2, "0")}</span> : <span>未开审查轮</span>}
         {latest?.verdict ? <span className="ru-decided">已裁决 · {VERDICT_LABELS[latest.verdict.verdict_type]}</span> : pending > 0 ? <span className="ru-pending-line">待回应 {pending} 条</span> : latest && <span>未裁决</span>}
         {isOpen && <span className="ru-open-mark">审查面已打开</span>}

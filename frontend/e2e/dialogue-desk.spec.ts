@@ -111,11 +111,11 @@ test("walks the six-stage workspace journey with real layout assertions", async 
   await expect(page.getByLabel("探索稿")).toBeHidden()
   // 六个阶段都在左栏,当前阶段卡展开
   await expect(page.getByRole("heading", { name: "1. 出发点" })).toBeVisible()
-  await expect(page.getByRole("button", { name: /^6\. 结晶/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^结晶/ })).toBeVisible()
 
   // ── 第 1 步 ──
   await stage1(page)
-  await expect(page.getByRole("button", { name: /1\. 出发点 候选假设 2 条 · 2 个检索词/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^出发点 候选假设 2 条 · 2 个检索词/ })).toBeVisible()
 
   // ── 第 2 步 ──
   await stage2(page, calls)
@@ -150,7 +150,7 @@ test("walks the six-stage workspace journey with real layout assertions", async 
 
   // ── 第 5 步:gap 起草 → 署名提交确认(仍有待回应挑战:当前阶段仍是对抗,gap 卡照样能做,不锁)──
   await expect(page.getByRole("heading", { name: "5. gap" })).toBeVisible()
-  await expect(page.getByRole("button", { name: /4\. 对抗 待回应 1 条/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^对抗 待回应 1 条/ })).toBeVisible()
   await page.getByRole("button", { name: "让 Cui 起草 gap 候选" }).click()
   const coverage = page.getByLabel(/覆盖范围声明/)
   await expect(coverage).toBeVisible({ timeout: 8000 })
@@ -164,7 +164,7 @@ test("walks the six-stage workspace journey with real layout assertions", async 
   expect(of(calls, "/gap-candidates/g1/confirm")[0].body?.user_reason).toBe("人审确认")
 
   // ── 第 6 步:结晶(原页头的位置动作 + related-work 草稿)──
-  await expect(page.getByRole("button", { name: /5\. gap ✓ gap 已确认 ×1/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^gap ✓ gap 已确认 ×1/ })).toBeVisible()
   await expect(page.getByRole("button", { name: "确认这次探索的位置" })).toBeVisible()
   await page.getByRole("button", { name: /生成 related-work 综述草稿/ }).click()
   await expect(page.getByText(/Existing work covers RLHF evaluations/)).toBeVisible({ timeout: 8000 })
@@ -175,7 +175,7 @@ test("walks the six-stage workspace journey with real layout assertions", async 
   await expect(page.getByText(/会话走完/)).toBeVisible()
 
   // 已完成阶段折叠成行,点开能回看、再收起回到当前阶段(仍有待回应 → 对抗)
-  await page.getByRole("button", { name: /1\. 出发点 候选假设 2 条/ }).click()
+  await page.getByRole("button", { name: /^出发点 候选假设 2 条/ }).click()
   await expect(page.getByText("回看/修改中 · 内容会接续到后续步骤")).toBeVisible()
   await expect(page.getByLabel(/候选假设/)).toHaveValue(/我自己的假设:对齐提升推理/)
   await page.getByRole("button", { name: "收起,回到第 4 步" }).click()
@@ -188,7 +188,7 @@ test("narrow screens collapse the stage rows into a top strip", async ({ page })
   await page.goto("/workspaces/w-1")
   const strip = page.getByRole("navigation", { name: "阶段条" })
   await expect(strip).toBeVisible()
-  await expect(page.getByRole("button", { name: /^6\. 结晶/ })).toBeHidden()
+  await expect(page.getByRole("button", { name: /^结晶/ })).toBeHidden()
   await strip.getByRole("button", { name: /结晶/ }).click()
   await expect(page.getByRole("heading", { name: "6. 结晶" })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -240,7 +240,7 @@ test("leave and re-enter restores the session at the same stage with keywords ke
   await expect(page.getByRole("heading", { name: "3. 覆盖与 claim" })).toBeVisible()
   await expect(page.getByText(/还没有被覆盖的/)).toBeVisible()
   // 展开第 2 步回看:检索词与候选都还在
-  await page.getByRole("button", { name: /^2\. 选料/ }).click()
+  await page.getByRole("button", { name: /^选料/ }).click()
   await expect(page.getByLabel(/检索词\(用分号/)).toHaveValue("RLHF reasoning; 偏好对齐")
   await expect(page.getByRole("button", { name: /✓ RLHF reasoning/ })).toBeVisible()
   await expect(page.getByText("Reasoning evaluation")).toBeVisible()

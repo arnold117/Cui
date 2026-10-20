@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import { command, researchUniverse } from "../api"
 import type { Challenge, ChallengeStatus, LiteratureChallengeEnvelope, Material, ReviewRound, VerdictType } from "../types"
 import { EvidenceSurface } from "./EvidenceSurface"
+import { VERDICT_LABELS } from "./LandscapePanel"
 import { useNavigation } from "../../../router"
 
 const VERDICT_OPTIONS: { type: VerdictType; label: string; note?: string }[] = [
@@ -12,6 +13,7 @@ const VERDICT_OPTIONS: { type: VerdictType; label: string; note?: string }[] = [
   { type: "circumstantial", label: "现在先不投入" },
 ]
 const STATUS_LABELS: Record<ChallengeStatus, string> = { pending: "仍待回应", answered: "已回应", deferred: "暂缓", withdrawn: "已撤回", resolved_by_verdict: "已裁决" }
+const STATUS_MARKS: Record<ChallengeStatus, string> = { pending: "●", answered: "✓", deferred: "‖", withdrawn: "–", resolved_by_verdict: "·" }
 
 type Segment = "answer" | "evidence" | "verdict"
 const SEGMENTS: [Segment, string][] = [["answer", "应答"], ["evidence", "取证"], ["verdict", "裁决"]]
@@ -25,9 +27,9 @@ export interface LiteratureSource { selection?: LiteratureRefs; evidence: Materi
 
 /**
  * 审查面:嵌在旅程页右侧(/workspaces/:id/rounds/:rid),没有页级出口。
- * onClose = 收起右侧面;onLoaded = 每次读到这一轮(打开、刷新、改动后)通知宿主刷新左栏。
+ * onClose = 收起右侧面(closeLabel 改按钮文字);onLoaded = 每次读到这一轮(打开、刷新、改动后)通知宿主刷新左栏;fromGap = 这条 claim 是反证 gap 写成的。
  */
-export function ReviewRoundDesk({ roundId, onClose, onLoaded, literature }: { roundId: string; onClose?: () => void; onLoaded?: () => void; literature?: LiteratureSource }) {
+export function ReviewRoundDesk({ roundId, onClose, closeLabel, onLoaded, literature, fromGap }: { roundId: string; onClose?: () => void; closeLabel?: string; onLoaded?: () => void; literature?: LiteratureSource; fromGap?: boolean }) {
   const [round, setRound] = useState<ReviewRound | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment | null>(null)
@@ -67,14 +69,20 @@ export function ReviewRoundDesk({ roundId, onClose, onLoaded, literature }: { ro
     void load()
   }
   const nth = (round.rounds ?? []).findIndex((r) => r.id === round.id) + 1
-  // 问题已是左栏标题:这里只留本轮 claim 快照与当时的问题快照
-  return <section className="ru-review" aria-labelledby="review-title"><header className="ru-review-head"><p className="ru-kicker" id="review-title">审查轮{nth > 0 ? ` ${String(nth).padStart(2, "0")}` : ""} · claim 快照</p>{onClose && <button type="button" className="ru-quiet-button" onClick={onClose}>收起</button>}</header><blockquote className="ru-claim-quote">{round.claim_snapshot.text}</blockquote><p className="ru-provenance">当时的问题：{round.question_snapshot.text} · 问题快照 {round.question_snapshot.version_id ?? round.question_snapshot.id ?? "已记录"} · Claim 快照 {round.claim_snapshot.version_id ?? round.claim_snapshot.id ?? "已记录"}</p>
-    <div className="ru-review-tabbar"><div role="tablist" aria-label="审查分段">{SEGMENTS.map(([key, label]) => <button key={key} id={`review-tab-${key}`} role="tab" aria-selected={active === key} aria-controls="review-segment" className="ru-review-tab" onClick={() => setSegment(key)}>{label}</button>)}</div><span className={pending.length ? "ru-review-pending" : undefined}>{pending.length ? `仍待回应 ${pending.length}` : "没有仍待回应的挑战"}</span></div>
+  const pendingCandidates = (round.evidence_candidates ?? []).filter((c) => c.status === "pending").length
+  // 分段旁的小计数:[文字, 是否待处理(rust)]
+  const tabCounts: Partial<Record<Segment, [string, boolean]>> = {
+    evidence: pendingCandidates ? [`待确认 ${pendingCandidates}`, true] : [`${round.evidence_candidates?.length ?? 0} 条`, false],
+    verdict: [round.verdict ? `已裁决 · ${VERDICT_LABELS[round.verdict.verdict_type] ?? round.verdict.verdict_type}` : "未裁决", false],
+  }
+  // 问题已是左栏标题:这里只留本轮 claim 快照(投影没有写入时间,「写于…」暂缺)
+  return <section className="ru-review" aria-labelledby="review-title"><header className="ru-review-head"><p className="ru-kicker" id="review-title">审查轮{nth > 0 ? ` ${String(nth).padStart(2, "0")}` : ""} · claim 快照</p>{onClose && <button type="button" className="ru-quiet-button" onClick={onClose}>{closeLabel ?? "收起"}</button>}</header><blockquote className="ru-claim-quote">{round.claim_snapshot.text}</blockquote><p className="ru-provenance">{fromGap && <><span className="ru-tag">来自 gap</span> </>}本轮文本快照</p>
+    <div className="ru-review-tabbar"><div role="tablist" aria-label="审查分段">{SEGMENTS.map(([key, label]) => { const count = tabCounts[key]; return <button key={key} id={`review-tab-${key}`} role="tab" aria-selected={active === key} aria-controls="review-segment" className="ru-review-tab" onClick={() => setSegment(key)}>{label}{count && <>{" "}<small className={count[1] ? "ru-pending-line" : undefined}>{count[0]}</small></>}</button> })}</div><span className={pending.length ? "ru-review-pending" : undefined}>{pending.length ? `仍待回应 ${pending.length}` : "没有仍待回应的挑战"}</span></div>
     <div id="review-segment" role="tabpanel" aria-labelledby={`review-tab-${active}`}>
       {active === "answer" && <section aria-label="攻击面"><p className="ru-kicker">攻击面 · {round.challenges.length} 关 · 一次展开一关</p><ol className="ru-attack-list">{round.challenges.map((challenge) => {
         const on = challenge.id === focused?.id
-        return <li key={challenge.id}><button id={`challenge-title-${challenge.id}`} className={`ru-attack-row ru-attack-${challenge.status}`} aria-expanded={on} onClick={() => setFocusId(challenge.id)}><span className={challenge.title || on ? undefined : "ru-line-clamp-2"}>{challenge.title || challenge.attack_surface}</span><small>{STATUS_LABELS[challenge.status]}</small></button>
-          {on && <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} round={round} challenge={challenge} answer={drafts[challenge.id] ?? ""} onAnswerChange={(value) => setDrafts((all) => ({ ...all, [challenge.id]: value }))} onChanged={() => settle(challenge.id)} />}</li>
+        return <li key={challenge.id}><button id={`challenge-title-${challenge.id}`} className={`ru-attack-row ru-attack-${challenge.status}`} aria-expanded={on} onClick={() => setFocusId(challenge.id)}><span className="ru-attack-mark" aria-hidden="true">{STATUS_MARKS[challenge.status]}</span><span className={challenge.title || on ? undefined : "ru-line-clamp-2"}>{challenge.title || challenge.attack_surface}</span><small>{STATUS_LABELS[challenge.status]}</small></button>
+          {on && <ChallengePanel key={`${challenge.id}-${challenge.status}-${challenge.answers?.length ?? 0}`} challenge={challenge} answer={drafts[challenge.id] ?? ""} onAnswerChange={(value) => setDrafts((all) => ({ ...all, [challenge.id]: value }))} onChanged={() => settle(challenge.id)} />}</li>
       })}</ol>
         {!closed && <div className="ru-generate-more"><button className="ru-quiet-button" disabled={generatingChallenge} onClick={() => void generateMoreChallenge()}>{generatingChallenge ? "正在生成更多挑战…" : "生成更多挑战"}</button>{literature && <button className="ru-quiet-button" disabled={litBusy || (!literature.selection && literature.evidence.length === 0)} aria-expanded={literature.selection ? undefined : litOpen} onClick={() => literature.selection ? void literatureAttack(literature.selection) : setLitOpen((v) => !v)}>{litBusy ? "正在用文献发难…" : "用所选文献发难"}</button>}<p className="ru-challenge-note">让 Cui 攻击一个尚未覆盖的角度；新的挑战会进入同一轮审查。</p></div>}
         {!closed && litOpen && literature && !literature.selection && <fieldset className="ru-lit-pick"><legend>这台设备上没有选料草稿：从本问题的待取证材料里勾选要用来发难的几份</legend>{literature.evidence.map((m) => <label key={m.id}><input type="checkbox" checked={litPicked.includes(m.id)} onChange={() => setLitPicked((ids) => ids.includes(m.id) ? ids.filter((id) => id !== m.id) : [...ids, m.id])} /> {m.source_locator ?? m.excerpt}</label>)}<div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => { setLitOpen(false); setLitPicked([]) }}>取消</button><button className="ru-ink-button ru-active" disabled={litBusy || litPicked.length === 0} onClick={() => void literatureAttack({ material_ids: litPicked, external_refs: [] })}>{litBusy ? "正在发难…" : "发难"}</button></div></fieldset>}
@@ -88,12 +96,10 @@ export function ReviewRoundDesk({ roundId, onClose, onLoaded, literature }: { ro
 }
 
 // 标题在攻击面那一行（challenge-title-*）；应答草稿由审查面按关保存，切换聚焦不丢
-function ChallengePanel({ round, challenge, answer, onAnswerChange: setAnswer, onChanged }: { round: ReviewRound; challenge: Challenge; answer: string; onAnswerChange: (value: string) => void; onChanged: () => void }) {
+function ChallengePanel({ challenge, answer, onAnswerChange: setAnswer, onChanged }: { challenge: Challenge; answer: string; onAnswerChange: (value: string) => void; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [deferOpen, setDeferOpen] = useState(false)
   const [condition, setCondition] = useState("")
-  const [explainOpen, setExplainOpen] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [withdrawReason, setWithdrawReason] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -114,18 +120,19 @@ function ChallengePanel({ round, challenge, answer, onAnswerChange: setAnswer, o
     setBusy(true); setError(null)
     try { await researchUniverse.withdrawChallenge(challenge.id, command({ reason: withdrawReason.trim() }, challenge.sequence ?? 1)); onChanged() } catch (reason) { setError(reason instanceof Error ? reason.message : "撤回失败。") } finally { setBusy(false) }
   }
-  // 行里只显示短标题时，攻击面全文在展开体里给出
-  const reasoning = <dl>{challenge.title && <div><dt>攻击面</dt><dd>{challenge.attack_surface}</dd></div>}<div><dt>为什么重要</dt><dd>{challenge.why_it_matters}</dd></div><div><dt>可以怎样自检</dt><dd>{challenge.self_check_method}</dd></div></dl>
+  // 正文 = 攻击面问句(行里只显示短标题时才需要;无标题时行本身展开为全文);为什么问一行;自检方法退到次要
+  const reasoning = <>{challenge.title && <p className="ru-reading-copy ru-challenge-question">{challenge.attack_surface}</p>}<p className="ru-challenge-why"><b>为什么问</b>{challenge.why_it_matters}</p><p className="ru-challenge-selfcheck">可以怎样自检：{challenge.self_check_method}</p></>
   if (!open) {
     return <aside className="ru-challenge ru-challenge-closed" aria-labelledby={`challenge-title-${challenge.id}`}>{challenge.status === "deferred" && challenge.defer && <p className="ru-reading-copy">何时重看：{challenge.defer.condition}</p>}{challenge.status === "withdrawn" && challenge.withdraw && <p className="ru-reading-copy">理由：{challenge.withdraw.reason}</p>}{reasoning}</aside>
   }
+  const closeForms = () => { setDeferOpen(false); setCondition(""); setWithdrawOpen(false); setWithdrawReason("") }
   return <aside className="ru-challenge" aria-labelledby={`challenge-title-${challenge.id}`}>{reasoning}{challenge.provenance && <p className="ru-provenance">生成依据：{challenge.provenance.basis_refs?.join(" · ") ?? "已记录"} · 不确定性：{challenge.provenance.uncertainty ?? "未说明"}</p>}
     {answered && <div className="ru-answer-log"><p className="ru-kicker">已保存答辩</p>{(challenge.answers ?? []).map((item) => <p className="ru-answer-entry" key={item.version_id}>{item.text}{item.provisional_anchor_refs.length ? <> · 带入未确认上下文 {item.provisional_anchor_refs.join("、")}</> : null}</p>)}<p className="ru-challenge-note">答辩已保存，挑战仍待裁决。</p></div>}
-    <form className="ru-answer-form" onSubmit={(e) => { e.preventDefault(); void saveAnswer() }}><label htmlFor={`answer-${challenge.id}`}>我目前的回应</label><textarea id={`answer-${challenge.id}`} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="写下对这一条挑战的回应（作为暂定上下文，不是已确认事实）。" disabled={busy} /><button className="ru-ink-button ru-active" disabled={busy || !answer.trim()}>{busy ? "正在保存…" : "保存答辩"}</button></form>
-    <div className="ru-cant-answer"><button className="ru-quiet-button" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen}>我还不能回应 ▾</button>{menuOpen && <ul className="ru-cant-answer-menu">{!deferOpen && <li><button className="ru-quiet-button" onClick={() => { setDeferOpen(true); setExplainOpen(false) }}>暂缓这条挑战（写下何时重看）</button></li>}{deferOpen && <li className="ru-inline-action"><label htmlFor={`defer-condition-${challenge.id}`}>何时重看</label><input id={`defer-condition-${challenge.id}`} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="例如：读到 Paper A 之后" /><button className="ru-quiet-button" disabled={busy || !condition.trim()} onClick={() => void defer()}>确认暂缓</button></li>}{!explainOpen && <li><button className="ru-quiet-button" onClick={() => { setExplainOpen(true); setDeferOpen(false) }}>先理解这一关</button></li>}{explainOpen && <li className="ru-inline-action"><p className="ru-reading-copy">通用自检方法：{challenge.self_check_method}</p></li>}<li><a className="ru-quiet-button" href={`/workspaces/${round.workspace_id}`}>回到探索，不作判断</a></li></ul>}
-    {!withdrawOpen && <button className="ru-quiet-button ru-danger" onClick={() => setWithdrawOpen(true)}>撤回这条挑战</button>}{withdrawOpen && <div className="ru-inline-action"><label htmlFor={`withdraw-reason-${challenge.id}`}>撤回理由</label><input id={`withdraw-reason-${challenge.id}`} value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} placeholder="为什么撤回这条挑战" /><button className="ru-quiet-button" disabled={busy || !withdrawReason.trim()} onClick={() => void withdraw()}>确认撤回</button><button className="ru-quiet-button" onClick={() => { setWithdrawOpen(false); setWithdrawReason("") }}>取消</button></div>}</div>
+    <div className="ru-answer-form"><label htmlFor={`answer-${challenge.id}`}>你的应答</label><textarea id={`answer-${challenge.id}`} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="写下你怎么回应这一关。保存应答不等于这一关已被解决。" disabled={busy} /></div>
+    {deferOpen && <div className="ru-inline-action"><label htmlFor={`defer-condition-${challenge.id}`}>何时重看</label><input id={`defer-condition-${challenge.id}`} value={condition} onChange={(e) => setCondition(e.target.value)} placeholder="例如：读到 Paper A 之后" /><div className="ru-inline-buttons"><button className="ru-quiet-button" disabled={busy || !condition.trim()} onClick={() => void defer()}>确认暂缓</button><button className="ru-quiet-button" onClick={closeForms}>取消</button></div></div>}
+    {withdrawOpen && <div className="ru-inline-action"><label htmlFor={`withdraw-reason-${challenge.id}`}>撤回理由</label><input id={`withdraw-reason-${challenge.id}`} value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} placeholder="为什么撤回这条挑战" /><div className="ru-inline-buttons"><button className="ru-quiet-button" disabled={busy || !withdrawReason.trim()} onClick={() => void withdraw()}>确认撤回</button><button className="ru-quiet-button" onClick={closeForms}>取消</button></div></div>}
+    <div className="ru-challenge-actions"><button className="ru-quiet-button" aria-pressed={deferOpen} onClick={() => { closeForms(); setDeferOpen(true) }}>暂缓</button><button className="ru-quiet-button" aria-pressed={withdrawOpen} onClick={() => { closeForms(); setWithdrawOpen(true) }}>撤回</button><button className="ru-ink-button ru-active" disabled={busy || !answer.trim()} onClick={() => void saveAnswer()}>{busy ? "正在保存…" : "保存应答"}</button></div>
     {error && <p className="ru-error" role="alert">{error}</p>}
-    {!answer && !answered && <p className="ru-challenge-note">这条挑战仍待回应。保存答辩不会解决挑战；你可以暂缓、撤回，或先回工作区继续探索。</p>}
   </aside>
 }
 
@@ -180,5 +187,5 @@ function BoundaryLineage({ round, onError }: { round: ReviewRound; onError: (mes
       navigate(`/workspaces/${created.result.workspace_id}`)
     } catch (reason) { onError(reason instanceof Error ? reason.message : "开新问题失败。") } finally { setBusy(false) }
   }
-  return <section className="ru-boundary" aria-labelledby="boundary-title"><p className="ru-kicker">边界 · 已记录</p><h2 id="boundary-title">这条 claim 已保留为本轮结论；不会被改写，也不会自动生成替代主张。</h2><p className="ru-reading-copy">理由：{verdict?.user_reason ?? "未说明"}</p><nav className="ru-review-exits" aria-label="边界出口"><a className="ru-ink-button" href={`/workspaces/${round.workspace_id}`}>回到探索稿</a><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void openNewQuestion()}>{busy ? "正在创建新问题…" : "围绕这条边界开一个新问题"}</button><button className="ru-quiet-button" onClick={() => setDismissed(true)}>暂时停在这里</button></nav></section>
+  return <section className="ru-boundary" aria-labelledby="boundary-title"><p className="ru-kicker">边界 · 已记录</p><h2 id="boundary-title">这条 claim 已保留为本轮结论；不会被改写，也不会自动生成替代主张。</h2><p className="ru-reading-copy">理由：{verdict?.user_reason ?? "未说明"}</p><nav className="ru-review-exits" aria-label="边界出口"><button className="ru-ink-button ru-active" disabled={busy} onClick={() => void openNewQuestion()}>{busy ? "正在创建新问题…" : "围绕这条边界开一个新问题"}</button><button className="ru-quiet-button" onClick={() => setDismissed(true)}>暂时停在这里</button></nav></section>
 }

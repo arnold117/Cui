@@ -123,9 +123,9 @@ describe("workspace journey stages", () => {
     await screen.findByText(/Existing work covers RLHF evaluations/, {}, { timeout: 3000 })
     fireEvent.click(screen.getByRole("button", { name: "下载 .md" }))
     // 已完成的阶段折叠成一行;对抗那行显示待回应计数
-    await waitFor(() => expect(row(/^5\. gap/)).toHaveTextContent("gap 已确认 ×1"))
-    expect(row(/^4\. 对抗/)).toHaveTextContent("待回应 1 条")
-    expect(row(/^1\. 出发点/)).toHaveTextContent("展开修改")
+    await waitFor(() => expect(row(/^gap/)).toHaveTextContent("gap 已确认 ×1"))
+    expect(row(/^对抗/)).toHaveTextContent("待回应 1 条")
+    expect(row(/^出发点/)).toHaveTextContent("展开修改")
   })
 
   it("resumes a saved session at its stage; chip toggles fire one merged search and text edits do not; clear restarts", async () => {
@@ -181,18 +181,18 @@ describe("workspace journey stages", () => {
     await screen.findByText("别处写的 claim", { selector: ".ru-claim-text" })
     expect(openCard()).toBe("4. 对抗")
     expect(screen.queryByRole("status")).not.toBeInTheDocument() // 本机没有会话,不显示恢复横幅
-    expect(row(/^1\. 出发点/)).toHaveTextContent("展开修改")
-    expect(row(/^3\. 覆盖与 claim/)).toHaveTextContent("已写 1 条 claim")
+    expect(row(/^出发点/)).toHaveTextContent("展开修改")
+    expect(row(/^覆盖与 claim/)).toHaveTextContent("已写 1 条 claim")
   })
 
   it("any stage opens without locking; a not-yet-current card says so and returns to the current stage", async () => {
     mockFullJourney()
     renderJourney("w-1")
     await screen.findByText("Why does RLHF improve reasoning?")
-    fireEvent.click(row(/^6\. 结晶/))
+    fireEvent.click(row(/^结晶/))
     expect(openCard()).toBe("6. 结晶")
     expect(screen.getByText("不是当前阶段 · 不锁,可以先做")).toBeInTheDocument()
-    fireEvent.click(row(/^4\. 对抗/))
+    fireEvent.click(row(/^对抗/))
     expect(screen.getByText(/还没有固化的 claim/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "收起,回到第 1 步" }))
     expect(openCard()).toBe("1. 出发点")
@@ -310,6 +310,17 @@ describe("对抗 stage card: claim list + right-side review panel (S2)", () => {
     const answeredOnly = screen.getByRole("button", { name: /只剩已回应的 claim/ })
     expect(answeredOnly).toHaveTextContent("未裁决")
     expect(answeredOnly).not.toHaveTextContent("待回应")
+  })
+
+  it("the open round's panel tags a claim written against a gap (来自 gap), matching its claim card", async () => {
+    const desk = { ...baseDesk, claims: [{ id: "c1", text: "反证 gap 的 claim" }], review_rounds: [round("r1", "c1")], pending_challenges: [pending("p1", "r1")], landscape: landscape([{ ...confirmedGap("g1", "缺口"), challenges: [{ claim_id: "c1", claim_text: "反证 gap 的 claim", round_id: "r1", outcome: "open" }] }]) }
+    const reviewRound = { ...round("r1", "c1"), workspace_id: "w-1", challenges: [pending("p1", "r1")], ledger: { answered: [], deferred: [], pending: [], brought_unconfirmed: [] }, rounds: [] }
+    fetchMock.mockImplementation(async (url: string) => String(url).endsWith("/review-rounds/r1") ? response(reviewRound) : /\/workspaces\/w-1$/.test(String(url)) ? response(desk) : response({ detail: url }, 404))
+    render(<AppRouter><WorkspaceJourney workspaceId="w-1" roundId="r1" /></AppRouter>)
+    const panel = await screen.findByRole("complementary", { name: "聚焦面" })
+    expect(await within(panel).findByText("本轮文本快照", { exact: false })).toHaveTextContent("来自 gap 本轮文本快照")
+    expect(screen.getByRole("button", { name: /反证 gap 的 claim/ })).toHaveTextContent("来自 gap")
+    expect(screen.getByText("当前阶段")).toBeInTheDocument()
   })
 
   it("no verdict yet: 「继续到 gap」 carries a 尚无裁决 hint but does not lock", async () => {

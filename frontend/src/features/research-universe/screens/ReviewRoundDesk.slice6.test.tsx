@@ -58,7 +58,7 @@ describe("ReviewRoundDesk Slice 6 expanded LLM generation", () => {
     vi.mocked(researchUniverse.generateEvidenceCandidate).mockResolvedValue(responded({ candidate_id: "ec-gen-1", round_id: "r-1" }))
     vi.mocked(researchUniverse.reviewRound).mockResolvedValueOnce(makeRound({ evidence_candidates: [generated] }))
     render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
-    fireEvent.click(await screen.findByRole("tab", { name: "取证" }))
+    fireEvent.click(await screen.findByRole("tab", { name: /^取证/ }))
     const generate = await screen.findByRole("button", { name: "让 Cui 提出取证候选" })
     fireEvent.click(generate)
     await waitFor(() => expect(researchUniverse.generateEvidenceCandidate).toHaveBeenCalledWith("r-1", expect.objectContaining({ material_id: "m-1", expected_sequence: 0 })))

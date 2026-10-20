@@ -31,8 +31,8 @@ test("answer, record a survived verdict, and re-review the claim", async ({ page
   await expect(page).toHaveURL("/workspaces/w-1/rounds/r-1")
   await expect(page.getByRole("heading", { name: "Why does practice change recall?" })).toBeVisible()
   await expect(page.getByText("替代解释是否被排除")).toBeVisible()
-  await page.getByLabel("我目前的回应").fill("my reply")
-  await page.getByRole("button", { name: "保存答辩" }).click()
+  await page.getByLabel("你的应答").fill("my reply")
+  await page.getByRole("button", { name: "保存应答" }).click()
   await expect(page.getByText("答辩已保存，挑战仍待裁决。")).toBeVisible()
   await expect(page.getByText("没有仍待回应的挑战")).toBeVisible()
   await page.getByRole("tab", { name: "裁决" }).click()
@@ -42,7 +42,7 @@ test("answer, record a survived verdict, and re-review the claim", async ({ page
   await page.getByRole("button", { name: "确认裁决" }).click()
   await expect(page.getByRole("button", { name: "再次审查这一条 claim" })).toBeVisible()
   await expect(page.getByText(/裁决：survived/)).toBeVisible()
-  await expect(page.getByText("这条挑战仍待回应")).not.toBeVisible()
+  await expect(page.getByLabel("你的应答")).toBeHidden()
 })
 
 test("a boundary verdict keeps the claim and opens a new question workspace", async ({ page }) => {

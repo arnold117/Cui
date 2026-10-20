@@ -7,7 +7,7 @@ const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock)
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 function view(id = "w") { return render(<AppRouter><WorkspaceJourney workspaceId={id} /></AppRouter>) }
 // 结晶动作原样搬进「结晶」阶段卡:先点开这一阶段
-const openCrystal = () => fireEvent.click(screen.getByRole("button", { name: /^6\. 结晶/ }))
+const openCrystal = () => fireEvent.click(screen.getByRole("button", { name: /^结晶/ }))
 const bodyOf = (suffix: string) => JSON.parse(fetchMock.mock.calls.find(([url, init]) => String(url).endsWith(suffix) && init?.method === "POST")![1].body)
 const baseDesk = (overrides: Record<string, unknown> = {}) => ({
   id: "w",
@@ -72,7 +72,7 @@ describe("workspace crystallization stage and position header", () => {
     fireEvent.change(screen.getByLabelText("我的探索结论"), { target: { value: "done" } })
     fireEvent.click(screen.getByRole("radio", { name: /暂时回答/ }))
     fireEvent.click(screen.getByRole("button", { name: "确认结晶" }))
-    await screen.findByText("位置：已结晶")
+    await screen.findByText("问题 · 已结晶")
     expect(screen.getByText("done")).toBeInTheDocument()
   })
 
@@ -91,7 +91,7 @@ describe("workspace crystallization stage and position header", () => {
     expect(header.getAllByRole("button").map(b => b.textContent)).toEqual(["暂停"])
     fireEvent.click(header.getByRole("button", { name: "暂停" }))
     fireEvent.click(header.getByRole("button", { name: "确认暂停" }))
-    await screen.findByText("位置：已暂停")
+    await screen.findByText("问题 · 已暂停")
     expect(bodyOf("/pause")).toMatchObject({ user_reason: null, expected_sequence: 9 })
     expect(header.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument()
     fireEvent.click(header.getByRole("button", { name: "重开" }))
@@ -101,7 +101,7 @@ describe("workspace crystallization stage and position header", () => {
     expect(confirm).toBeDisabled()
     fireEvent.change(header.getByLabelText("重开理由"), { target: { value: "新数据到了" } })
     fireEvent.click(confirm)
-    await screen.findByText("位置：探索中")
+    await screen.findByText("问题 · 探索中")
     expect(bodyOf("/reopen")).toMatchObject({ user_reason: "新数据到了", expected_sequence: 10 })
   })
 
@@ -113,7 +113,7 @@ describe("workspace crystallization stage and position header", () => {
     })
     view()
     await screen.findByText("Why does X happen?")
-    expect(screen.getByRole("button", { name: /^6\. 结晶/ })).toHaveTextContent("展开修改")
+    expect(screen.getByRole("button", { name: /^结晶/ })).toHaveTextContent("展开修改")
     cleanup()
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (!init?.method && String(url).endsWith("/workspaces/w")) return Promise.resolve(response({ ...concluded, user_position: "exploring" }))
@@ -121,7 +121,7 @@ describe("workspace crystallization stage and position header", () => {
     })
     view()
     await screen.findByText("Why does X happen?")
-    expect(screen.getByRole("button", { name: /^6\. 结晶/ })).toHaveTextContent("打开")
+    expect(screen.getByRole("button", { name: /^结晶/ })).toHaveTextContent("打开")
   })
 
   it("concludes and shows the direction impact台 when a direction is attached", async () => {

@@ -35,7 +35,7 @@ test("conclusion becomes a direction crystallization and home reads it back", as
   })
   await page.goto("/workspaces/w-1")
   // 结晶动作在「结晶」阶段卡里(任何阶段都可点开)
-  await page.getByRole("button", { name: /^6\. 结晶/ }).click()
+  await page.getByRole("button", { name: /^结晶/ }).click()
   await page.getByRole("button", { name: "确认这次探索的位置" }).click()
   await expect(page.getByRole("heading", { name: "结晶台" })).toBeVisible()
   await page.getByLabel("我的探索结论").fill("Repeated recall strengthens later access.")
