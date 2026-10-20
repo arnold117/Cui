@@ -51,6 +51,11 @@ describe("journeyStage current stage", () => {
   it("pending challenges keep 对抗 current even when later stages are done", () => {
     expect(journeyStage(desk({ ...allButSix, ...pending }), draft({ claimAck: true })).current).toBe(4)
   })
+  it("answered-but-unverdicted challenges are not 待回应: they don't hold 对抗 current", () => {
+    const answeredOnly = { pending_challenges: [{ id: "ch2", review_round_id: "r1", status: "answered" }] }
+    expect(journeyStage(desk({ ...allButSix, ...answeredOnly }), draft({ claimAck: true })).current).toBe(6)
+    expect(journeyStage(desk({ ...allButSix, pending_challenges: [...answeredOnly.pending_challenges, ...pending.pending_challenges] }), draft({ claimAck: true })).current).toBe(4)
+  })
   it("pending challenges do not pull a crystallized workspace back to 对抗", () => {
     expect(journeyStage(desk({ ...allButSix, ...pending, user_position: "concluded" }), draft()).current).toBe(6)
   })

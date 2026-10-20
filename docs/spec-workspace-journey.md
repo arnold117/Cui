@@ -1,7 +1,7 @@
 # Spec：工作区旅程化（#21）
 
 > 决策来源：`docs/grill-workspace-ia.md`（2026-10-19 Arnold 逐条定）。本 spec 只写「做成什么样」，不写进度；决定改动 ⇒ 升版。
-> 版本：v1.2（2026-10-20：S3 版式按 Arnold 认可的原型——段页签在上，攻击面放进「应答」段）；v1.1（2026-10-19：阶段规则加「有待回应挑战停在对抗」；新建方向签名不强制改写）
+> 版本：v1.3（2026-10-20：「待回应」全产品统一为 ledger 口径——只数 `status === "pending"`，已回应未裁决不算；影响阶段规则与 claim 卡计数）；v1.2（2026-10-20：S3 版式按 Arnold 认可的原型——段页签在上，攻击面放进「应答」段）；v1.1（2026-10-19：阶段规则加「有待回应挑战停在对抗」；新建方向签名不强制改写）
 
 ## 导读
 | 你是 | 先看 |
@@ -103,7 +103,7 @@
 | 4 对抗 | `draft.claimAck \|\| desk.review_rounds.some(r => r.verdict) \|\| 阶段 5 已完成` |
 | 5 gap | `desk.landscape.gaps.some(g => g.status === "confirmed" \|\| g.status === "corrected")` |
 | 6 结晶 | `desk.user_position` ∈ {concluded, branched, absorbed}（**不用** `desk.conclusion != null`：重开后 conclusion 仍在投影里，`application.py:333`） |
-当前阶段：未结晶（阶段 6 未完成）且 `desk.pending_challenges.length > 0` ⇒ **对抗**（例：从 gap 发起反证开出新一轮后回到对抗）；否则 = 第一个未完成的；全部完成时停在 6（只读回看）。重开后回到 exploring ⇒ 阶段 6 重新变为未完成。
+当前阶段：未结晶（阶段 6 未完成）且存在仍待回应挑战（`desk.pending_challenges` 中 `status === "pending"`；该投影还含已回应未裁决的，不算）⇒ **对抗**（例：从 gap 发起反证开出新一轮后回到对抗）；否则 = 第一个未完成的；全部完成时停在 6（只读回看）。重开后回到 exploring ⇒ 阶段 6 重新变为未完成。
 
 **待评估**：E1。A 前端纯函数：改动集中、可单测；代价是规则在前端，后端不知道阶段。B 后端投影：多端一致；代价是会话草稿（summary、hypothesesDone）后端看不到，推不全。推荐 A。
 
@@ -124,7 +124,7 @@
 
 **数据怎么流动**
 1. claim 列表 = `desk.claims` × `desk.review_rounds`（按 `claim_id` 分组，**数组顺序**最后一条为最新轮——`review_rounds[].sequence` 是该轮自身计数，不是全局序；`verdict.verdict_type` 映射标签用术语表的 5 类）。没有任何轮次的 claim（开轮失败时会出现）显示「未开审查轮」+ 次级按钮「开审查轮」（`POST /claims/:id/review-rounds`）
-2. 待回应数 = `desk.pending_challenges`（`Challenge[]`，含 `review_round_id`，`types.ts:21`）按 `review_round_id` 计数
+2. 待回应数 = `desk.pending_challenges` 中 `status === "pending"` 的（`Challenge[]`，含 `review_round_id`，`types.ts:21`）按 `review_round_id` 计数——与审查面「仍待回应」同一口径
 3. 「来自 gap」= claim id ∈ `desk.landscape.gaps[].challenges[].claim_id`（`types.ts:119`），**不需改投影**
 4. 右侧面 `GET /review-rounds/:rid`（`application.py:383-395`）
 

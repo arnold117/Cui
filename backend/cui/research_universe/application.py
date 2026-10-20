@@ -295,10 +295,10 @@ def _direction_current(events, direction_id: str) -> dict | None:
 
 
 def _workspace_pending_count(events, workspace_id: str) -> int:
-    """Number of open (pending/answered) challenges across this workspace's rounds."""
+    """Number of 待回应 challenges (status=pending, same as the review ledger) across this workspace's rounds; answered-but-unverdicted don't count."""
     round_ids = [p.round_id for e in events if e.event_type == "review_round_started" and (p := e.validated_payload()).workspace_id == workspace_id]
     challenge_states = _challenge_states(events)
-    return len([c for c in challenge_states.values() if c["review_round_id"] in round_ids and c["status"] in ("pending", "answered")])
+    return len([c for c in challenge_states.values() if c["review_round_id"] in round_ids and c["status"] == "pending"])
 
 
 def workspace_projection(store: NativeEventStore, universe_id: str, workspace_id: str) -> dict:

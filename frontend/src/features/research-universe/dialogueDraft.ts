@@ -104,6 +104,7 @@ export type JourneyDesk = Pick<WorkspaceDesk, "claims" | "review_rounds" | "pend
 /**
  * 旅程阶段推导(spec-workspace-journey S1):服务端事实优先,本机草稿只补会话内进度。
  * done[i] = 第 i+1 阶段是否完成;current = 未结晶且有待回应挑战 ⇒ 对抗(4),否则第一个未完成的,全完成停在 6。
+ * 待回应 = status=pending(同审查面账本);投影的 pending_challenges 还含已回应未裁决,那些不把阶段拽回对抗。
  * 结晶看 user_position 而非 conclusion:重开后 conclusion 仍在投影里,但阶段 6 要重新变为未完成。
  */
 export function journeyStage(desk: JourneyDesk, d: Pick<DialogueDraft, "hypothesesDone" | "skipHypotheses" | "summary" | "claimAck">): { current: number; done: boolean[] } {
@@ -118,7 +119,7 @@ export function journeyStage(desk: JourneyDesk, d: Pick<DialogueDraft, "hypothes
     gapDone,
     crystallized,
   ]
-  const current = !crystallized && desk.pending_challenges.length > 0 ? 4 : done.indexOf(false) + 1 || STAGE_COUNT
+  const current = !crystallized && desk.pending_challenges.some((c) => c.status === "pending") ? 4 : done.indexOf(false) + 1 || STAGE_COUNT
   return { current, done }
 }
 

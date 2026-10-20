@@ -10,6 +10,16 @@ const fact = (label: string): HomeProjection => ({ universe_id: "u", workspaces:
 describe("UniverseHome guarded read chains", () => {
   it("does not write stale home state after unmount", async () => { const later = deferred<HomeProjection>(); active.mockResolvedValueOnce({ id: "u" }); home.mockReturnValueOnce(later.promise); const view = render(<UniverseHome />); await waitFor(() => expect(home).toHaveBeenCalledWith("u")); view.unmount(); later.resolve({ universe_id: "u", workspaces: [], pending_facts: [] }); await Promise.resolve(); expect(document.body.textContent).not.toContain("还没有待回应事实") })
   it("retry invalidates a prior deferred chain before it can overwrite the new result", async () => { const first = deferred<HomeProjection>(); active.mockResolvedValue({ id: "u" }); home.mockReturnValueOnce(first.promise).mockResolvedValueOnce(fact("NEW")); render(<UniverseHome />); await waitFor(() => expect(home).toHaveBeenCalledTimes(1)); screen.getByRole("button", { name: "重新读取" }).click(); await screen.findByText("一条待回应 challenge：NEW", { exact: true }); first.resolve(fact("OLD")); await Promise.resolve(); expect(screen.queryByText("一条待回应 challenge：OLD", { exact: true })).not.toBeInTheDocument(); expect(screen.getByText("一条待回应 challenge：NEW", { exact: true })).toBeInTheDocument() })
+  it("lists only status=pending facts as 待回应, by short title with a clamped attack_surface fallback", async () => {
+    active.mockResolvedValue({ id: "u" })
+    const base = { workspace_id: "w", question: "Q", review_round_id: "r", why_it_matters: "why", self_check_method: "check" }
+    home.mockResolvedValue({ universe_id: "u", workspaces: [], pending_facts: [{ ...base, id: "t", title: "边界：样本够吗？", attack_surface: "the long titled attack", status: "pending" }, { ...base, id: "u1", attack_surface: "untitled full text", status: "pending" }, { ...base, id: "a", attack_surface: "answered one", status: "answered" }] })
+    render(<UniverseHome />)
+    expect(await screen.findByText("一条待回应 challenge：边界：样本够吗？")).toBeInTheDocument()
+    expect(screen.queryByText(/the long titled attack/)).not.toBeInTheDocument()
+    expect(screen.getByText("一条待回应 challenge：untitled full text")).toHaveClass("ru-line-clamp-2")
+    expect(screen.queryByText(/answered one/)).not.toBeInTheDocument()
+  })
   it("renders directions and crystallizations alongside pending facts", async () => {
     active.mockResolvedValue({ id: "u" })
     home.mockResolvedValue({ universe_id: "u", workspaces: [], pending_facts: [{ id: "ch-p", workspace_id: "w", question: "Q", review_round_id: "r", attack_surface: "attack", why_it_matters: "why", self_check_method: "check", status: "pending" }], directions: [{ id: "d1", proposition: "A long-term thesis.", status: "active", crystallizations: [{ crystallization_id: "x1", workspace_id: "w1", conclusion_id: "c1", conclusion_text: "The answer is X.", conclusion_type: "tentative_answer" }], crystallizations_count: 1, attached_workspaces_count: 1 }] })

@@ -295,6 +295,23 @@ describe("对抗 stage card: claim list + right-side review panel (S2)", () => {
     expect(fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/claims/c3/review-rounds") && init?.method === "POST")).toBe(true)
   })
 
+  it("待回应 counts agree across stage header, strip, claim card and review panel: status=pending only, answered excluded", async () => {
+    const answered = (id: string, review_round_id: string) => ({ ...pending(id, review_round_id), status: "answered" })
+    const r1Challenges = [pending("p1", "r1"), answered("a1", "r1"), pending("p2", "r1")]
+    const desk = { ...baseDesk, claims: [{ id: "c1", text: "混合状态的 claim" }, { id: "c2", text: "只剩已回应的 claim" }], review_rounds: [round("r1", "c1"), round("r2", "c2")], pending_challenges: [...r1Challenges, answered("a2", "r2")] }
+    const reviewRound = { ...round("r1", "c1"), workspace_id: "w-1", challenges: r1Challenges, ledger: { answered: [], deferred: [], pending: [], brought_unconfirmed: [] }, rounds: [] }
+    fetchMock.mockImplementation(async (url: string) => String(url).endsWith("/review-rounds/r1") ? response(reviewRound) : /\/workspaces\/w-1$/.test(String(url)) ? response(desk) : response({ detail: url }, 404))
+    render(<AppRouter><WorkspaceJourney workspaceId="w-1" roundId="r1" /></AppRouter>)
+    expect(await screen.findByText("仍待回应 2")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "4. 对抗" }).parentElement).toHaveTextContent("待回应 2 条")
+    expect(within(screen.getByRole("navigation", { name: "阶段条" })).getByRole("button", { name: /对抗/ })).toHaveTextContent(/对抗 2$/)
+    expect(screen.getByRole("button", { name: /混合状态的 claim/ })).toHaveTextContent("待回应 2 条")
+    // 只剩已回应未裁决:不算待回应,标 未裁决
+    const answeredOnly = screen.getByRole("button", { name: /只剩已回应的 claim/ })
+    expect(answeredOnly).toHaveTextContent("未裁决")
+    expect(answeredOnly).not.toHaveTextContent("待回应")
+  })
+
   it("no verdict yet: 「继续到 gap」 carries a 尚无裁决 hint but does not lock", async () => {
     mockFullJourney({ claims: [{ id: "c1", text: "唯一的 claim" }], review_rounds: [round("r1", "c1")], pending_challenges: [pending("p1", "r1")] })
     renderJourney("w-1")

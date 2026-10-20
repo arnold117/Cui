@@ -238,6 +238,21 @@ def test_direction_create_attach_crystallize_rephrase_status():
     assert dp["attached_workspaces"][0]["pending_fact_count"] == 0
 
 
+def test_direction_pending_fact_count_counts_only_status_pending():
+    """待回应 = status=pending (same as the review ledger): an answered-but-unverdicted challenge doesn't count."""
+    store, uid, client = setup()
+    wid, _, _ = _tracer(client, uid)
+    cid2 = client.post(f"/api/v2/workspaces/{wid}/claims", json={"command_id": "c2", "expected_sequence": 0, "text": "Y causes Z."}).json()["result"]["claim_id"]
+    rid2 = client.post(f"/api/v2/claims/{cid2}/review-rounds", json={"command_id": "r2", "expected_sequence": 0}).json()["result"]["review_round_id"]
+    chid2 = client.get(f"/api/v2/review-rounds/{rid2}").json()["challenges"][0]["id"]
+    assert client.post(f"/api/v2/challenges/{chid2}/answers", json={"command_id": "a", "expected_sequence": 1, "answer_text": "reply", "provisional_anchor_refs": []}).status_code == 200
+    did = _direction(client, uid)
+    assert client.post(f"/api/v2/workspaces/{wid}/direction-links", json={"command_id": "link", "expected_sequence": 0, "direction_id": did}).status_code == 201
+    statuses = sorted(c["status"] for c in workspace_projection(store, uid, wid)["pending_challenges"])
+    assert statuses == ["answered", "pending"]  # workspace projection still carries both; the frontend filters
+    assert direction_projection(store, uid, did)["attached_workspaces"][0]["pending_fact_count"] == 1
+
+
 def test_direction_attachment_requires_extant_direction_and_crystallization_requires_conclusion():
     store, uid, client = setup()
     wid = _workspace(client, uid)

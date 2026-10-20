@@ -54,7 +54,7 @@ describe("workspace crystallization stage and position header", () => {
   })
 
   it("pending challenges never block concluding", async () => {
-    let desk = baseDesk({ pending_challenges: [{ id: "ch1", review_round_id: "r1", attack_surface: "pending one", why_it_matters: "why", self_check_method: "check", status: "pending" }] })
+    let desk = baseDesk({ pending_challenges: [{ id: "ch1", review_round_id: "r1", attack_surface: "pending one", why_it_matters: "why", self_check_method: "check", status: "pending" }, { id: "ch2", review_round_id: "r1", title: "边界：样本够吗？", attack_surface: "full attack surface text", why_it_matters: "why", self_check_method: "check", status: "pending" }] })
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       const path = String(url)
       if (!init?.method && path.endsWith("/workspaces/w")) return Promise.resolve(response(desk))
@@ -66,7 +66,9 @@ describe("workspace crystallization stage and position header", () => {
     openCrystal()
     fireEvent.click(screen.getByRole("button", { name: "确认这次探索的位置" }))
     await screen.findByRole("heading", { name: "结晶台" })
-    expect(screen.getByText(/仍挂起：pending one/)).toBeInTheDocument()
+    expect(screen.getByText(/仍挂起：pending one/)).toHaveClass("ru-line-clamp-2")
+    expect(screen.getByText("仍挂起：边界：样本够吗？")).toBeInTheDocument()
+    expect(screen.queryByText(/full attack surface text/)).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("我的探索结论"), { target: { value: "done" } })
     fireEvent.click(screen.getByRole("radio", { name: /暂时回答/ }))
     fireEvent.click(screen.getByRole("button", { name: "确认结晶" }))
