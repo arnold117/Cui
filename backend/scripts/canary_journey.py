@@ -52,10 +52,6 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))  # test THIS tree's cui, not an editable install elsewhere
 
-from dotenv import load_dotenv  # noqa: E402
-
-load_dotenv(BACKEND_DIR / ".env")
-
 DEFAULT_QUESTION = "RLHF 是否真的提升了 LLM 推理能力?"
 DEFAULT_CORE_TERMS = ("推理", "reasoning")
 CLAIM_TEXT = "关于 RLHF 对推理能力的作用存在两派:一派认为 RLHF 通过偏好对齐提升了推理,另一派认为它只是改善了指令遵循与格式,并未提升真实推理能力。"
@@ -267,6 +263,10 @@ def _finish(rep: Report, question: str, picked: list[str], timings: dict, llm: C
 
 
 def main() -> int:
+    # .env only at the entry point: tests import this module, and an import-time load leaks CUI_LLM_* into the whole pytest session
+    from dotenv import load_dotenv
+
+    load_dotenv(BACKEND_DIR / ".env")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--question", default=DEFAULT_QUESTION)
     ap.add_argument("--core-terms", default="", help="comma-separated terms the drafts must mention (default question has built-ins)")
