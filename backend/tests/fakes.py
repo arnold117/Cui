@@ -12,7 +12,7 @@ class FakeLLMClient:
             return resp
         return self._responses[-1] if self._responses else ""
 
-    def complete_json(self, system: str, user: str, retries: int = 2) -> dict:
+    def complete_json(self, system: str, user: str, retries: int = 2, schema: dict | None = None) -> dict:
         return _complete_json_with_retry(self, system, user, retries)
 
 

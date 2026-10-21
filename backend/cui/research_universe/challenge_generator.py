@@ -65,6 +65,10 @@ rationale explains WHY in the same language as the claim. evidence_highlight quo
 If the material's parse_status is "failed", relation MUST be "cannot_assess" — a material that failed to parse cannot be read, so it can never be assessed as silent, supporting, or contradicting. Never supply a claim, verdict, answer, or direction."""
 
 
+# #33: sent as Anthropic structured output by the three challenge paths only; every other complete_json caller sends none
+CHALLENGE_SCHEMA = {"type": "object", "properties": {"attack_surface": {"type": "string"}, "why_it_matters": {"type": "string"}, "self_check_method": {"type": "string"}, "uncertainty": {"type": "string"}, "title": {"type": "string"}}, "required": ["attack_surface", "why_it_matters", "self_check_method", "uncertainty", "title"], "additionalProperties": False}
+
+
 def _check_challenge_schema(data: dict, schema_name: str) -> str:
     """Validate a model challenge payload; returns the normalised uncertainty.
 
@@ -115,7 +119,7 @@ class RealChallengeGenerator:
         self.client, self.model_identifier = client, model_identifier
 
     def generate(self, *, question: str, claim: str) -> ChallengeDraft:
-        data = self.client.complete_json(SYSTEM, f"Question:\n{question}\n\nUser-authored claim:\n{claim}")
+        data = self.client.complete_json(SYSTEM, f"Question:\n{question}\n\nUser-authored claim:\n{claim}", schema=CHALLENGE_SCHEMA)
         uncertainty = _check_challenge_schema(data, "Slice 1")
         return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
 
@@ -123,7 +127,7 @@ class RealChallengeGenerator:
         block = format_materials_block(materials)
         used = "\n- ".join(prior_attack_surfaces) if prior_attack_surfaces else "(none yet)"
         user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nSelected literature (locator-prefixed):\n{block}\n\nAlready-used attack surfaces (attack a DIFFERENT angle; never repeat one):\n- {used}"
-        data = self.client.complete_json(SYSTEM_LITERATURE, user)
+        data = self.client.complete_json(SYSTEM_LITERATURE, user, schema=CHALLENGE_SCHEMA)
         uncertainty = _check_challenge_schema(data, "Slice 1b literature challenge")
         basis_refs = [m.get("locator") or m.get("source_locator") or m.get("material_id") for m in materials]
         return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=PROMPT_VERSION_LITERATURE, model_identifier=self.model_identifier, basis_refs=basis_refs)
@@ -131,7 +135,7 @@ class RealChallengeGenerator:
     def generate_additional(self, *, question: str, claim: str, prior_attack_surfaces: list[str]) -> ChallengeDraft:
         used = "\n- ".join(prior_attack_surfaces) if prior_attack_surfaces else "(none yet)"
         user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nAlready-used attack surfaces (attack a DIFFERENT angle; never repeat one):\n- {used}"
-        data = self.client.complete_json(SYSTEM_EXPANDED, user)
+        data = self.client.complete_json(SYSTEM_EXPANDED, user, schema=CHALLENGE_SCHEMA)
         uncertainty = _check_challenge_schema(data, "Slice 6 expanded challenge")
         return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=EXPANDED_CHALLENGE_PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
 
