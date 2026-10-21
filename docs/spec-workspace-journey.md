@@ -1,7 +1,7 @@
 # Spec：工作区旅程化（#21）
 
 > 决策来源：`docs/grill-workspace-ia.md`（2026-10-19 Arnold 逐条定）。本 spec 只写「做成什么样」，不写进度；决定改动 ⇒ 升版。
-> 版本：v1.3（2026-10-20：「待回应」全产品统一为 ledger 口径——只数 `status === "pending"`，已回应未裁决不算；影响阶段规则与 claim 卡计数）；v1.2（2026-10-20：S3 版式按 Arnold 认可的原型——段页签在上，攻击面放进「应答」段）；v1.1（2026-10-19：阶段规则加「有待回应挑战停在对抗」；新建方向签名不强制改写）
+> 版本：v1.4（2026-10-21：阶段 6 完成 = 分支/吸收，或已结论且已选去向——挂到方向（首页投影可见该结晶）或本机点过「只留本次」；结论理由必填）；v1.3（2026-10-20：「待回应」全产品统一为 ledger 口径——只数 `status === "pending"`，已回应未裁决不算；影响阶段规则与 claim 卡计数）；v1.2（2026-10-20：S3 版式按 Arnold 认可的原型——段页签在上，攻击面放进「应答」段）；v1.1（2026-10-19：阶段规则加「有待回应挑战停在对抗」；新建方向签名不强制改写）
 
 ## 导读
 | 你是 | 先看 |
@@ -102,7 +102,7 @@
 | 3 覆盖与 claim | `desk.claims.length > 0` |
 | 4 对抗 | `draft.claimAck \|\| desk.review_rounds.some(r => r.verdict) \|\| 阶段 5 已完成` |
 | 5 gap | `desk.landscape.gaps.some(g => g.status === "confirmed" \|\| g.status === "corrected")` |
-| 6 结晶 | `desk.user_position` ∈ {concluded, branched, absorbed}（**不用** `desk.conclusion != null`：重开后 conclusion 仍在投影里，`application.py:333`） |
+| 6 结晶 | `user_position` ∈ {branched, absorbed}，或 `concluded` 且已选去向：该结论已结晶进方向（首页投影 `home.directions` 的结晶可见，跨设备）或本机草稿点过「只留本次」（`keptLocal`，仅本机）（**不用** `desk.conclusion != null`：重开后 conclusion 仍在投影里，`application.py:333`） |
 当前阶段：未结晶（阶段 6 未完成）且存在仍待回应挑战（`desk.pending_challenges` 中 `status === "pending"`；该投影还含已回应未裁决的，不算）⇒ **对抗**（例：从 gap 发起反证开出新一轮后回到对抗）；否则 = 第一个未完成的；全部完成时停在 6（只读回看）。重开后回到 exploring ⇒ 阶段 6 重新变为未完成。
 
 **待评估**：E1。A 前端纯函数：改动集中、可单测；代价是规则在前端，后端不知道阶段。B 后端投影：多端一致；代价是会话草稿（summary、hypothesesDone）后端看不到，推不全。推荐 A。
