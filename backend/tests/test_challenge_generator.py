@@ -90,7 +90,7 @@ def _call(generator: RealChallengeGenerator, path: str):
         return generator.generate(question="q?", claim="c.")
     if path == "expanded":
         return generator.generate_additional(question="q?", claim="c.", prior_attack_surfaces=["already used"])
-    return generator.generate_literature(question="q?", claim="c.", materials=[{"locator": "arxiv:1", "excerpt": "e"}])
+    return generator.generate_literature(question="q?", claim="c.", materials=[{"locator": "arxiv:1", "excerpt": "e"}], prior_attack_surfaces=["already used"])
 
 
 @pytest.mark.parametrize("path", ["narrow", "expanded", "literature"])
@@ -105,4 +105,4 @@ def test_title_is_display_only_and_never_fails_generation(path, title, expected)
     raw = _payload() if title is None else _payload(title=title)
     draft = _call(_generator(raw), path)
     assert draft.title == expected and draft.attack_surface == "no control group"
-    assert draft.prompt_version.endswith("-v2")
+    assert draft.prompt_version.endswith("-v3" if path == "literature" else "-v2")  # #34 bumped literature

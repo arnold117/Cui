@@ -25,7 +25,7 @@ class _LitGen:
     def generate_additional(self, **kwargs):
         raise AssertionError("unused")
 
-    def generate_literature(self, *, question, claim, materials):
+    def generate_literature(self, *, question, claim, materials, prior_attack_surfaces):
         return ChallengeDraft(
             "the claim overreaches what these papers show",
             "the cited corpus supports a narrower scope",
@@ -62,7 +62,7 @@ def test_generate_literature_passes_locators_and_version():
     raw = json.dumps({"attack_surface": "a", "why_it_matters": "w", "self_check_method": "s", "uncertainty": 0.3})
     client = CapturingLLMClient([raw])
     gen = RealChallengeGenerator(client, "m1")
-    draft = gen.generate_literature(question="q?", claim="c.", materials=[{"locator": "arxiv:2401.00001", "excerpt": "body"}])
+    draft = gen.generate_literature(question="q?", claim="c.", materials=[{"locator": "arxiv:2401.00001", "excerpt": "body"}], prior_attack_surfaces=[])
     assert draft.prompt_version == PROMPT_VERSION_LITERATURE
     assert draft.basis_refs == ["arxiv:2401.00001"]
     assert "arxiv:2401.00001" in client.last_user
@@ -77,6 +77,18 @@ def test_service_literature_challenge_commits_event_with_basis():
     assert challenge.prompt_version == PROMPT_VERSION_LITERATURE
     assert "arxiv:2401.00001" in challenge.basis_refs
     assert challenge.generator_kind == "system"
+
+
+def test_literature_prompt_sees_round_attack_surfaces():
+    """#34: the round's existing attack surfaces reach the literature prompt, literature ones included."""
+    def raw(surface):
+        return json.dumps({"attack_surface": surface, "why_it_matters": "w", "self_check_method": "s", "uncertainty": "low"})
+    client = CapturingLLMClient([raw("首轮：RL 类训练收益算 RLHF 吗"), raw("文献一：只测了指令遵循"), raw("文献二")])
+    store, universe, service, wid, mat, rid = _seed(RealChallengeGenerator(client, "m1"))
+    service.generate_literature_challenge(universe, rid, [mat], "lit1", 0)
+    assert "Already-used attack surfaces" in client.last_user and "- 首轮：RL 类训练收益算 RLHF 吗" in client.last_user
+    service.generate_literature_challenge(universe, rid, [mat], "lit2", 0)
+    assert "- 首轮：RL 类训练收益算 RLHF 吗" in client.last_user and "- 文献一：只测了指令遵循" in client.last_user
 
 
 def test_service_literature_challenge_rejects_foreign_material():

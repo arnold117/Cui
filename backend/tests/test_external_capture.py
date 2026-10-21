@@ -20,7 +20,7 @@ class _Gen:
 
     def generate_additional(self, **_): raise AssertionError("unused")
 
-    def generate_literature(self, *, question, claim, materials):
+    def generate_literature(self, *, question, claim, materials, prior_attack_surfaces):
         return ChallengeDraft("overreach", "narrower scope", "check locators", "lit-v1", "m", [m["locator"] for m in materials], "medium")
 
 

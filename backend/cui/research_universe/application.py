@@ -52,6 +52,7 @@ class EvidenceCandidateDraft:
 class ChallengeGenerator(Protocol):
     def generate(self, *, question: str, claim: str) -> ChallengeDraft: ...
     def generate_additional(self, *, question: str, claim: str, prior_attack_surfaces: list[str]) -> ChallengeDraft: ...
+    def generate_literature(self, *, question: str, claim: str, materials: list[dict], prior_attack_surfaces: list[str]) -> ChallengeDraft: ...
 
 
 class EvidenceCandidateGenerator(Protocol):
@@ -700,8 +701,9 @@ class Slice1Service:
         command_payload = {"round_id": round_id, "material_ids": material_ids, **({"external_locators": sorted(r["locator"] for r in externals)} if externals else {})}
         prior = self._replay_commit(universe_id, command_id, "generate_literature_challenge", command_payload, ("challenge", challenge_id, expected_sequence))
         if prior: return prior
+        existing_surfaces = [c["attack_surface"] for c in _challenge_states(events).values() if c["review_round_id"] == round_id]
         try:
-            draft = gen(question=round_payload.question_text, claim=round_payload.claim_text, materials=materials)
+            draft = gen(question=round_payload.question_text, claim=round_payload.claim_text, materials=materials, prior_attack_surfaces=existing_surfaces)
         except Exception as exc:
             raise ChallengeGenerationFailed(str(exc)) from exc
         p = ChallengeCreatedPayload(challenge_id=challenge_id, round_id=round_id, claim_id=round_payload.claim_id, claim_version_id=round_payload.claim_version_id, claim_text=round_payload.claim_text, attack_surface=draft.attack_surface, why_it_matters=draft.why_it_matters, self_check_method=draft.self_check_method, generator_kind="system", prompt_version=draft.prompt_version, model_identifier=draft.model_identifier, basis_refs=draft.basis_refs, uncertainty=draft.uncertainty, title=draft.title)

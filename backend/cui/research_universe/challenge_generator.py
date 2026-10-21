@@ -11,7 +11,7 @@ from cui.llm.client import LLMClient
 from cui.research_universe.application import ChallengeDraft, EvidenceCandidateDraft
 
 PROMPT_VERSION = "slice1-narrow-challenge-v2"
-PROMPT_VERSION_LITERATURE = "slice1b-literature-challenge-v2"
+PROMPT_VERSION_LITERATURE = "slice1b-literature-challenge-v3"
 EXPANDED_CHALLENGE_PROMPT_VERSION = "slice6-expanded-challenge-v2"
 EVIDENCE_CANDIDATE_PROMPT_VERSION = "slice6-evidence-candidate-v1"
 
@@ -37,7 +37,7 @@ TITLE_MAX = 40
 TITLE_RULE = """title is a short list label (about 20 characters) for the ONE weakness you attack, in the same language as the claim. Form 「类型：短问句」, e.g. 「替代解释：是不是 RL 训练还不够久？」 or 「反例：开放式任务上为何也有提升？」; drop the type prefix when a plain short question names the weakness better, e.g. 「pass@k 的 k 取多大，才算能力边界？」. The title MUST name the specific weakness; vague labels such as 「一个值得思考的角度」 are forbidden."""
 
 
-SYSTEM_LITERATURE = """You are Cui's adversarial reviewer examining a claim against SELECTED literature. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty, title. Attack ONE specific inferential weakness in the claim, using the selected literature as your material: name the literature locator you rely on where relevant, and attack either a gap between the claim and what the literature actually supports, or a contradiction the literature exposes. self_check_method must be concrete and doable. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. """ + TITLE_RULE + """ Never supply a claim, verdict, answer, or direction."""
+SYSTEM_LITERATURE = """You are Cui's adversarial reviewer examining a claim against SELECTED literature. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty, title. Attack ONE specific inferential weakness in the claim, using the selected literature as your material: name the literature locator you rely on where relevant, and attack either a gap between the claim and what the literature actually supports, or a contradiction the literature exposes. The user may already have been challenged on the listed attack surfaces: choose an angle that is NOT already covered by any already-used attack surface. Do not repeat or paraphrase an existing attack surface; pick a new angle the literature exposes. self_check_method must be concrete and doable. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. """ + TITLE_RULE + """ Never supply a claim, verdict, answer, or direction."""
 
 
 SYSTEM = """You are Cui's adversarial reviewer. Return a JSON object only, with exactly: attack_surface, why_it_matters, self_check_method, uncertainty, title. Attack one specific inferential weakness in the claim against the stated question. self_check_method must be a concrete method the user can perform. Write attack_surface, why_it_matters, and self_check_method in the same language as the user-authored claim. """ + TITLE_RULE + """ Never supply a claim, verdict, answer, or direction."""
@@ -119,9 +119,10 @@ class RealChallengeGenerator:
         uncertainty = _check_challenge_schema(data, "Slice 1")
         return ChallengeDraft(attack_surface=data["attack_surface"], why_it_matters=data["why_it_matters"], self_check_method=data["self_check_method"], uncertainty=uncertainty, title=_title_text(data.get("title")), prompt_version=PROMPT_VERSION, model_identifier=self.model_identifier, basis_refs=["review_round.question_snapshot", "review_round.claim_snapshot"])
 
-    def generate_literature(self, *, question: str, claim: str, materials: list[dict]) -> ChallengeDraft:
+    def generate_literature(self, *, question: str, claim: str, materials: list[dict], prior_attack_surfaces: list[str]) -> ChallengeDraft:
         block = format_materials_block(materials)
-        user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nSelected literature (locator-prefixed):\n{block}"
+        used = "\n- ".join(prior_attack_surfaces) if prior_attack_surfaces else "(none yet)"
+        user = f"Question:\n{question}\n\nUser-authored claim:\n{claim}\n\nSelected literature (locator-prefixed):\n{block}\n\nAlready-used attack surfaces (attack a DIFFERENT angle; never repeat one):\n- {used}"
         data = self.client.complete_json(SYSTEM_LITERATURE, user)
         uncertainty = _check_challenge_schema(data, "Slice 1b literature challenge")
         basis_refs = [m.get("locator") or m.get("source_locator") or m.get("material_id") for m in materials]
