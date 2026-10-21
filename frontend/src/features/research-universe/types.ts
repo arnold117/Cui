@@ -55,7 +55,7 @@ export interface HomeProjection { universe_id: string; workspaces: WorkspaceDesk
 
 export type MaterialPurpose = "evidence" | "reference"
 export type MaterialParseStatus = "parsed" | "failed"
-export interface Material { id: string; workspace_id?: string; excerpt: string; source_locator?: string | null; parse_status: MaterialParseStatus; purpose: MaterialPurpose }
+export interface Material { id: string; workspace_id?: string; excerpt: string; source_locator?: string | null; parse_status: MaterialParseStatus; purpose: MaterialPurpose; content_scope?: S["MaterialCommand"]["content_scope"] }
 export type EvidenceRelation = "supports" | "contradicts" | "silent" | "cannot_assess"
 export type EvidenceStatus = "pending" | "confirmed" | "corrected" | "rejected" | "withdrawn"
 export interface MaterialAnchor { id: string; excerpt: string; source_locator?: string | null }

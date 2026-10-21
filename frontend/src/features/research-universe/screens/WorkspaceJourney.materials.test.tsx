@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppRouter } from "../../../router"
 import { WorkspaceJourney } from "./WorkspaceJourney"
+import { emptyDraft, saveDialogueDraft } from "../dialogueDraft"
 
 const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock)
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
@@ -57,5 +58,46 @@ describe("workspace material entry", () => {
     expect(JSON.parse(init.body)).toMatchObject({ purpose: "reference", expected_sequence: 0 })
     expect(await screen.findByText("context note")).toBeInTheDocument()
     expect(screen.getByText(/无来源定位 · 只作探索参考 · 已解析/)).toBeInTheDocument()
+  })
+})
+
+describe("已选文献带进证据台 (S4)", () => {
+  const paper = { material_id: null, locator: "arxiv:2504.13837", title: "Does RL Really Incentivize Reasoning?", excerpt: "base 模型在大 k 时反超。", url: null, reason: "r", source: "arxiv", stance: "s", relation: { kind: "supports" as const, note: "n" } }
+  const abstractMaterial = { id: "m-old", excerpt: paper.excerpt, source_locator: paper.locator, parse_status: "parsed", purpose: "evidence", content_scope: "abstract" }
+  beforeEach(() => saveDialogueDraft("w", { ...emptyDraft("w"), candidates: [paper], selected: [paper.locator] }))
+  afterEach(() => { window.localStorage?.clear?.(); window.sessionStorage.clear() })
+  // 投影里的 materials 由 POST 决定:去重时只回已有 id,投影照旧有那一份
+  function mockDesk(result: Record<string, unknown>) {
+    let materials: unknown[] = []
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith("/materials")) { materials = [abstractMaterial]; return response({ commit_position: 1, event_ids: result.deduplicated ? [] : ["e1"], result }) }
+      return response({ ...base, materials })
+    })
+  }
+  const bodyOf = () => JSON.parse(fetchMock.mock.calls.find(([url]) => String(url).endsWith("/materials"))![1].body)
+
+  it("sends evidence/parsed/abstract with the paper's locator and abstract, then shows 已在证据台 from desk.materials", async () => {
+    mockDesk({ material_id: "m-old", workspace_id: "w" })
+    view()
+    const list = await screen.findByRole("region", { name: "已选文献" })
+    expect(list).toHaveTextContent(paper.title)
+    fireEvent.click(screen.getByRole("button", { name: "带进证据台" }))
+    expect(await screen.findByText("✓ 已在证据台")).toBeInTheDocument()
+    expect(bodyOf()).toMatchObject({ purpose: "evidence", parse_status: "parsed", content_scope: "abstract", source_locator: paper.locator, excerpt: paper.excerpt, expected_sequence: 0 })
+    expect(screen.queryByRole("button", { name: "带进证据台" })).not.toBeInTheDocument()
+  })
+
+  it("a deduplicated response still ends in 已在证据台", async () => {
+    mockDesk({ material_id: "m-old", workspace_id: "w", deduplicated: true })
+    view()
+    fireEvent.click(await screen.findByRole("button", { name: "带进证据台" }))
+    expect(await screen.findByText("✓ 已在证据台")).toBeInTheDocument()
+  })
+
+  it("reads 已在证据台 from the projection on load (another device / reload), without a click", async () => {
+    fetchMock.mockResolvedValue(response({ ...base, materials: [abstractMaterial] }))
+    view()
+    expect(await screen.findByText("✓ 已在证据台")).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/materials"))).toBe(false)
   })
 })

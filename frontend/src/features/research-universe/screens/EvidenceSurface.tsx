@@ -101,7 +101,7 @@ export function EvidenceSurface({ round, onChanged }: { round: ReviewRound; onCh
           const ineligible = m.purpose === "reference"
           return <article key={m.id} className={`ru-material-card${ineligible ? " ru-material-ineligible" : ""}`}>
             <p className="ru-reading-copy">{m.excerpt}</p>
-            <p className="ru-provenance">{m.source_locator ?? "无来源定位"} · {ineligible ? "只作探索参考，不进入候选" : "待取证材料"}{m.parse_status === "failed" ? " · 无法判断" : ""}</p>
+            <p className="ru-provenance">{m.content_scope === "abstract" && <><span className="ru-tag">摘要</span> </>}{m.source_locator ?? "无来源定位"} · {ineligible ? "只作探索参考，不进入候选" : "待取证材料"}{m.parse_status === "failed" ? " · 无法判断" : ""}</p>
             {!ineligible && <div className="ru-material-generate"><button className="ru-quiet-button" disabled={generatingMaterial !== null} onClick={() => void generateEvidence(m)}>{generatingMaterial === m.id ? "Cui 正在取证…" : "让 Cui 提出取证候选"}</button></div>}
           </article>
         })}

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ReviewRoundDesk } from "./ReviewRoundDesk"
 import { researchUniverse } from "../api"
@@ -300,5 +300,47 @@ describe("ReviewRoundDesk literature challenge in the embedded panel (S2)", () =
     vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound())
     render(<AppRouter><ReviewRoundDesk roundId="r-1" literature={{ evidence: [] }} /></AppRouter>)
     expect(await screen.findByRole("button", { name: "用所选文献发难" })).toBeDisabled()
+  })
+})
+
+describe("ReviewRoundDesk answer citations (S4)", () => {
+  const citable = {
+    materials: [{ id: "m-1", excerpt: "base 模型在大 k 时反超 RL 模型。", source_locator: "arXiv:2504.13837", parse_status: "parsed" as const, purpose: "evidence" as const, content_scope: "abstract" as const }],
+    anchors: [{ id: "a-1", note_id: "n-1", note_revision_id: "nr-1", start: 0, end: 6, selected_text: "采样效率而非能力" }],
+  }
+
+  it("offers the passed-in materials and anchors (no extra fetch) and sends the picked ids as provisional_anchor_refs", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockReset().mockResolvedValue(makeRound())
+    vi.mocked(researchUniverse.desk).mockReset()
+    vi.mocked(researchUniverse.answerChallenge).mockReset().mockResolvedValue(responded({ challenge_id: "ch-1", review_round_id: "r-1", answer_version_id: "av-1" }))
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" citable={citable} /></AppRouter>)
+    await screen.findByText("边界尚未说明")
+    expect(screen.getByText("引用的内容在裁决账本里记为「带入但未确认」，不等于取证事实。")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "＋ 引用" }))
+    const options = within(screen.getByRole("listbox", { name: "引用本问题的证据材料与探索稿锚点" })).getAllByRole("option")
+    expect(options).toHaveLength(2)
+    expect(options[0]).toHaveTextContent(/arXiv:2504\.13837 · base 模型.*摘要/)
+    expect(options[1]).toHaveTextContent("「采样效率而非能力」")
+    fireEvent.click(options[0]); fireEvent.click(options[1])
+    expect(options[0]).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("button", { name: "移除引用 arXiv:2504.13837（摘要）" })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("你的应答"), { target: { value: "只读了摘要" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存应答" }))
+    await waitFor(() => expect(researchUniverse.answerChallenge).toHaveBeenCalledWith("ch-1", expect.objectContaining({ answer_text: "只读了摘要", provisional_anchor_refs: ["m-1", "a-1"] })))
+    expect(researchUniverse.desk).not.toHaveBeenCalled()
+  })
+
+  it("a 409 on a bad ref shows the error and keeps the typed answer and its refs", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockReset().mockResolvedValue(makeRound())
+    vi.mocked(researchUniverse.answerChallenge).mockReset().mockRejectedValue(Object.assign(new Error("answer refs must be material or anchor ids of this workspace: ['m-gone']"), { status: 409 }))
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" citable={citable} /></AppRouter>)
+    await screen.findByText("边界尚未说明")
+    fireEvent.change(screen.getByLabelText("你的应答"), { target: { value: "我的回应" } })
+    fireEvent.click(screen.getByRole("button", { name: "＋ 引用" }))
+    fireEvent.click(screen.getAllByRole("option")[0])
+    fireEvent.click(screen.getByRole("button", { name: "保存应答" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(/answer refs must be/)
+    expect(screen.getByLabelText("你的应答")).toHaveValue("我的回应")
+    expect(screen.getByRole("button", { name: "移除引用 arXiv:2504.13837（摘要）" })).toBeInTheDocument()
   })
 })

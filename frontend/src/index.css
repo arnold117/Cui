@@ -245,6 +245,15 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-journey-tool { border-top: 1px solid var(--line); }
 .ru-journey-tool-body { padding: 0 .95rem 1rem; }
 .ru-journey-tool-body .ru-note { min-height: 12rem; margin: .8rem 0; }
+/* 左栏已选文献(S4):每篇可带进证据台;已在证据台由投影推导 */
+.ru-papers { margin-top: 1.3rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.ru-sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .3rem .6rem; margin: 0; }
+.ru-sec-head b { font-size: .9rem; }
+.ru-paper { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .3rem .8rem; align-items: center; padding: .6rem 0; border-bottom: 1px solid var(--line); }
+.ru-paper .ru-paper-title { margin: 0; font-size: .9rem; }
+.ru-papers .ru-paper-meta { display: block; margin: 0; font-size: .76rem; }
+.ru-paper .ru-outline-button { padding: .24rem .55rem; font-size: .78rem; white-space: nowrap; }
+.ru-in-desk { color: var(--edge); font-size: .78rem; white-space: nowrap; }
 /* 两栏:左栏旅程(26–34rem)+ 右侧聚焦面(审查轮 / 锻),各自滚动;旅程页占满 main,不留 main 的留白 */
 .ru-main:has(> .ru-journey-layout) { padding: 0; place-items: stretch; }
 .ru-journey-layout { display: grid; grid-template-columns: minmax(26rem, 34rem) minmax(0, 1fr); height: calc(100vh - 61px); }
@@ -259,6 +268,21 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 .ru-lit-pick { display: grid; gap: .4rem; margin: .7rem 0 0; padding: .7rem .85rem; border: 0; border-left: 2px solid var(--line); background: color-mix(in srgb, var(--stone) 35%, var(--paper)); font-size: .86rem; }
 .ru-lit-pick legend { float: left; margin-bottom: .2rem; color: var(--muted); font-size: .8rem; }
 .ru-lit-pick label { display: flex; gap: .45rem; align-items: baseline; cursor: pointer; }
+/* 应答引用(S4):＋ 引用 → 选择器(待取证材料 + 探索稿锚点),已选的成 chip */
+.ru-cite-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .5rem 0; }
+.ru-cite-row .ru-quiet-button { font-size: .84rem; }
+.ru-cite-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .16rem .55rem; border: 1px solid var(--line); background: color-mix(in srgb, var(--stone) 40%, var(--paper)); font-size: .78rem; }
+.ru-cite-chip button { padding: 0; border: 0; background: none; color: var(--muted); font-size: .95rem; line-height: 1; cursor: pointer; }
+.ru-cite-chip button:hover { color: var(--ink); }
+.ru-cite-picker { max-width: 36rem; margin: .2rem 0 .5rem; padding: .35rem 0; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 8px 22px rgb(34 39 37 / 7%); }
+.ru-cite-picker > p { margin: .45rem .8rem .15rem; color: var(--muted); font-size: .72rem; letter-spacing: .06em; }
+.ru-cite-picker > .ru-cite-empty { margin-top: 0; font-size: .8rem; letter-spacing: 0; }
+.ru-cite-opt { display: flex; gap: .55rem; align-items: baseline; width: 100%; padding: .38rem .8rem; border: 0; background: none; color: var(--ink); text-align: left; font-size: .84rem; cursor: pointer; }
+.ru-cite-opt:hover { background: color-mix(in srgb, var(--stone) 50%, transparent); }
+.ru-cite-opt-label { flex: 1; }
+.ru-cite-box { display: inline-grid; flex: none; place-items: center; width: .95rem; height: .95rem; border: 1px solid var(--ink); font-size: .62rem; }
+.ru-cite-opt[aria-selected="true"] .ru-cite-box { background: var(--ink); color: var(--paper); }
+.ru-cite-note { margin: .3rem 0 0; color: var(--muted); font-size: .76rem; line-height: 1.55; }
 /* 对抗卡:claim 列表(左边线 rust = 有待回应,edge = 已裁决,灰 = 安静) */
 .ru-claims { display: grid; gap: .45rem; margin: .5rem 0 0; padding: 0; list-style: none; }
 .ru-claim { display: grid; gap: .35rem; justify-items: start; width: 100%; padding: .65rem .8rem; border: 1px solid var(--line); border-left: 3px solid var(--rust); background: color-mix(in srgb, var(--stone) 25%, var(--paper)); color: var(--ink); text-align: left; font: inherit; }

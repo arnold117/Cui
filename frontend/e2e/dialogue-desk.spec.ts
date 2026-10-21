@@ -94,7 +94,7 @@ async function stage2(page: Page, calls: Call[]) {
   for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "选入", exact: true }).first().click()
   await expect(page.getByText(/已选 3 篇/)).toBeVisible()
   // 真实布局下的卡片与按钮真的可见(jsdom 只保证在树里)
-  await expect(page.getByText("Reasoning evaluation")).toBeVisible()
+  await expect(page.getByLabel("会话阶段").getByText("Reasoning evaluation")).toBeVisible() // 左栏「已选文献」也列着它
   await expect(page.getByRole("button", { name: /梳理这几篇覆盖了什么 →/ })).toBeVisible()
   await page.getByRole("button", { name: /梳理这几篇覆盖了什么 →/ }).click()
 }
@@ -243,7 +243,7 @@ test("leave and re-enter restores the session at the same stage with keywords ke
   await page.getByRole("button", { name: /^选料/ }).click()
   await expect(page.getByLabel(/检索词\(用分号/)).toHaveValue("RLHF reasoning; 偏好对齐")
   await expect(page.getByRole("button", { name: /✓ RLHF reasoning/ })).toBeVisible()
-  await expect(page.getByText("Reasoning evaluation")).toBeVisible()
+  await expect(page.getByLabel("会话阶段").getByText("Reasoning evaluation")).toBeVisible() // 左栏「已选文献」也列着它
   // 重进不重跑检索,恢复出来的选中文献保留(#2)
   await expect(page.getByText(/已选 3 篇/)).toBeVisible()
   await page.waitForTimeout(800) // 越过 500ms 防抖窗口,确认没有迟到的检索

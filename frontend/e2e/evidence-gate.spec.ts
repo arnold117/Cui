@@ -61,3 +61,45 @@ test("bring a material, propose a contradiction, confirm it, and see the determi
   await expect(page.getByText(/生成依据：m-1 · ec-1 · 不确定性：已确认取证事实/)).toBeVisible()
   expect(requests.find(x => x.url.endsWith("/confirm"))?.body).toMatchObject({ expected_sequence: 1 })
 })
+
+test("bring a selected paper into the evidence desk (摘要) and cite it in an answer (S4)", async ({ page }) => {
+  const paper = { material_id: null, locator: "arXiv:2504.13837", title: "Does Reinforcement Learning Really Incentivize Reasoning Capacity?", excerpt: "Base models overtake RLVR models at large k.", url: null, reason: "r", source: "arxiv", stance: "s", relation: { kind: "supports", note: "n" } }
+  await page.addInitScript((draft) => window.localStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify(draft)), { v: 2, workspaceId: "w-1", hypothesesText: "h", hypothesesDone: true, keywordsText: "", selectedKeywords: [], candidates: [paper], selected: [paper.locator], searchQueries: ["q"], claimText: "", confirmedGapIds: [] })
+  let desk2 = { ...desk, materials: [] as Record<string, unknown>[] }
+  const round2 = { ...round, evidence_candidates: [], confirmed_facts: [], challenges: [challenge] }
+  const requests: { url: string; body?: Record<string, unknown> }[] = []
+  await page.route("**/api/v2/**", async route => {
+    const req = route.request(), url = new URL(req.url()).pathname, method = req.method(), body = req.postDataJSON?.() as Record<string, unknown>
+    requests.push({ url, body })
+    const json = (value: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(value) })
+    if (method === "GET" && url === "/api/v2/workspaces/w-1") return json(desk2)
+    if (method === "GET" && url === "/api/v2/review-rounds/r-1") return json(round2)
+    if (method === "POST" && url === "/api/v2/workspaces/w-1/materials") {
+      desk2 = { ...desk2, materials: [...desk2.materials, { id: "m-1", workspace_id: "w-1", excerpt: body.excerpt, source_locator: body.source_locator, parse_status: body.parse_status, purpose: body.purpose, content_scope: body.content_scope }] }
+      return json({ commit_position: 1, event_ids: ["e1"], result: { material_id: "m-1", workspace_id: "w-1" }, fragment: desk2 })
+    }
+    if (method === "POST" && url === "/api/v2/challenges/ch-1/answers") return json({ commit_position: 2, event_ids: ["e2"], result: { challenge_id: "ch-1", review_round_id: "r-1", answer_version_id: "av-1" } })
+    return route.fulfill({ status: 404, body: JSON.stringify({ detail: url }) })
+  })
+
+  await page.goto("/workspaces/w-1")
+  const papers = page.getByRole("region", { name: "已选文献" })
+  await papers.getByRole("button", { name: "带进证据台" }).click()
+  await expect(papers.getByText("✓ 已在证据台")).toBeVisible()
+  expect(requests.find(x => x.url.endsWith("/materials"))?.body).toMatchObject({ purpose: "evidence", parse_status: "parsed", content_scope: "abstract", source_locator: paper.locator, excerpt: paper.excerpt, expected_sequence: 0 })
+  // 「已在证据台」来自投影:重进页面仍在,不会再带一次
+  await page.reload()
+  await expect(papers.getByText("✓ 已在证据台")).toBeVisible()
+  expect(requests.filter(x => x.url.endsWith("/materials"))).toHaveLength(1)
+
+  await page.goto("/workspaces/w-1/rounds/r-1")
+  await page.getByRole("tab", { name: "取证" }).click()
+  await expect(page.locator(".ru-evidence-materials article").filter({ hasText: paper.locator }).getByText("摘要", { exact: true })).toBeVisible()
+  await page.getByRole("tab", { name: /^应答/ }).click()
+  await page.getByLabel("你的应答").fill("Only the abstract so far; large-k overtaking is what it reports.")
+  await page.getByRole("button", { name: "＋ 引用" }).click()
+  await page.getByRole("option", { name: new RegExp(paper.locator) }).click()
+  await expect(page.getByRole("button", { name: `移除引用 ${paper.locator}（摘要）` })).toBeVisible()
+  await page.getByRole("button", { name: "保存应答" }).click()
+  await expect.poll(() => requests.find(x => x.url.endsWith("/answers"))?.body).toMatchObject({ answer_text: "Only the abstract so far; large-k overtaking is what it reports.", provisional_anchor_refs: ["m-1"] })
+})

@@ -136,4 +136,13 @@ describe("ReviewRoundDesk evidence surface", () => {
     expect(options("ec-fail")).toEqual(["", "supports", "contradicts"])
     expect(options("ec-1")).toEqual(["", "supports", "silent", "cannot_assess"])
   })
+
+  it("tags abstract-only materials 「摘要」 and leaves full ones untagged (S4)", async () => {
+    vi.mocked(researchUniverse.reviewRound).mockResolvedValue(makeRound({ evidence_candidates: [] }))
+    vi.mocked(researchUniverse.desk).mockResolvedValue({ ...desk, materials: [{ id: "m-a", excerpt: "abstract only", source_locator: "arXiv:1", parse_status: "parsed", purpose: "evidence", content_scope: "abstract" }, { id: "m-f", excerpt: "full text", source_locator: "Paper F", parse_status: "parsed", purpose: "evidence", content_scope: "full" }] })
+    render(<AppRouter><ReviewRoundDesk roundId="r-1" /></AppRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: /^取证/ }))
+    expect((await screen.findByText(/^arXiv:1/)).closest("article")).toHaveTextContent(/^abstract only摘要 arXiv:1/)
+    expect(screen.getByText(/^Paper F/).closest("article")).not.toHaveTextContent("摘要")
+  })
 })

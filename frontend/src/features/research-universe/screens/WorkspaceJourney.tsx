@@ -57,6 +57,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState<number | null>(null) // 展开哪一张阶段卡;null = 跟随推导出的当前阶段
   const [rewriting, setRewriting] = useState(false)
+  const [bringing, setBringing] = useState<string>() // 正在带进证据台的那篇(locator)
   const [hasProgress, setHasProgress] = useState(() => dialogueProgress(workspaceId).exists)
   const bootstrapped = useRef(false)
   const panelRef = useRef<HTMLElement>(null)
@@ -84,6 +85,16 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       setError(e instanceof Error ? e.message : "带入材料失败")
       if ((e as { status?: number }).status === 409) { materialCommand.current = undefined; setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) }
     } finally { if (isCurrent(currentGeneration, currentId)) setMaterialPending(false) }
+  }
+  // S4:已选文献带进证据台(只有摘要)。「已在证据台」只从投影推导,重进/换设备都对;同一篇后端去重,返回已有 material_id
+  async function bringToDesk(c: DialogueCandidate) {
+    if (bringing) return
+    const currentGeneration = routeGeneration.current, currentId = workspaceId
+    setBringing(c.locator); setError(undefined)
+    try {
+      await researchUniverse.addMaterial(currentId, command({ excerpt: c.excerpt || c.title, source_locator: c.locator, parse_status: "parsed" as const, purpose: "evidence" as const, content_scope: "abstract" as const }, 0))
+      if (isCurrent(currentGeneration, currentId)) await load(() => isCurrent(currentGeneration, currentId))
+    } catch (e) { if (isCurrent(currentGeneration, currentId)) setError(e instanceof Error ? e.message : "带进证据台失败") } finally { if (isCurrent(currentGeneration, currentId)) setBringing(undefined) }
   }
   // 页头位置:暂停理由可选,重开理由必填(必填只在前端做,后端 user_reason 可空)
   async function lifecycleAction(action: "pause" | "reopen") {
@@ -379,6 +390,8 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   const pendingCount = pendingItems.length
   const confirmedGapCount = (desk.landscape?.gaps ?? []).filter((g) => g.status === "confirmed" || g.status === "corrected").length
   const gapClaimIds = new Set((desk.landscape?.gaps ?? []).flatMap((g) => (g.challenges ?? []).map((c) => c.claim_id))) // 反证 gap 写成的 claim
+  const evidenceMaterials = (desk.materials ?? []).filter((m) => m.purpose === "evidence")
+  const inDesk = (locator: string) => evidenceMaterials.some((m) => m.parse_status === "parsed" && m.source_locator === locator) // 同后端去重口径
 
   const positionControls = <div className="ru-lifecycle" aria-label="工作区位置">
     {!lifecycleForm && position === "exploring" && <button className="ru-outline-button" onClick={() => setLifecycleForm("pause")}>暂停</button>}
@@ -461,6 +474,14 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       })}
     </ol>
 
+    {chosen.length > 0 && <section className="ru-papers" aria-label="已选文献">
+      <p className="ru-sec-head"><b>已选文献 · {chosen.length}</b><span className="ru-paper-meta">来自「选料」· 本机草稿</span></p>
+      <ul className="ru-plain">{chosen.map((c) => <li key={c.locator} className="ru-paper">
+        <div><span className="ru-paper-title">{c.title}</span><span className="ru-paper-meta">{c.source && c.source !== "corpus" ? `${c.source} · ` : "语料 · "}{c.locator}</span></div>
+        {inDesk(c.locator) ? <span className="ru-in-desk">✓ 已在证据台</span> : <button type="button" className="ru-outline-button" disabled={Boolean(bringing)} onClick={() => void bringToDesk(c)}>{bringing === c.locator ? "带入中…" : "带进证据台"}</button>}
+      </li>)}</ul>
+    </section>}
+
     <details className="ru-journey-tools">
       <summary>工具<small>探索稿 · 手动加一份材料 · PARK 放行引用</small></summary>
       <details className="ru-journey-tool">
@@ -490,7 +511,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   </section>
   // 右侧聚焦面:锻 / 审查轮(gap 阶段里收起 = 回到现状)/ gap 阶段的现状图景 / 都没开时一行安静提示(结晶账本另有票)
   const panel = forging ? <ReleaseForge workspaceId={workspaceId} releaseRef={forgeRef!} />
-    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} closeLabel={shown === 5 ? "回到现状" : undefined} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: (desk.materials ?? []).filter((m) => m.purpose === "evidence") }} />
+    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} closeLabel={shown === 5 ? "回到现状" : undefined} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: evidenceMaterials }} citable={{ materials: evidenceMaterials, anchors: desk.anchors }} />
     : shown === 5 && desk.landscape ? <LandscapePanel landscape={desk.landscape} rounds={desk.review_rounds} onOpen={openRound} coverage={{ summary: state.summary, papers: chosen.map((c) => ({ locator: c.locator, title: c.title, relation: c.relation ? RELATION_LABELS[c.relation.kind] ?? c.relation.kind : undefined })) }} />
     : <div className="ru-panel-empty"><p className="ru-kicker">审查轮</p><p>{shown === 4 ? "点一条 claim，它的审查轮在这里打开；左栏保持可见，不离开这一页。" : "从「对抗」打开一条 claim 的审查轮。"}</p></div>
   return <div className="ru-journey-layout">{page}<aside ref={panelRef} className="ru-journey-panel" aria-label="聚焦面">{panel}</aside></div>
