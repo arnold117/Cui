@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { command, researchUniverse } from "../api"
 import { useNavigation } from "../../../router"
-import { GapChallengeComposer } from "./GapChallengeComposer"
-import { GapList, LandscapePanel, survivingClaims, VERDICT_LABELS } from "./LandscapePanel"
+import { GapList, LandscapePanel, LedgerPanel, short, survivingClaims, VERDICT_LABELS } from "./LandscapePanel"
 import { ReleaseForge } from "./ReleaseForge"
 import { ReviewRoundDesk } from "./ReviewRoundDesk"
-import type { CitationReport, CommandEnvelope, ConclusionType, DialogueCandidate, MaterialPurpose, ParkReleaseRef, WorkspaceDesk as Desk, WorkspacePosition } from "../types"
+import type { CitationReport, CommandEnvelope, ConclusionType, DialogueCandidate, HomeProjection, MaterialPurpose, ParkReleaseRef, WorkspaceDesk as Desk, WorkspacePosition } from "../types"
 import { CLAIM_KINDS, clearDialogueDraft, dialogueProgress, emptyDraft, hasClaimBlanks, journeyStage, loadDialogueDraft, saveDialogueDraft, STAGE_DESCRIPTIONS, STAGE_LABELS, type ClaimKind, type DialogueDraft } from "../dialogueDraft"
 
-const POSITION_LABELS: Record<WorkspacePosition, string> = { exploring: "探索中", paused: "已暂停", concluded: "已结晶", branched: "已分支", absorbed: "已并入" }
+const POSITION_LABELS: Record<WorkspacePosition, string> = { exploring: "探索中", paused: "已暂停", concluded: "已确认位置", branched: "已分支", absorbed: "已并入" }
 const CONCLUSION_OPTIONS: { type: ConclusionType; label: string; note?: string }[] = [
   { type: "tentative_answer", label: "暂时回答", note: "这是一段可检验的回答" },
   { type: "negated_path", label: "否定路径", note: "这条路被证伪或放弃了" },
@@ -49,7 +48,9 @@ type ClaimIntent = { claim: CommandEnvelope & { text: string; kind?: Exclude<Cla
  * 会话草稿存 localStorage,可退出、可再进;claim/审查轮/gap/结论以轨迹为准。
  */
 export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceReleaseId, roundId }: { workspaceId: string; forgeReleaseRefId?: string; sourceReleaseId?: string; roundId?: string }) {
-  const { navigate } = useNavigation(); const [desk, setDesk] = useState<Desk | null>(null); const [sourceRef, setSourceRef] = useState<ParkReleaseRef | undefined>(); const [note, setNote] = useState(""); const [selected, setSelected] = useState<Selection>(); const [error, setError] = useState<string>(); const [conflict, setConflict] = useState(false); const [savePending, setSavePending] = useState(false); const draftGeneration = useRef(0); const noteCommand = useRef<(CommandEnvelope & { text: string }) | undefined>(undefined); const anchorCommand = useRef<(CommandEnvelope & { note_id: string; note_revision_id: string; start: number; end: number; selected_text: string }) | undefined>(undefined); const claimIntent = useRef<ClaimIntent | undefined>(undefined); const routeGeneration = useRef(0); const routeId = useRef(workspaceId); const [materialExcerpt, setMaterialExcerpt] = useState(""); const [materialSource, setMaterialSource] = useState(""); const [materialPurpose, setMaterialPurpose] = useState<MaterialPurpose>("evidence"); const [materialUnparsable, setMaterialUnparsable] = useState(false); const [materialPending, setMaterialPending] = useState(false); const materialCommand = useRef<(CommandEnvelope & { excerpt: string; source_locator?: string | null; parse_status: "parsed" | "failed"; purpose: MaterialPurpose }) | undefined>(undefined); const [lifecycleForm, setLifecycleForm] = useState<"pause" | "reopen" | null>(null); const [lifecycleReason, setLifecycleReason] = useState(""); const [crystallizing, setCrystallizing] = useState(false); const [conclusionText, setConclusionText] = useState(""); const [conclusionType, setConclusionType] = useState<ConclusionType | null>(null); const [revivalCondition, setRevivalCondition] = useState(""); const [concluding, setConcluding] = useState(false); const [branchOpen, setBranchOpen] = useState(false); const [branchQuestion, setBranchQuestion] = useState(""); const [branchReason, setBranchReason] = useState(""); const [branchPending, setBranchPending] = useState(false); const [absorbOpen, setAbsorbOpen] = useState(false); const [absorbTarget, setAbsorbTarget] = useState(""); const [absorbReason, setAbsorbReason] = useState(""); const [absorbPending, setAbsorbPending] = useState(false); const [impactOpen, setImpactOpen] = useState(false); const [impactChoice, setImpactChoice] = useState<"stay" | "crystallize" | "rephrase">("stay"); const [impactBusy, setImpactBusy] = useState(false);
+  const { navigate } = useNavigation(); const [desk, setDesk] = useState<Desk | null>(null); const [sourceRef, setSourceRef] = useState<ParkReleaseRef | undefined>(); const [note, setNote] = useState(""); const [selected, setSelected] = useState<Selection>(); const [error, setError] = useState<string>(); const [conflict, setConflict] = useState(false); const [savePending, setSavePending] = useState(false); const draftGeneration = useRef(0); const noteCommand = useRef<(CommandEnvelope & { text: string }) | undefined>(undefined); const anchorCommand = useRef<(CommandEnvelope & { note_id: string; note_revision_id: string; start: number; end: number; selected_text: string }) | undefined>(undefined); const claimIntent = useRef<ClaimIntent | undefined>(undefined); const routeGeneration = useRef(0); const routeId = useRef(workspaceId); const [materialExcerpt, setMaterialExcerpt] = useState(""); const [materialSource, setMaterialSource] = useState(""); const [materialPurpose, setMaterialPurpose] = useState<MaterialPurpose>("evidence"); const [materialUnparsable, setMaterialUnparsable] = useState(false); const [materialPending, setMaterialPending] = useState(false); const materialCommand = useRef<(CommandEnvelope & { excerpt: string; source_locator?: string | null; parse_status: "parsed" | "failed"; purpose: MaterialPurpose }) | undefined>(undefined); const [lifecycleForm, setLifecycleForm] = useState<"pause" | "reopen" | null>(null); const [lifecycleReason, setLifecycleReason] = useState(""); const [conclusionText, setConclusionText] = useState(""); const [conclusionType, setConclusionType] = useState<ConclusionType | null>(null); const [revivalCondition, setRevivalCondition] = useState(""); const [concluding, setConcluding] = useState(false); const [branchOpen, setBranchOpen] = useState(false); const [branchQuestion, setBranchQuestion] = useState(""); const [branchReason, setBranchReason] = useState(""); const [branchPending, setBranchPending] = useState(false); const [absorbOpen, setAbsorbOpen] = useState(false); const [absorbTarget, setAbsorbTarget] = useState(""); const [absorbReason, setAbsorbReason] = useState(""); const [absorbPending, setAbsorbPending] = useState(false);
+  // 结晶阶段(S6):位置的理由;去向 = 挂已有方向 / 从 gap 新建(签名才生效,签后再改即失效)/ 只留本次;home 只供方向下拉与「已结晶到哪个方向」
+  const [conclusionReason, setConclusionReason] = useState(""); const [dest, setDest] = useState<"attach" | "new" | "local" | null>(null); const [destDirection, setDestDirection] = useState(""); const [destGap, setDestGap] = useState(""); const [proposition, setProposition] = useState(""); const [signed, setSigned] = useState(false); const [destBusy, setDestBusy] = useState(false); const [home, setHome] = useState<HomeProjection | null>(null); const [homeError, setHomeError] = useState(false)
   // 会话草稿(本机)。页面按 workspaceId 加 key 挂载(App.tsx),换工作区即重建,草稿不会串到别的工作区。
   const [state, setState] = useState<DialogueDraft>(() => loadDialogueDraft(workspaceId))
   const [busy, setBusy] = useState(false)
@@ -63,7 +64,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   const panelRef = useRef<HTMLElement>(null)
 
   async function load(accept = () => true) { try { const value = await researchUniverse.desk(workspaceId); if (accept()) { setDesk(value); if (!noteCommand.current && draftGeneration.current === 0) setNote(value.note?.text ?? ""); setError(undefined); bootstrap(value) } } catch (e) { if (accept()) setError(e instanceof Error ? e.message : "读取失败") } }
-  useEffect(() => { let live = true; routeGeneration.current++; routeId.current = workspaceId; noteCommand.current = undefined; anchorCommand.current = undefined; claimIntent.current = undefined; materialCommand.current = undefined; setSavePending(false); setMaterialPending(false); setMaterialExcerpt(""); setMaterialSource(""); setMaterialPurpose("evidence"); setMaterialUnparsable(false); setSourceRef(undefined); setConflict(false); setDesk(null); setError(undefined); setSelected(undefined); setLifecycleForm(null); setLifecycleReason(""); setCrystallizing(false); setConclusionText(""); setConclusionType(null); setRevivalCondition(""); setConcluding(false); setBranchOpen(false); setBranchQuestion(""); setBranchReason(""); setBranchPending(false); setAbsorbOpen(false); setAbsorbTarget(""); setAbsorbReason(""); setAbsorbPending(false); setImpactOpen(false); setImpactChoice("stay"); setImpactBusy(false); draftGeneration.current = 0; void load(() => live); return () => { live = false } }, [workspaceId])
+  useEffect(() => { let live = true; routeGeneration.current++; routeId.current = workspaceId; noteCommand.current = undefined; anchorCommand.current = undefined; claimIntent.current = undefined; materialCommand.current = undefined; setSavePending(false); setMaterialPending(false); setMaterialExcerpt(""); setMaterialSource(""); setMaterialPurpose("evidence"); setMaterialUnparsable(false); setSourceRef(undefined); setConflict(false); setDesk(null); setError(undefined); setSelected(undefined); setLifecycleForm(null); setLifecycleReason(""); setConclusionText(""); setConclusionType(null); setRevivalCondition(""); setConcluding(false); setBranchOpen(false); setBranchQuestion(""); setBranchReason(""); setBranchPending(false); setAbsorbOpen(false); setAbsorbTarget(""); setAbsorbReason(""); setAbsorbPending(false); draftGeneration.current = 0; void load(() => live); return () => { live = false } }, [workspaceId])
   function editNote(text: string) { draftGeneration.current++; setNote(text); setSelected(undefined); noteCommand.current = undefined }
   const isCurrent = (generation: number, id: string) => generation === routeGeneration.current && id === routeId.current
   async function saveNote() { if (!desk || savePending) return; const currentGeneration = routeGeneration.current, currentId = workspaceId; const generation = draftGeneration.current; noteCommand.current ??= command({ text: note }, desk.sequence); setSavePending(true); try { const result = await researchUniverse.saveNote(currentId, noteCommand.current); if (!isCurrent(currentGeneration, currentId)) return; noteCommand.current = undefined; const fragment = result.fragment as Desk | undefined; if (fragment?.id) { setDesk(fragment); if (draftGeneration.current === generation) { setNote(fragment.note?.text ?? note); draftGeneration.current = 0 } void load(() => isCurrent(currentGeneration, currentId)) } else void load(() => isCurrent(currentGeneration, currentId)) } catch (e) { if (!isCurrent(currentGeneration, currentId)) return; setError(e instanceof Error ? e.message : "保存失败"); if ((e as { status?: number }).status === 409) { noteCommand.current = undefined; setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) } } finally { if (isCurrent(currentGeneration, currentId)) setSavePending(false) } }
@@ -110,13 +111,13 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
     } catch (e) { if (!isCurrent(currentGeneration, currentId)) return; setError(e instanceof Error ? e.message : (action === "pause" ? "暂停失败" : "重开失败")); if ((e as { status?: number }).status === 409) { setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) } }
   }
   async function conclude() {
-    if (!desk || concluding || !conclusionType || !conclusionText.trim() || (conclusionType === "deferred" && !revivalCondition.trim())) return
+    if (!desk || concluding || !conclusionType || !conclusionText.trim() || !conclusionReason.trim() || (conclusionType === "deferred" && !revivalCondition.trim())) return
     const currentGeneration = routeGeneration.current, currentId = workspaceId
     setConcluding(true)
     try {
-      await researchUniverse.concludeWorkspace(currentId, command({ conclusion_type: conclusionType, conclusion_text: conclusionText.trim(), user_reason: null, basis_refs: [], revival_condition: conclusionType === "deferred" ? revivalCondition.trim() : null }, desk.sequence))
+      await researchUniverse.concludeWorkspace(currentId, command({ conclusion_type: conclusionType, conclusion_text: conclusionText.trim(), user_reason: conclusionReason.trim(), basis_refs: [], revival_condition: conclusionType === "deferred" ? revivalCondition.trim() : null }, desk.sequence))
       if (!isCurrent(currentGeneration, currentId)) return
-      setCrystallizing(false); setConclusionText(""); setConclusionType(null); setRevivalCondition(""); setImpactOpen(true)
+      setConclusionText(""); setConclusionType(null); setConclusionReason(""); setRevivalCondition(""); setDest(null); setSigned(false)
       void load(() => isCurrent(currentGeneration, currentId))
     } catch (e) { if (!isCurrent(currentGeneration, currentId)) return; setError(e instanceof Error ? e.message : "结晶失败"); if ((e as { status?: number }).status === 409) { setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) } } finally { if (isCurrent(currentGeneration, currentId)) setConcluding(false) }
   }
@@ -142,22 +143,21 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       void load(() => isCurrent(currentGeneration, currentId))
     } catch (e) { if (!isCurrent(currentGeneration, currentId)) return; setError(e instanceof Error ? e.message : "吸收失败"); if ((e as { status?: number }).status === 409) { setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) } } finally { if (isCurrent(currentGeneration, currentId)) setAbsorbPending(false) }
   }
-  async function confirmImpact() {
-    if (!desk || impactBusy) return
-    const firstLink = desk.direction_links?.[0]; if (!firstLink || impactChoice === "stay") { setImpactOpen(false); return }
+  async function loadHome() { try { const active = await researchUniverse.active(); setHome(await researchUniverse.home(active.id)); setHomeError(false) } catch { setHomeError(true) } }
+  // 这次结论去哪:挂已有 / 从 gap 新建 = 一条原子命令(写入的都是新聚合 ⇒ expected_sequence 0);只留本次 = 本机标记,不调方向命令
+  async function settleDestination() {
+    const conclusion = desk?.conclusion
+    if (!desk || !conclusion || destBusy || !dest) return
+    if (dest === "local") { patch({ keptLocal: conclusion.id }); return }
+    if (dest === "attach" ? !destDirection : !signed || !proposition.trim()) return
     const currentGeneration = routeGeneration.current, currentId = workspaceId
-    setImpactBusy(true)
+    setDestBusy(true)
     try {
-      if (impactChoice === "crystallize") {
-        if (!desk.conclusion) return
-        await researchUniverse.attachCrystallization(firstLink.direction_id, command({ workspace_id: currentId, conclusion_id: desk.conclusion.id, user_reason: null }, 0))
-      } else {
-        navigate(`/directions/${firstLink.direction_id}?rephrase=1&source_conclusion=${encodeURIComponent(desk.conclusion?.id ?? "")}`)
-      }
+      await researchUniverse.crystallizeIntoDirection(currentId, command({ conclusion_id: conclusion.id, direction_id: dest === "attach" ? destDirection : null, new_proposition: dest === "new" ? proposition.trim() : null, user_reason: null }, 0))
       if (!isCurrent(currentGeneration, currentId)) return
-      setImpactOpen(false)
-      if (impactChoice === "crystallize") void load(() => isCurrent(currentGeneration, currentId))
-    } catch (e) { if (!isCurrent(currentGeneration, currentId)) return; setError(e instanceof Error ? e.message : "方向影响未保存"); if ((e as { status?: number }).status === 409) { setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) } } finally { if (isCurrent(currentGeneration, currentId)) setImpactBusy(false) }
+      await loadHome() // 回执与阶段完成都读首页投影里的这条结晶
+      void load(() => isCurrent(currentGeneration, currentId))
+    } catch (e) { if (!isCurrent(currentGeneration, currentId)) return; setError(e instanceof Error ? e.message : "结晶到方向失败"); if ((e as { status?: number }).status === 409) { setConflict(true); void load(() => isCurrent(currentGeneration, currentId)) } } finally { if (isCurrent(currentGeneration, currentId)) setDestBusy(false) }
   }
   useEffect(() => { const hinted = sourceReleaseId && desk ? (desk.park_release_refs ?? []).find(item => item.id === sourceReleaseId) : undefined; setSourceRef(current => current?.id === hinted?.id ? current : hinted) }, [desk, sourceReleaseId, workspaceId])
   // 从锻「跳过锻,直接提交已成形自写 Claim」带着来源回来 → 打开写 claim 的阶段
@@ -180,8 +180,12 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
     }))
   }
 
+  // 位置已确认 → 读首页投影:方向下拉,以及这条结论是否已结晶进某个方向(换设备也认得)
+  useEffect(() => { if (desk?.user_position === "concluded") void loadHome() }, [desk?.user_position, desk?.conclusion?.id])
+  const crystalDirection = desk?.conclusion ? home?.directions?.find((d) => d.crystallizations.some((c) => c.conclusion_id === desk.conclusion!.id)) : undefined
+
   const question = desk?.question.text ?? ""
-  const journey = desk ? journeyStage(desk, state) : undefined
+  const journey = desk ? journeyStage(desk, state, Boolean(crystalDirection)) : undefined
   const uniqueKeywords = useMemo(() => [...new Set(state.keywordsText.split(/[;；]/).map((k) => k.trim()).filter(Boolean))], [state.keywordsText])
   const chosen: DialogueCandidate[] = state.candidates.filter((c) => state.selected.includes(c.locator))
   const corpusIds = chosen.filter((c) => c.material_id).map((c) => c.material_id as string)
@@ -380,9 +384,7 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
   if (forgeReleaseRefId && !forgeRef) return <section className="ru-state" role="alert">未找到这份放行引用。<button className="ru-ink-button" onClick={() => navigate(`/workspaces/${workspaceId}`)}>回到工作区</button></section>
   const forging = Boolean(forgeRef)
   const position = desk.user_position ?? "exploring"
-  const firstLink = desk.direction_links?.[0]
   const verdicts = desk.review_rounds.filter(r => r.verdict)
-  const confirmedFacts = desk.confirmed_facts ?? []
   // 待回应 = status=pending(同审查面「仍待回应」);投影里的已回应未裁决不算
   const pendingItems = desk.pending_challenges.filter(c => c.status === "pending")
   const { current, done } = journey
@@ -402,13 +404,8 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       <button className="ru-quiet-button" onClick={() => { setLifecycleForm(null); setLifecycleReason("") }}>取消</button>
     </>}
   </div>
-  // 结晶阶段卡:原页头的「确认这次探索的位置」「分支」「吸收」「方向影响」与对应台面,原样搬入(S6 重做)
-  const crystalActions = (position === "exploring" || position === "concluded") && <div className="ru-secondary-row" aria-label="结晶与去向">{position === "exploring" && <button className="ru-quiet-button" onClick={() => setCrystallizing(true)}>确认这次探索的位置</button>}{position === "concluded" && <button className="ru-quiet-button" onClick={() => setImpactOpen(true)}>方向影响</button>}<button className="ru-quiet-button" onClick={() => setBranchOpen(true)}>分支</button><button className="ru-quiet-button" onClick={() => setAbsorbOpen(true)}>吸收</button></div>
-  const crystallizationDesk = crystallizing ? <section className="ru-crystallization" aria-labelledby="crystallization-title"><p className="ru-kicker">确认这次探索的位置</p><h2 id="crystallization-title">结晶台</h2><p className="ru-reading-copy">这一问题：{desk.question.text}</p><div className="ru-crystal-ledger"><p className="ru-kicker">已发生的事实</p>{verdicts.map(r => <p key={r.id} className="ru-ledger-item">{r.claim_snapshot.text} · 裁决：{r.verdict!.verdict_type}</p>)}{confirmedFacts.map(f => <p key={f.id} className="ru-ledger-item">已确认取证：{f.material_anchor.excerpt} · {f.relation}</p>)}{pendingItems.map(c => <p key={c.id} className="ru-ledger-item ru-pending-ledger ru-line-clamp-2">仍挂起：{c.title || c.attack_surface}</p>)}{verdicts.length === 0 && confirmedFacts.length === 0 && pendingItems.length === 0 && <p className="ru-edge-empty">还没有已发生的事实。</p>}</div><label htmlFor="conclusion-text">我的探索结论</label><textarea id="conclusion-text" className="ru-conclusion-text" value={conclusionText} onChange={(e) => setConclusionText(e.target.value)} placeholder="亲写这一支探索的结论，Cui 不会替你总结。" required /><fieldset className="ru-conclusion-types"><legend>这次结晶属于</legend>{CONCLUSION_OPTIONS.map(opt => <label key={opt.type}><input type="radio" name="conclusion-type" checked={conclusionType === opt.type} onChange={() => setConclusionType(opt.type)} /> <span>{opt.label}</span>{opt.note && <small>{opt.note}</small>}</label>)}</fieldset>{conclusionType === "deferred" && <label htmlFor="revival-condition" className="ru-revival-label">未来重开条件（必填）</label>}{conclusionType === "deferred" && <input id="revival-condition" className="ru-revival-input" value={revivalCondition} onChange={(e) => setRevivalCondition(e.target.value)} placeholder="何时、什么条件下再回来" required />}<p className="ru-challenge-note">仍有待回应的事实不会阻止结晶；它们仍然可见。</p><div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => setCrystallizing(false)}>保留为继续探索</button><button className="ru-ink-button ru-active" disabled={concluding || !conclusionType || !conclusionText.trim() || (conclusionType === "deferred" && !revivalCondition.trim())} onClick={() => void conclude()}>{concluding ? "正在记录…" : "确认结晶"}</button></div></section> : null
-  const directionImpact = impactOpen && firstLink ? <section className="ru-direction-impact" aria-labelledby="impact-title"><p className="ru-kicker">方向影响台</p><h2 id="impact-title">已确认本次探索结论</h2><p className="ru-reading-copy">它关联的方向：{firstLink.direction_proposition ?? "这条方向"}</p><fieldset><legend>这次结晶对它：</legend><label><input type="radio" name="impact" checked={impactChoice === "stay"} onChange={() => setImpactChoice("stay")} /> 只留在这次探索中</label><label><input type="radio" name="impact" checked={impactChoice === "crystallize"} onChange={() => setImpactChoice("crystallize")} /> 成为方向的一项结晶</label><label><input type="radio" name="impact" checked={impactChoice === "rephrase"} onChange={() => setImpactChoice("rephrase")} /> 促使我重述方向命题</label></fieldset><div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => setImpactOpen(false)}>暂不决定</button><button className="ru-ink-button ru-active" disabled={impactBusy} onClick={() => void confirmImpact()}>确认</button></div></section> : null
   const branchForm = branchOpen ? <section className="ru-lifecycle-form" aria-labelledby="branch-title"><p className="ru-kicker">分支</p><h2 id="branch-title">把这个探索拆出一条后继问题</h2><p className="ru-reading-copy">Cui 不会替你推断要开什么问题；由你写出后继问题与理由。</p><label htmlFor="branch-question">后继问题</label><textarea id="branch-question" className="ru-conclusion-text" value={branchQuestion} onChange={(e) => setBranchQuestion(e.target.value)} placeholder="分支的新问题…" required /><label htmlFor="branch-reason">为什么分支</label><input id="branch-reason" className="ru-revival-input" value={branchReason} onChange={(e) => setBranchReason(e.target.value)} placeholder="写理由" required /><div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => { setBranchOpen(false); setBranchQuestion(""); setBranchReason("") }}>取消</button><button className="ru-ink-button ru-active" disabled={branchPending || !branchQuestion.trim() || !branchReason.trim()} onClick={() => void branch()}>{branchPending ? "正在分支…" : "确认分支"}</button></div></section> : null
   const absorbForm = absorbOpen ? <section className="ru-lifecycle-form" aria-labelledby="absorb-title"><p className="ru-kicker">吸收</p><h2 id="absorb-title">把这一支并入另一条探索</h2><p className="ru-reading-copy">Cui 不会替你推断要并入哪里；由你写下目标工作区与理由。</p><label htmlFor="absorb-target">并入哪一条工作区</label><input id="absorb-target" className="ru-revival-input" value={absorbTarget} onChange={(e) => setAbsorbTarget(e.target.value)} placeholder="目标工作区" required /><label htmlFor="absorb-reason">为什么并入</label><input id="absorb-reason" className="ru-revival-input" value={absorbReason} onChange={(e) => setAbsorbReason(e.target.value)} placeholder="写理由" required /><div className="ru-crystal-actions"><button className="ru-quiet-button" onClick={() => { setAbsorbOpen(false); setAbsorbTarget(""); setAbsorbReason("") }}>取消</button><button className="ru-ink-button ru-active" disabled={absorbPending || !absorbTarget.trim() || !absorbReason.trim()} onClick={() => void absorb()}>{absorbPending ? "正在并入…" : "确认吸收"}</button></div></section> : null
-  const recordedConclusion = position === "concluded" && desk.conclusion && <section className="ru-crystallization" aria-labelledby="recorded-conclusion-title"><p className="ru-kicker">已记录的结晶</p><h2 id="recorded-conclusion-title">这一支探索已确认结论</h2><p className="ru-reading-copy">{desk.conclusion.text}</p><p className="ru-provenance">类型：{desk.conclusion.type}{desk.conclusion.revival_condition ? ` · 未来重开条件：${desk.conclusion.revival_condition}` : ""}</p></section>
 
   const oneLine: Record<number, string> = {
     1: state.skipHypotheses ? "不设假设,直接检索" : `候选假设 ${state.hypothesesText.split("\n").filter((l) => l.trim()).length} 条 · ${uniqueKeywords.length} 个检索词`,
@@ -416,11 +413,11 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
     3: `${state.summary ? "覆盖梳理已生成 · " : ""}已写 ${desk.claims.length} 条 claim`,
     4: "claim 已固化,审查轮已开",
     5: `✓ gap 已确认 ×${confirmedGapCount}`,
-    6: POSITION_LABELS[position],
+    6: position !== "concluded" ? POSITION_LABELS[position] : crystalDirection ? `结晶到方向「${crystalDirection.proposition}」` : "结论只留在本次探索", // 只在阶段 6 完成时显示
   }
   const rowLine = (n: number) => n === 4 && pendingCount > 0 ? `待回应 ${pendingCount} 条` : done[n - 1] ? oneLine[n] : STAGE_DESCRIPTIONS[n - 1]
-  // 进 gap 阶段 = 右侧换成现状;开着的审查轮先收起(在 gap 阶段里再点开的轮才留在右侧)
-  const goStage = (n: number) => { setOpen(n === current ? null : n); if (n === 5 && roundId) navigate(`/workspaces/${workspaceId}`) }
+  // 进 gap / 结晶阶段 = 右侧换成现状 / 账本;开着的审查轮先收起(在这两个阶段里再点开的轮才留在右侧)
+  const goStage = (n: number) => { setOpen(n === current ? null : n); if ((n === 5 || n === 6) && roundId) navigate(`/workspaces/${workspaceId}`) }
   const openRound = (rid: string) => navigate(`/workspaces/${workspaceId}/rounds/${rid}`)
 
   const page = <section className="ru-journey" aria-labelledby="journey-title">
@@ -509,9 +506,10 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
       </details>
     </details>
   </section>
-  // 右侧聚焦面:锻 / 审查轮(gap 阶段里收起 = 回到现状)/ gap 阶段的现状图景 / 都没开时一行安静提示(结晶账本另有票)
+  // 右侧聚焦面:锻 / 审查轮(gap、结晶阶段里收起 = 回到现状、账本)/ gap 阶段的现状图景 / 结晶阶段的账本 / 都没开时一行安静提示
   const panel = forging ? <ReleaseForge workspaceId={workspaceId} releaseRef={forgeRef!} />
-    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} closeLabel={shown === 5 ? "回到现状" : undefined} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: evidenceMaterials }} citable={{ materials: evidenceMaterials, anchors: desk.anchors }} />
+    : roundId ? <ReviewRoundDesk key={roundId} roundId={roundId} fromGap={gapClaimIds.has(desk.review_rounds.find((r) => r.id === roundId)?.claim_id ?? "")} onClose={() => navigate(`/workspaces/${workspaceId}`)} closeLabel={shown === 5 ? "回到现状" : shown === 6 ? "回到账本" : undefined} onLoaded={() => void load()} literature={{ selection: chosen.length > 0 ? { material_ids: corpusIds, external_refs: externalRefs } : undefined, evidence: evidenceMaterials }} citable={{ materials: evidenceMaterials, anchors: desk.anchors }} />
+    : shown === 6 ? <LedgerPanel claims={desk.claims} rounds={desk.review_rounds} pending={pendingItems} landscape={desk.landscape} fromGap={gapClaimIds} onOpen={openRound} />
     : shown === 5 && desk.landscape ? <LandscapePanel landscape={desk.landscape} rounds={desk.review_rounds} onOpen={openRound} coverage={{ summary: state.summary, papers: chosen.map((c) => ({ locator: c.locator, title: c.title, relation: c.relation ? RELATION_LABELS[c.relation.kind] ?? c.relation.kind : undefined })) }} />
     : <div className="ru-panel-empty"><p className="ru-kicker">审查轮</p><p>{shown === 4 ? "点一条 claim，它的审查轮在这里打开；左栏保持可见，不离开这一页。" : "从「对抗」打开一条 claim 的审查轮。"}</p></div>
   return <div className="ru-journey-layout">{page}<aside ref={panelRef} className="ru-journey-panel" aria-label="聚焦面">{panel}</aside></div>
@@ -689,36 +687,110 @@ export function WorkspaceJourney({ workspaceId, forgeReleaseRefId, sourceRelease
     </div>
   }
 
+  // 结晶阶段卡(S6):确认位置(6 类结论 + 理由,暂缓须写复活条件)→ 同一张卡接着定这次结论去哪;拆分/转向时次级动作是分支、吸收。
+  // 依据在右侧账本;有已确认 gap 后卡底是次级的导出区块(S7:related-work 不再是旅程终点)。
   function bodySix() {
-    const coverageOf = (id: string) => desk!.landscape?.gaps.find((g) => g.id === id)?.coverage_statement
+    const recorded = position === "exploring" || position === "paused" ? null : desk!.conclusion
+    const type = recorded ? recorded.type : conclusionType
+    const allGaps = desk!.landscape?.gaps ?? [], gaps = allGaps.filter((g) => g.status === "confirmed" || g.status === "corrected")
+    const directions = home?.directions ?? []
+    const elsewhere = position === "branched" ? desk!.successor_workspace_id : desk!.absorb_target_workspace_id
+    const locateHint = !conclusionType ? "先选结论类型" : !conclusionText.trim() || !conclusionReason.trim() ? "写下结论与理由" : conclusionType === "deferred" && !revivalCondition.trim() ? "暂缓必须写复活条件" : ""
+    const destHint = dest === "attach" && !destDirection ? "选一个方向" : dest === "new" && !signed ? "签名后才能新建" : ""
+    const pickGap = (id: string) => { setDestGap(id); setProposition(gaps.find((g) => g.id === id)?.coverage_statement ?? ""); setSigned(false) }
+    const side = type === "split_or_turn" && (position === "exploring" || position === "concluded") && <div>
+      <div className="ru-secondary-row" role="group" aria-label="拆分/转向">
+        <button type="button" className="ru-quiet-button" aria-pressed={branchOpen} onClick={() => { setBranchOpen(true); setAbsorbOpen(false) }}>分支出新问题</button>
+        <button type="button" className="ru-quiet-button" aria-pressed={absorbOpen} onClick={() => { setAbsorbOpen(true); setBranchOpen(false) }}>吸收进另一个问题</button>
+      </div>
+      {branchForm}{absorbForm}
+    </div>
     return <div className="ru-stage-body">
-      {crystalActions}
-      {crystallizationDesk}
-      {directionImpact}
-      {branchForm}
-      {absorbForm}
-      {recordedConclusion}
-      {!state.relatedWork && <div>
-        <p className="ru-copy">基于已选文献与已确认的 gap,生成 related-work 综述草稿(导出用,不入轨迹)。</p>
+      <p className="ru-quiet-hint">结论的依据见<span className="ru-wide">右侧</span><span className="ru-narrow">下方</span>账本{pendingCount > 0 && <span className="ru-pending-line"> · 仍待回应 {pendingCount} 条——结晶不会关掉它们</span>}</p>
+      {position === "paused" && <p className="ru-copy">这个问题已暂停;在页头「重开」后再确认位置。</p>}
+      {position === "exploring" && <>
+        <fieldset className="ru-conclusion-types"><legend>结论类型</legend>{CONCLUSION_OPTIONS.map((opt) => <label key={opt.type}><input type="radio" name="conclusion-type" checked={conclusionType === opt.type} onChange={() => setConclusionType(opt.type)} /><span>{opt.label}</span><small>{opt.note}</small></label>)}</fieldset>
+        {side}
+        <div className="ru-material-form ru-crystal-form">
+          <label htmlFor="conclusion-text">结论</label>
+          <textarea id="conclusion-text" className="ru-conclusion-text" rows={3} value={conclusionText} onChange={(e) => setConclusionText(e.target.value)} placeholder="用你自己的话写下这次探索的位置;Cui 不会替你总结。" />
+          <label htmlFor="conclusion-reason">理由</label>
+          <textarea id="conclusion-reason" className="ru-conclusion-text" rows={2} value={conclusionReason} onChange={(e) => setConclusionReason(e.target.value)} placeholder="依据账本里的哪些 claim、取证与 gap?" />
+          {conclusionType === "deferred" && <><label htmlFor="revival-condition">复活条件（暂缓必填）</label><input id="revival-condition" className="ru-revival-input" value={revivalCondition} onChange={(e) => setRevivalCondition(e.target.value)} placeholder="什么出现时重新打开这个问题?" /></>}
+        </div>
         <div className="ru-stage-actions">
-          <button type="button" className="ru-ink-button ru-active" disabled={busy || state.selected.length === 0} onClick={() => void draftRelatedWork()}>{busy ? "生成中…" : "生成 related-work 综述草稿"}</button>
+          <span className="ru-muted-note">{locateHint}</span>
+          <button type="button" className="ru-ink-button ru-active" disabled={concluding || Boolean(locateHint)} onClick={() => void conclude()}>{concluding ? "正在记录…" : "确认这次探索的位置"}</button>
         </div>
+      </>}
+      {recorded && <div className="ru-receipt">
+        <p className="ru-provenance"><span className="ru-qdot" />位置已确认 · {CONCLUSION_OPTIONS.find((o) => o.type === recorded.type)?.label}</p>
+        <p>{recorded.text}</p>
+        {recorded.revival_condition && <p className="ru-provenance">复活条件:{recorded.revival_condition}</p>}
       </div>}
-      {state.relatedWork && <div>
-        <div className="ru-ai-block">
-          <p className="ru-kicker">综述草稿(导出形式,不入轨迹)</p>
-          <pre className="ru-dialogue-pre">{state.relatedWork}</pre>
-          <CitationCheckList report={state.relatedWorkCheck} />
+      {position === "concluded" && side}
+      {(position === "branched" || position === "absorbed") && <p className="ru-receipt"><span className="ru-qdot" />{position === "branched" ? "已分支出新问题" : "已并入另一个问题"}{elsewhere && <> · <a href={`/workspaces/${elsewhere}`}>打开它</a></>}</p>}
+      {position === "concluded" && recorded && (crystalDirection
+        ? <div className="ru-receipt">
+          <p><span className="ru-qdot" />已结晶到方向「{crystalDirection.proposition}」</p>
+          <p className="ru-provenance">首页「方向地形」能看到这个方向和这条结晶。</p>
+          <button type="button" className="ru-link-button" onClick={() => navigate(`/directions/${crystalDirection.id}?rephrase=1&source_conclusion=${encodeURIComponent(recorded.id)}`)}>促使我重述方向命题</button>
         </div>
-        <div className="ru-crystal-actions">
-          <button type="button" className="ru-quiet-button" onClick={() => void copyDraft()}>{copied ? "已复制" : "复制"}</button>
-          <button type="button" className="ru-quiet-button" onClick={downloadDraft}>下载 .md</button>
-          <button type="button" className="ru-quiet-button" disabled={busy} onClick={() => void draftRelatedWork()}>重新生成</button>
-        </div>
-        <p className="ru-quiet-hint">会话走完。草稿与选料存本机;claim 与 gap 已入轨迹。随时可回到这个问题继续改。</p>
-      </div>}
-      {/* gap 确认后第 5 步即折叠,反证入口放在用户实际停留的第 6 步 */}
-      {state.confirmedGapIds.filter((id) => coverageOf(id)).map((id) => <GapChallengeComposer key={id} workspaceId={workspaceId} gapId={id} coverage={coverageOf(id)!} />)}
+        : state.keptLocal === recorded.id
+          ? <div className="ru-receipt">
+            <p><span className="ru-qdot" />这次结论只留在本次探索</p>
+            <p className="ru-provenance">不挂方向;结论只留在这个问题的轨迹里。</p>
+            <button type="button" className="ru-link-button" onClick={() => patch({ keptLocal: undefined })}>改为挂到方向</button>
+          </div>
+          : <>
+            <fieldset className="ru-dest">
+              <legend>这次结论去哪</legend>
+              <div className="ru-dopt">
+                <label><input type="radio" name="dest" checked={dest === "attach"} disabled={Boolean(home) && directions.length === 0} onChange={() => setDest("attach")} />挂到已有方向</label>
+                {home && directions.length === 0 && <small>研究宇宙里还没有方向</small>}
+                {dest === "attach" && <div className="ru-dopt-body">{home
+                  ? <select className="ru-revival-input" aria-label="已有方向" value={destDirection} onChange={(e) => setDestDirection(e.target.value)}><option value="">选择一个方向…</option>{directions.map((d) => <option key={d.id} value={d.id}>{d.proposition}</option>)}</select>
+                  : <span className="ru-muted-note">{homeError ? <>未能读取方向列表 <button type="button" className="ru-link-button" onClick={() => void loadHome()}>重试</button></> : "正在读取方向…"}</span>}</div>}
+              </div>
+              <div className="ru-dopt">
+                <label><input type="radio" name="dest" checked={dest === "new"} disabled={gaps.length === 0} onChange={() => { setDest("new"); if (!destGap && gaps[0]) pickGap(gaps[0].id) }} />从 gap 新建方向</label>
+                <small>{gaps.length === 0 ? "还没有已确认的 gap" : "命题用所选 gap 的文本预填;你签名后才生效"}</small>
+                {dest === "new" && <div className="ru-dopt-body">
+                  {gaps.length > 1 && <select className="ru-revival-input" aria-label="用哪个 gap 预填" value={destGap} onChange={(e) => pickGap(e.target.value)}>{gaps.map((g) => <option key={g.id} value={g.id}>gap {String(allGaps.indexOf(g) + 1).padStart(2, "0")} · {short(g.coverage_statement, 26)}</option>)}</select>}
+                  <label htmlFor="direction-proposition">方向命题</label>
+                  <textarea id="direction-proposition" className="ru-conclusion-text" rows={4} value={proposition} onChange={(e) => { setProposition(e.target.value); setSigned(false) }} />
+                  {signed
+                    ? <p className="ru-ok-note">已签名 · 再改命题会撤销签名</p>
+                    : <div className="ru-secondary-row"><button type="button" className="ru-outline-button" disabled={!proposition.trim()} onClick={() => setSigned(true)}>签名：这是我的方向命题</button><span className="ru-muted-note">预填自 gap,可以改写;签名这一下才生效</span></div>}
+                </div>}
+              </div>
+              <div className="ru-dopt">
+                <label><input type="radio" name="dest" checked={dest === "local"} onChange={() => setDest("local")} />只留在本次探索</label>
+                <small>不挂方向;结论只留在这个问题的轨迹里</small>
+              </div>
+            </fieldset>
+            <div className="ru-stage-actions">
+              <span className="ru-muted-note">{destHint}</span>
+              <button type="button" className="ru-ink-button ru-active" disabled={destBusy || !dest || Boolean(destHint)} onClick={() => void settleDestination()}>{destBusy ? "正在结晶…" : dest === "attach" ? "挂到这个方向" : dest === "new" ? "新建方向并结晶" : dest === "local" ? "只留在本次" : "选择去向"}</button>
+            </div>
+          </>)}
+      {confirmedGapCount > 0 && <section className="ru-export" aria-label="导出 related-work 草稿">
+        <p className="ru-export-head"><b>导出 related-work 草稿</b><span className="ru-muted-note">基于已选文献与已确认 gap · 不入轨迹</span></p>
+        {state.relatedWork
+          ? <>
+            <pre className="ru-dialogue-pre">{state.relatedWork}</pre>
+            <CitationCheckList report={state.relatedWorkCheck} />
+            <div className="ru-secondary-row">
+              <button type="button" className="ru-quiet-button" onClick={() => void copyDraft()}>{copied ? "已复制" : "复制"}</button>
+              <button type="button" className="ru-quiet-button" onClick={downloadDraft}>下载 .md</button>
+              <button type="button" className="ru-quiet-button" disabled={busy} onClick={() => void draftRelatedWork()}>{busy ? "生成中…" : "重新生成"}</button>
+            </div>
+          </>
+          : <div className="ru-secondary-row">
+            <button type="button" className="ru-outline-button" disabled={busy || state.selected.length === 0} onClick={() => void draftRelatedWork()}>{busy ? "生成中…" : "生成草稿"}</button>
+            {state.selected.length === 0 && <span className="ru-muted-note">这台设备上没有选料草稿,生成不可用。</span>}
+          </div>}
+      </section>}
     </div>
   }
 }

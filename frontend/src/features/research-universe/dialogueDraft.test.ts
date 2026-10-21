@@ -7,6 +7,7 @@ const draft = (over: Record<string, unknown> = {}) => ({ ...emptyDraft("w"), ...
 const claim = { id: "c1", text: "c" }
 const round = (verdict: unknown = null) => ({ id: "r1", claim_snapshot: { text: "c" }, question_snapshot: { text: "q" }, verdict })
 const gaps = (status: string) => ({ landscape: { gaps: [{ id: "g1", status }] } })
+const conc = { id: "x", type: "tentative_answer", text: "t" }
 const pending = { pending_challenges: [{ id: "ch1", review_round_id: "r1", status: "pending" }] }
 
 describe("journeyStage done table", () => {
@@ -28,13 +29,19 @@ describe("journeyStage done table", () => {
     ["5 gap · confirmed", 5, desk(gaps("confirmed")), draft(), true],
     ["5 gap · corrected", 5, desk(gaps("corrected")), draft(), true],
     ["5 gap · pending 不算", 5, desk(gaps("pending")), draft({ confirmedGapIds: ["g1"] }), false],
-    ["6 结晶 · concluded", 6, desk({ user_position: "concluded" }), draft(), true],
+    ["6 结晶 · concluded 但还没定去向不算", 6, desk({ user_position: "concluded", conclusion: conc }), draft(), false],
+    ["6 结晶 · concluded + 本机点过「只留在本次」", 6, desk({ user_position: "concluded", conclusion: conc }), draft({ keptLocal: "x" }), true],
+    ["6 结晶 · 「只留在本次」是给旧结论点的不算", 6, desk({ user_position: "concluded", conclusion: conc }), draft({ keptLocal: "older" }), false],
     ["6 结晶 · branched", 6, desk({ user_position: "branched" }), draft(), true],
     ["6 结晶 · absorbed", 6, desk({ user_position: "absorbed" }), draft(), true],
     ["6 结晶 · paused 不算", 6, desk({ user_position: "paused" }), draft(), false],
     ["6 结晶 · 重开后 conclusion 仍在也不算", 6, desk({ user_position: "exploring", conclusion: { id: "x", type: "tentative_answer", text: "t" } }), draft(), false],
   ])("%s", (_name, stage, d, dr, expected) => {
     expect(journeyStage(d, dr).done[stage - 1]).toBe(expected)
+  })
+  it("6 结晶 · concluded + 这条结论已结晶进方向(首页投影)", () => {
+    expect(journeyStage(desk({ user_position: "concluded", conclusion: conc }), draft(), true).done[5]).toBe(true)
+    expect(journeyStage(desk({ user_position: "exploring", conclusion: conc }), draft(), true).done[5]).toBe(false)
   })
 })
 
@@ -60,7 +67,8 @@ describe("journeyStage current stage", () => {
     expect(journeyStage(desk({ ...allButSix, ...pending, user_position: "concluded" }), draft()).current).toBe(6)
   })
   it("all done stays on 6; reopen makes 6 not done again", () => {
-    const concluded = journeyStage(desk({ ...allButSix, user_position: "concluded" }), draft())
+    expect(journeyStage(desk({ ...allButSix, user_position: "concluded", conclusion: conc }), draft()).current).toBe(6) // 位置已确认、去向未定:停在 6
+    const concluded = journeyStage(desk({ ...allButSix, user_position: "concluded", conclusion: conc }), draft({ keptLocal: "x" }))
     expect(concluded).toEqual({ current: 6, done: [true, true, true, true, true, true] })
     const reopened = journeyStage(desk({ ...allButSix, user_position: "exploring", conclusion: { id: "x", type: "tentative_answer", text: "t" } }), draft())
     expect(reopened.done[5]).toBe(false)

@@ -163,16 +163,20 @@ test("walks the six-stage workspace journey with real layout assertions", async 
   expect(propose.body?.search_query).toBe("RLHF reasoning")
   expect(of(calls, "/gap-candidates/g1/confirm")[0].body?.user_reason).toBe("人审确认")
 
-  // ── 第 6 步:结晶(原页头的位置动作 + related-work 草稿)──
+  // ── 第 6 步:结晶(主按钮确认位置;右侧是账本;related-work 降为卡底的次级导出区块,不再是旅程终点)──
   await expect(page.getByRole("button", { name: /^gap ✓ gap 已确认 ×1/ })).toBeVisible()
   await expect(page.getByRole("button", { name: "确认这次探索的位置" })).toBeVisible()
-  await page.getByRole("button", { name: /生成 related-work 综述草稿/ }).click()
-  await expect(page.getByText(/Existing work covers RLHF evaluations/)).toBeVisible({ timeout: 8000 })
+  await expect(panel.getByRole("heading", { name: "这次结论的依据" })).toBeVisible()
+  const exportBlock = page.getByRole("region", { name: "导出 related-work 草稿" })
+  await exportBlock.getByRole("button", { name: "生成草稿" }).click()
+  await expect(exportBlock.getByText(/Existing work covers RLHF evaluations/)).toBeVisible({ timeout: 8000 })
   const related = of(calls, "/dialogue/related-work-draft")[0]
   expect(related.body?.gap_ids).toEqual(["g1"])
   expect(related.body?.material_ids).toEqual(["m1", "m2", "m3"])
-  await expect(page.getByRole("button", { name: "下载 .md" })).toBeVisible()
-  await expect(page.getByText(/会话走完/)).toBeVisible()
+  await expect(exportBlock.getByRole("button", { name: "下载 .md" })).toBeVisible()
+  await expect(exportBlock.getByRole("button", { name: "重新生成" })).toBeVisible()
+  await expect(page.getByText(/会话走完/)).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "对这个 gap 发起反证" })).toHaveCount(0) // 反证入口只在 gap 卡
 
   // 已完成阶段折叠成行,点开能回看、再收起回到当前阶段(仍有待回应 → 对抗)
   await page.getByRole("button", { name: /^出发点 候选假设 2 条/ }).click()

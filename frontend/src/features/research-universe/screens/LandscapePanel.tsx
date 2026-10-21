@@ -2,7 +2,7 @@ import { useState } from "react"
 import { command, researchUniverse } from "../api"
 import { GapChallengeComposer } from "./GapChallengeComposer"
 import { RELATION_LABELS } from "./EvidenceSurface"
-import type { GapCandidate, GapChallenge, WorkspaceLandscape } from "../types"
+import type { Challenge, Claim, GapCandidate, GapChallenge, LandscapeFact, ReviewRoundSummary, WorkspaceLandscape } from "../types"
 
 const STATUS_LABELS: Record<GapCandidate["status"], string> = {
   pending: "待你裁决",
@@ -21,7 +21,7 @@ function outcomeLabel(outcome: string): string {
 export const VERDICT_LABELS: Record<string, string> = {
   survived: "存活", circumstantial: "有条件存活", refuted: "已证伪", not_worth: "不值一探", boundary: "划界", open: "未裁决",
 }
-const short = (text: string, n: number) => text.length > n ? `${text.slice(0, n)}…` : text
+export const short = (text: string, n: number) => text.length > n ? `${text.slice(0, n)}…` : text
 /** 指向聚焦面的文案:宽屏「右侧」,<800px「下方」 */
 const Where = () => <><span className="ru-wide">右侧</span><span className="ru-narrow">下方</span></>
 /** 投影的 alive_claims 含未裁决的;「存活」只算已裁决且未被证伪/不值一探的 */
@@ -97,15 +97,55 @@ export function LandscapePanel({ landscape, rounds, onOpen, coverage }: { landsc
     </section>
     <section>
       <p className="ru-col-title">已确认的取证事实 · {landscape.confirmed_facts.length}</p>
-      {landscape.confirmed_facts.length > 0 ? <ul className="ru-plain ru-landscape-facts">{landscape.confirmed_facts.map((f) => <li key={f.candidate_id}>
-        <p className="ru-provenance"><span className="ru-qdot" />{RELATION_LABELS[f.relation] ?? f.relation} · {f.material_locator ?? "无定位"} → claim「{short(f.claim_text, 18)}」</p>
-        {f.decision_reason && <p className="ru-gap-text">{f.decision_reason}</p>}
-      </li>)}</ul> : <p className="ru-ledger-empty">还没有确认的取证事实。</p>}
+      <ConfirmedFacts facts={landscape.confirmed_facts} />
     </section>
     {coverage && (coverage.summary || coverage.papers.length > 0) && <section>
       <p className="ru-col-title">{coverage.summary ? "覆盖梳理 · " : ""}已选文献 {coverage.papers.length} 篇</p>
       {coverage.summary && <p className="ru-ai-content">{coverage.summary}</p>}
       {coverage.papers.length > 0 && <ul className="ru-plain">{coverage.papers.map((p) => <li key={p.locator} className="ru-provenance">{p.title} · {p.locator}{p.relation && ` · 与假设:${p.relation}`}</li>)}</ul>}
     </section>}
+  </section>
+}
+
+function ConfirmedFacts({ facts }: { facts: LandscapeFact[] }) {
+  if (facts.length === 0) return <p className="ru-ledger-empty">还没有确认的取证事实。</p>
+  return <ul className="ru-plain ru-landscape-facts">{facts.map((f) => <li key={f.candidate_id}>
+    <p className="ru-provenance"><span className="ru-qdot" />{RELATION_LABELS[f.relation] ?? f.relation} · {f.material_locator ?? "无定位"} → claim「{short(f.claim_text, 18)}」</p>
+    {f.decision_reason && <p className="ru-gap-text">{f.decision_reason}</p>}
+  </li>)}</ul>
+}
+
+/**
+ * 结晶阶段的右侧聚焦面:账本(只读)= 这次结论的依据。claim 按最新一轮标裁决/仍待回应(同对抗卡,待回应只数 status=pending);
+ * gap 与取证来自 desk.landscape。点有轮次的 claim 在同一面打开它的最新一轮,收起 = 回到账本。
+ */
+export function LedgerPanel({ claims, rounds, pending, landscape, fromGap, onOpen }: { claims: Claim[]; rounds: ReviewRoundSummary[]; pending: Challenge[]; landscape?: WorkspaceLandscape; fromGap: Set<string>; onOpen: (roundId: string) => void }) {
+  const gaps = (landscape?.gaps ?? []).map((g, i) => ({ g, n: i + 1 })).filter(({ g }) => g.status === "confirmed" || g.status === "corrected") // 编号同 gap 卡
+  return <section className="ru-landscape-panel" aria-labelledby="ledger-title">
+    <p className="ru-kicker">账本 · 只读</p>
+    <h2 id="ledger-title">这次结论的依据</h2>
+    <section>
+      <p className="ru-col-title">claim 与裁决 · {claims.length}</p>
+      {claims.length > 0 ? <ul className="ru-plain">{claims.map((c) => {
+        const own = rounds.filter((r) => r.claim_id === c.id), latest = own.at(-1)
+        const waiting = latest ? pending.filter((p) => p.review_round_id === latest.id).length : 0
+        const meta = <span className="ru-provenance">{latest?.verdict ? <span className="ru-decided">{VERDICT_LABELS[latest.verdict.verdict_type]}</span> : waiting > 0 ? <span className="ru-pending-line">未裁决 · 仍待回应 {waiting}</span> : latest ? "未裁决" : "未开审查轮"}{fromGap.has(c.id) && " · 来自 gap"}{latest && ` · 审查轮 ${String(own.length).padStart(2, "0")}`}</span>
+        const tone = `ru-landscape-claim${latest?.verdict ? "" : waiting > 0 ? " is-pending" : " is-quiet"}`
+        return <li key={c.id}>{latest
+          ? <button type="button" className={tone} onClick={() => onOpen(latest.id)}>{meta}<span className="ru-gap-text">{c.text}</span></button>
+          : <div className={tone}>{meta}<span className="ru-gap-text">{c.text}</span></div>}</li>
+      })}</ul> : <p className="ru-ledger-empty">还没有固化的 claim。</p>}
+    </section>
+    <section>
+      <p className="ru-col-title">已确认的 gap · {gaps.length}</p>
+      {gaps.length > 0 ? <ul className="ru-plain ru-landscape-facts">{gaps.map(({ g, n }) => <li key={g.id}>
+        <p className="ru-provenance"><span className={`ru-gap-status is-${g.status}`}>{g.status === "confirmed" ? "已确认" : STATUS_LABELS[g.status]}</span> gap {String(n).padStart(2, "0")}</p>
+        <p className="ru-gap-text">{g.coverage_statement}</p>
+      </li>)}</ul> : <p className="ru-ledger-empty">还没有已确认的 gap。</p>}
+    </section>
+    <section>
+      <p className="ru-col-title">已确认的取证事实 · {landscape?.confirmed_facts.length ?? 0}</p>
+      <ConfirmedFacts facts={landscape?.confirmed_facts ?? []} />
+    </section>
   </section>
 }

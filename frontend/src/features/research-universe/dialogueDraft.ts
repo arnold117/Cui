@@ -36,6 +36,8 @@ export interface DialogueDraft {
   confirmedGapIds: string[]
   relatedWork?: string
   relatedWorkCheck?: CitationReport
+  /** 「只留在本次探索」点过的结论 id(本机标记;不入事件)。换了结论(重开后再结晶)即不再算数。 */
+  keptLocal?: string
   skipHypotheses?: boolean
   savedAt?: string
 }
@@ -54,7 +56,7 @@ export const STAGE_DESCRIPTIONS = [
   "读覆盖梳理,用骨架或自己的话写出 claim",
   "审查轮:应答/裁决,或追加文献发难;看过后再去 gap",
   "起草、署名并确认缺口",
-  "确认这次探索的位置(结晶/分支/吸收);导出 related-work 综述草稿",
+  "确认这次探索的位置,再定结论去哪(挂到方向/新建方向/只留本次)",
 ]
 
 export const DRAFT_KEY_PREFIX = "cui:dialogue-draft:v2:"
@@ -99,25 +101,29 @@ export function clearDialogueDraft(workspaceId: string) {
   } catch { /* ignore */ }
 }
 
-export type JourneyDesk = Pick<WorkspaceDesk, "claims" | "review_rounds" | "pending_challenges" | "materials" | "landscape" | "user_position">
+export type JourneyDesk = Pick<WorkspaceDesk, "claims" | "review_rounds" | "pending_challenges" | "materials" | "landscape" | "user_position" | "conclusion">
 
 /**
  * 旅程阶段推导(spec-workspace-journey S1):服务端事实优先,本机草稿只补会话内进度。
  * done[i] = 第 i+1 阶段是否完成;current = 未结晶且有待回应挑战 ⇒ 对抗(4),否则第一个未完成的,全完成停在 6。
  * 待回应 = status=pending(同审查面账本);投影的 pending_challenges 还含已回应未裁决,那些不把阶段拽回对抗。
  * 结晶看 user_position 而非 conclusion:重开后 conclusion 仍在投影里,但阶段 6 要重新变为未完成。
+ * 阶段 6 完成 = 分支/吸收,或位置已确认且这条结论有了去向(S6):挂进方向(crystallizedToDirection,来自首页投影)
+ * 或本机点过「只留在本次」(draft.keptLocal = 这条结论)。位置已确认就不再被待回应拽回对抗。
  */
-export function journeyStage(desk: JourneyDesk, d: Pick<DialogueDraft, "hypothesesDone" | "skipHypotheses" | "summary" | "claimAck">): { current: number; done: boolean[] } {
+export function journeyStage(desk: JourneyDesk, d: Pick<DialogueDraft, "hypothesesDone" | "skipHypotheses" | "summary" | "claimAck" | "keptLocal">, crystallizedToDirection = false): { current: number; done: boolean[] } {
   const hasClaims = desk.claims.length > 0
   const gapDone = (desk.landscape?.gaps ?? []).some((g) => g.status === "confirmed" || g.status === "corrected")
-  const crystallized = ["concluded", "branched", "absorbed"].includes(desk.user_position ?? "exploring")
+  const position = desk.user_position ?? "exploring"
+  const crystallized = ["concluded", "branched", "absorbed"].includes(position)
+  const destined = crystallizedToDirection || (Boolean(d.keptLocal) && d.keptLocal === desk.conclusion?.id)
   const done = [
     Boolean(d.hypothesesDone || d.skipHypotheses || hasClaims || (desk.materials?.length ?? 0) > 0),
     Boolean(d.summary) || hasClaims,
     hasClaims,
     Boolean(d.claimAck) || desk.review_rounds.some((r) => r.verdict) || gapDone,
     gapDone,
-    crystallized,
+    position === "branched" || position === "absorbed" || (position === "concluded" && destined),
   ]
   const current = !crystallized && desk.pending_challenges.some((c) => c.status === "pending") ? 4 : done.indexOf(false) + 1 || STAGE_COUNT
   return { current, done }

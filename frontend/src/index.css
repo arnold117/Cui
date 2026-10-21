@@ -179,25 +179,42 @@ h1, h2, h3 { margin-top: 0; letter-spacing: -.025em; }
 
 /* Slice 5 — workspace crystallization / direction impact */
 .ru-lifecycle { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; margin: .9rem 0 .35rem; padding: .6rem 0; border-top: 1px solid var(--line); }
-.ru-crystallization, .ru-direction-impact, .ru-lifecycle-form, .ru-direction, .ru-rephrase { margin: 2.5rem 0 0; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--paper); border-top: 2px solid var(--edge); }
-.ru-crystallization h2, .ru-direction-impact h2, .ru-lifecycle-form h2, .ru-direction h1, .ru-rephrase h2 { font-size: 1.5rem; font-weight: 500; line-height: 1.3; }
-.ru-crystal-ledger { display: grid; gap: .5rem; margin: 1rem 0 1.5rem; padding: 1rem 1.1rem; background: color-mix(in srgb, var(--stone) 40%, var(--paper)); }
-.ru-crystal-ledger .ru-kicker { margin-bottom: .4rem; }
+.ru-direction, .ru-rephrase { margin: 2.5rem 0 0; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--paper); border-top: 2px solid var(--edge); }
+.ru-direction h1, .ru-rephrase h2 { font-size: 1.5rem; font-weight: 500; line-height: 1.3; }
 .ru-ledger-item { margin: .2rem 0; font-family: "Charis SIL", "Source Han Serif", serif; font-size: .95rem; line-height: 1.55; }
-.ru-pending-ledger { color: var(--rust); }
-.ru-crystallization label, .ru-lifecycle-form label, .ru-rephrase-form label { display: block; font-size: .86rem; font-weight: 650; color: var(--muted); }
+.ru-lifecycle-form label, .ru-rephrase-form label { display: block; font-size: .86rem; font-weight: 650; color: var(--muted); }
 .ru-conclusion-text { width: 100%; min-height: 5rem; margin: .6rem 0 1.1rem; padding: .7rem; background: transparent; border: 1px solid var(--line); color: var(--ink); line-height: 1.6; resize: vertical; }
-.ru-conclusion-types { display: grid; gap: .55rem; margin: .3rem 0 0; padding: 0 0 1.1rem; border: 0; border-bottom: 1px solid var(--line); }
-.ru-conclusion-types legend { color: var(--muted); font-size: .83rem; margin-bottom: .25rem; }
-.ru-conclusion-types label { display: flex; gap: .5rem; align-items: baseline; font-weight: 400; color: var(--ink); }
-.ru-conclusion-types small { color: var(--muted); }
-.ru-revival-label { margin-top: 1rem; }
+.ru-conclusion-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .4rem; margin: .3rem 0 0; padding: 0; border: 0; }
+.ru-conclusion-types legend { margin-bottom: .35rem; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.ru-conclusion-types label { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .1rem .45rem; align-items: baseline; padding: .5rem .65rem; border: 1px solid var(--line); color: var(--ink); font-size: .88rem; font-weight: 600; cursor: pointer; }
+.ru-conclusion-types label:hover { border-color: #A9B1AC; }
+.ru-conclusion-types label:has(input:checked) { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); background: var(--paper); }
+.ru-conclusion-types small { grid-column: 2; color: var(--muted); font-size: .72rem; font-weight: 400; line-height: 1.45; }
 .ru-revival-input { width: 100%; margin: .4rem 0 .9rem; padding: .55rem .7rem; background: transparent; border: 1px solid var(--line); color: var(--ink); }
 .ru-crystal-actions { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: 1.25rem; }
 .ru-crystal-actions .ru-ink-button { opacity: 1; cursor: pointer; }
-.ru-direction-impact fieldset { display: grid; gap: .6rem; margin: 1rem 0; padding: 0 0 1.1rem; border: 0; border-bottom: 1px solid var(--line); }
-.ru-direction-impact legend { color: var(--muted); font-size: .83rem; margin-bottom: .25rem; }
-.ru-direction-impact fieldset label { display: flex; gap: .5rem; align-items: baseline; }
+/* 结晶卡(S6):拆分/转向的分支、吸收在卡内展开;这次结论去哪(三选一);卡底次级的导出区块(S7) */
+.ru-lifecycle-form { display: grid; gap: .2rem; margin: .5rem 0 .8rem; padding: .7rem .85rem; border-left: 2px solid var(--line); background: color-mix(in srgb, var(--stone) 35%, var(--paper)); }
+.ru-lifecycle-form h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.ru-lifecycle-form .ru-kicker, .ru-lifecycle-form .ru-reading-copy { margin: 0; font-size: .82rem; }
+.ru-crystal-form { gap: .35rem; margin-top: .9rem; }
+.ru-crystal-form .ru-conclusion-text, .ru-crystal-form .ru-revival-input { margin: 0 0 .55rem; }
+.ru-dest { display: grid; gap: .45rem; margin: 1rem 0 0; padding: 0; border: 0; }
+.ru-dest legend { margin-bottom: .4rem; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.ru-dopt { padding: .55rem .75rem; border: 1px solid var(--line); }
+.ru-dopt:has(> label input:checked) { border-color: var(--ink); background: var(--paper); }
+.ru-dopt > label { display: flex; gap: .5rem; align-items: baseline; font-size: .9rem; font-weight: 600; cursor: pointer; }
+.ru-dopt > label:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
+.ru-dopt > small { display: block; margin: .15rem 0 0 1.45rem; color: var(--muted); font-size: .74rem; }
+.ru-dopt-body { display: grid; gap: .35rem; margin: .5rem 0 0 1.45rem; }
+.ru-dopt-body label { color: var(--muted); font-size: .8rem; font-weight: 600; }
+.ru-dopt-body .ru-revival-input, .ru-dopt-body .ru-conclusion-text { margin: 0; }
+.ru-dopt-body select { font-size: .86rem; }
+.ru-export { margin-top: 1.3rem; padding-top: .85rem; border-top: 1px dashed #B3BAB5; }
+.ru-export-head { display: flex; flex-wrap: wrap; gap: .2rem .7rem; align-items: baseline; margin: 0; }
+.ru-export-head b { font-size: .88rem; }
+.ru-export .ru-muted-note { margin: 0; }
+.ru-export .ru-dialogue-pre { max-height: 18rem; overflow-y: auto; }
 .ru-direction { width: min(100%, 1080px); }
 .ru-direction-proposition { margin: 1.25rem 0 0; padding-left: 1rem; border-left: 2px solid var(--edge); font-family: "Charis SIL", "Source Han Serif", serif; font-size: 1.35rem; line-height: 1.6; }
 .ru-direction-workspaces, .ru-direction-crystallizations { margin-top: 2.25rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
@@ -322,6 +339,8 @@ button.ru-claim:hover { border-top-color: #A9B1AC; border-right-color: #A9B1AC; 
 .ru-landscape-claim { display: grid; gap: .15rem; justify-items: start; width: 100%; margin: .35rem 0; padding: .5rem .75rem; border: 0; border-left: 3px solid var(--edge); background: transparent; color: var(--ink); text-align: left; font: inherit; }
 button.ru-landscape-claim { cursor: pointer; }
 button.ru-landscape-claim:hover { background: color-mix(in srgb, var(--stone) 45%, var(--paper)); }
+.ru-landscape-claim.is-pending { border-left-color: var(--rust); }
+.ru-landscape-claim.is-quiet { border-left-color: #A9B1AC; }
 .ru-landscape-facts li { padding: .5rem 0; border-bottom: 1px solid var(--line); }
 .ru-landscape-facts p { margin: 0; }
 .ru-qdot { display: inline-block; width: 7px; height: 7px; margin-right: .45rem; border-radius: 50%; background: var(--teal); vertical-align: 1px; }

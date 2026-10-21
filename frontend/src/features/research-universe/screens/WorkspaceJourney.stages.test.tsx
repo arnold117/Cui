@@ -118,9 +118,9 @@ describe("workspace journey stages", () => {
     expect(JSON.parse(propose![1].body as string).external_refs).toEqual([])  // 全是语料库内文献,无外部快照
     expect(JSON.parse(propose![1].body as string).search_query).toBe("RLHF reasoning")  // 实际执行的检索,不是 LLM 建议词
 
-    // 第 6 步:结晶卡里有原页头的位置动作,也有 related-work 草稿
+    // 第 6 步:结晶卡的主按钮是确认位置;卡底是次级的导出区块(有已确认 gap 即可用)
     expect(screen.getByRole("button", { name: "确认这次探索的位置" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: /生成 related-work 综述草稿/ }))
+    fireEvent.click(within(screen.getByRole("region", { name: "导出 related-work 草稿" })).getByRole("button", { name: "生成草稿" }))
     await screen.findByText(/Existing work covers RLHF evaluations/, {}, { timeout: 3000 })
     fireEvent.click(screen.getByRole("button", { name: "下载 .md" }))
     // 已完成的阶段折叠成一行;对抗那行显示待回应计数
@@ -230,27 +230,29 @@ describe("workspace journey stages", () => {
     expect(screen.queryByText("还有 ____ 没填")).not.toBeInTheDocument()
   })
 
-  it("step 6: a confirmed gap can be challenged (entry visible without expanding step 5) by signing a pre-filled vacancy claim into a review round", async () => {
-    const coverage = "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。"
+  it("step 6: the export block appears once a gap is confirmed; the gap counter-evidence entry stays in the gap card only", async () => {
     window.sessionStorage.setItem("cui:dialogue-draft:v2:w-1", JSON.stringify({
       v: 2, workspaceId: "w-1", hypothesesText: "h", hypothesesDone: true, keywordsText: "x", selectedKeywords: [],
       candidates, selected: ["arxiv:2401.00009"], searchQueries: ["x"], summary: "## 覆盖\n评测。", claimText: "c", roundId: "r0", claimAck: true,
       confirmedGapIds: ["g1"], savedAt: new Date().toISOString(),
     }))
-    mockFullJourney({ claims: [{ id: "c0", text: "c" }], review_rounds: [{ id: "r0", claim_id: "c0", claim_snapshot: { text: "c" }, question_snapshot: baseDesk.question, verdict: null }], landscape: landscape([confirmedGap("g1", coverage)]) })
+    const claimed = { claims: [{ id: "c0", text: "c" }], review_rounds: [{ id: "r0", claim_id: "c0", claim_snapshot: { text: "c" }, question_snapshot: baseDesk.question, verdict: null }] }
+    // 还没有已确认的 gap:结晶卡里没有导出区块
+    mockFullJourney({ ...claimed, landscape: landscape([{ ...confirmedGap("g0", "待裁决的旧 gap"), status: "pending" }]) })
     renderJourney("w-1")
-    // gap 已确认、无待回应 → 当前在第 6 步:入口直接可见,无需展开已折叠的第 5 步
-    fireEvent.click(await screen.findByRole("button", { name: "对这个 gap 发起反证" }, { timeout: 3000 }))
+    fireEvent.click(await screen.findByRole("button", { name: /^结晶/ }, { timeout: 3000 }))
+    expect(screen.queryByRole("region", { name: "导出 related-work 草稿" })).not.toBeInTheDocument()
+    cleanup()
+    // gap 已确认、无待回应 → 当前在第 6 步:导出可用;反证入口不在这里(S5 的 gap 卡接住它)
+    mockFullJourney({ ...claimed, landscape: landscape([confirmedGap("g1", "文献覆盖了评测方法,但没有覆盖推理链真实应用的长期表现。")]) })
+    renderJourney("w-1")
+    const exportBlock = await screen.findByRole("region", { name: "导出 related-work 草稿" }, { timeout: 3000 })
     expect(openCard()).toBe("6. 结晶")
-    const box = screen.getByLabelText("反证用 claim(空缺断言)") as HTMLTextAreaElement
-    expect(box.value).toContain("没有覆盖推理链真实应用的长期表现")
-    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/claims"))).toBe(false)
-    fireEvent.change(box, { target: { value: "" } })
-    expect(screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" })).toBeDisabled()
-    fireEvent.change(box, { target: { value: "没有文献覆盖长期表现。" } })
-    fireEvent.click(screen.getByRole("button", { name: "署名固化为 claim 并开审查轮" }))
-    await waitFor(() => expect(window.location.pathname).toBe("/workspaces/w-1/rounds/r1"), { timeout: 3000 })
-    expect(JSON.parse(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/claims"))![1].body as string)).toMatchObject({ text: "没有文献覆盖长期表现。", kind: "vacancy" })
+    expect(within(exportBlock).getByRole("button", { name: "生成草稿" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "对这个 gap 发起反证" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/会话走完/)).not.toBeInTheDocument()
+    fireEvent.click(row(/^gap/))
+    expect(screen.getByRole("button", { name: "对这个 gap 发起反证" })).toBeInTheDocument()
   })
 })
 

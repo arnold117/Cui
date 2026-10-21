@@ -56,6 +56,8 @@ export const researchUniverse = {
   declareDirectionStatus: (directionId: string, envelope: DeclareDirectionStatusEnvelope) => send<CommandResponse<{ direction_id: string; status: string; aggregate_sequences?: Record<string, number> }>>(`/directions/${directionId}/status-declarations`, envelope),
   rephraseDirection: (directionId: string, envelope: RephraseDirectionEnvelope) => send<CommandResponse<{ direction_id: string; new_proposition_version_id: string; aggregate_sequences?: Record<string, number> }>>(`/directions/${directionId}/rephrasings`, envelope),
   attachCrystallization: (directionId: string, envelope: AttachCrystallizationEnvelope) => send<CommandResponse<{ crystallization_id: string; direction_id: string; workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/directions/${directionId}/crystallizations`, envelope),
+  // S6 原子命令:[新建方向] + 挂方向(已关联则跳过) + 结晶,一次提交;direction_id / new_proposition 恰好给一个
+  crystallizeIntoDirection: (workspaceId: string, envelope: S["CrystallizeIntoDirectionCommand"]) => send<CommandResponse<{ direction_id: string; direction_link_id: string | null; crystallization_id: string; workspace_id: string; aggregate_sequences?: Record<string, number> }>>(`/workspaces/${workspaceId}/crystallize-into-direction`, envelope),
   direction: (directionId: string) => read<Direction>(`/directions/${directionId}`),
   // slice1 — corpus search + gap candidates / landscape
   corpusSearch: (q: string, opts?: { group?: "active" | "legacy"; limit?: number }) => read<CorpusSearchResponse>(`/corpus/search?${new URLSearchParams({ q, group: opts?.group ?? "active", limit: String(opts?.limit ?? 20) }).toString()}`),
